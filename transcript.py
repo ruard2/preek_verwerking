@@ -107,21 +107,28 @@ def pot_provider_diagnose():
         if _plugin_geladen()
         else "LET OP: yt-dlp-plugin niet gevonden"
     )
+    extra = []
+    if os.environ.get("YTDLP_PROXY"):
+        extra.append("proxy actief")
+    if os.environ.get("YTDLP_COOKIES"):
+        extra.append("cookies actief")
+    staart = f", {plugin}" + ("".join(f", {e}" for e in extra))
+
     url = os.environ.get("POT_PROVIDER_URL")
     if not url:
         return (
             "POT_PROVIDER_URL is niet ingesteld — de PO-token-provider wordt "
-            f"niet gebruikt. Zie de README voor de installatiestappen. ({plugin})"
+            f"niet gebruikt. Zie de README voor de installatiestappen.{staart}"
         )
     try:
         with urllib.request.urlopen(url.rstrip("/") + "/ping", timeout=5) as r:
             data = json.loads(r.read().decode())
         return (
             f"PO-token-provider op {url} is bereikbaar "
-            f"(versie {data.get('version', '?')}, {plugin})."
+            f"(versie {data.get('version', '?')}{staart})."
         )
     except Exception as fout:  # noqa: BLE001
-        return f"PO-token-provider op {url} is NIET bereikbaar: {fout} ({plugin})"
+        return f"PO-token-provider op {url} is NIET bereikbaar: {fout}{staart}"
 
 
 def _basis_opties():
@@ -147,6 +154,12 @@ def _basis_opties():
                 "player_client": ["web", "default"],
             },
         }
+    # Optioneel: al het YouTube-verkeer via een (residentiële) proxy leiden.
+    # Meest betrouwbare oplossing als het datacenter-IP geblokkeerd blijft.
+    proxy = os.environ.get("YTDLP_PROXY")
+    if proxy:
+        opties["proxy"] = proxy
+
     # Optioneel alternatief: cookies meegeven als YouTube het IP toch blokkeert.
     cookies = os.environ.get("YTDLP_COOKIES")
     if cookies:
