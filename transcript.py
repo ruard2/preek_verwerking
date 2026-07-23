@@ -85,23 +85,43 @@ def haal_preek_transcript(url, voortgang=None):
     return tekst, welkomtekst, meta
 
 
+def _plugin_geladen():
+    """Is de bgutil-yt-dlp-plugin beschikbaar in deze omgeving?"""
+    try:
+        import yt_dlp_plugins.extractor.getpot_bgutil_http  # noqa: F401
+
+        return True
+    except Exception:  # noqa: BLE001
+        try:
+            import bgutil_ytdlp_pot_provider  # noqa: F401
+
+            return True
+        except Exception:  # noqa: BLE001
+            return False
+
+
 def pot_provider_diagnose():
     """Controleer of de PO-token-provider geconfigureerd en bereikbaar is."""
+    plugin = (
+        "yt-dlp-plugin geladen"
+        if _plugin_geladen()
+        else "LET OP: yt-dlp-plugin niet gevonden"
+    )
     url = os.environ.get("POT_PROVIDER_URL")
     if not url:
         return (
             "POT_PROVIDER_URL is niet ingesteld — de PO-token-provider wordt "
-            "niet gebruikt. Zie de README voor de twee installatiestappen."
+            f"niet gebruikt. Zie de README voor de installatiestappen. ({plugin})"
         )
     try:
         with urllib.request.urlopen(url.rstrip("/") + "/ping", timeout=5) as r:
             data = json.loads(r.read().decode())
         return (
             f"PO-token-provider op {url} is bereikbaar "
-            f"(versie {data.get('version', '?')})."
+            f"(versie {data.get('version', '?')}, {plugin})."
         )
     except Exception as fout:  # noqa: BLE001
-        return f"PO-token-provider op {url} is NIET bereikbaar: {fout}"
+        return f"PO-token-provider op {url} is NIET bereikbaar: {fout} ({plugin})"
 
 
 def _basis_opties():
@@ -112,10 +132,20 @@ def _basis_opties():
     }
     # PO-token-provider (bgutil) tegen YouTube's botdetectie op server-IP's.
     # Wijst naar een draaiende bgutil-ytdlp-pot-provider-service.
+    #
+    # Belangrijk: het token wordt alleen daadwerkelijk opgehaald en meegestuurd
+    # als (a) de PO-token-fetch geforceerd wordt ("fetch_pot": always) én (b) de
+    # web-client wordt gebruikt, die PO-tokens ondersteunt. Zonder deze twee
+    # laat yt-dlp op een geblokkeerd datacenter-IP het token liggen en volgt de
+    # "Sign in to confirm you're not a bot"-fout.
     pot_url = os.environ.get("POT_PROVIDER_URL")
     if pot_url:
         opties["extractor_args"] = {
-            "youtubepot-bgutilhttp": {"base_url": [pot_url.rstrip("/")]}
+            "youtubepot-bgutilhttp": {"base_url": [pot_url.rstrip("/")]},
+            "youtube": {
+                "fetch_pot": ["always"],
+                "player_client": ["web", "default"],
+            },
         }
     # Optioneel alternatief: cookies meegeven als YouTube het IP toch blokkeert.
     cookies = os.environ.get("YTDLP_COOKIES")
