@@ -74,7 +74,14 @@ def _basis_opties():
         "no_warnings": True,
         "skip_download": True,
     }
-    # Optioneel: cookies meegeven als YouTube het server-IP blokkeert.
+    # PO-token-provider (bgutil) tegen YouTube's botdetectie op server-IP's.
+    # Wijst naar een draaiende bgutil-ytdlp-pot-provider-service.
+    pot_url = os.environ.get("POT_PROVIDER_URL")
+    if pot_url:
+        opties["extractor_args"] = {
+            "youtubepot-bgutilhttp": {"base_url": [pot_url.rstrip("/")]}
+        }
+    # Optioneel alternatief: cookies meegeven als YouTube het IP toch blokkeert.
     cookies = os.environ.get("YTDLP_COOKIES")
     if cookies:
         pad = os.path.join(tempfile.gettempdir(), "yt_cookies.txt")
