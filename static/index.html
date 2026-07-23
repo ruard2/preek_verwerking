@@ -14,25 +14,33 @@
     line-height: 1.6;
   }
   h1 { font-size: 1.6rem; margin-bottom: .25rem; }
+  h2 { font-size: 1.15rem; margin: 1.75rem 0 .5rem; }
   .sub { opacity: .7; margin-top: 0; font-size: .95rem; }
-  form { display: flex; gap: .5rem; margin: 1.5rem 0; flex-wrap: wrap; }
-  input[type=url] {
-    flex: 1 1 20rem;
-    padding: .6rem .8rem;
-    font-size: 1rem;
-    border: 1px solid #aaa;
-    border-radius: .4rem;
-  }
   button {
-    padding: .6rem 1.2rem;
+    font-family: inherit;
     font-size: 1rem;
     border: none;
     border-radius: .4rem;
-    background: #2c5f2d;
-    color: #fff;
     cursor: pointer;
   }
-  button:disabled { opacity: .5; cursor: wait; }
+  .dag { margin-bottom: 1rem; }
+  .dag-kop { font-weight: bold; margin-bottom: .35rem; text-transform: capitalize; }
+  .dienst-knop {
+    display: inline-block;
+    margin: 0 .5rem .5rem 0;
+    padding: .5rem 1rem;
+    background: #2c5f2d;
+    color: #fff;
+  }
+  .dienst-knop:disabled { opacity: .5; cursor: not-allowed; }
+  .dienst-knop.gepland {
+    background: transparent;
+    color: inherit;
+    border: 1px dashed #999;
+    opacity: .6;
+    cursor: default;
+  }
+  .klein { background: #555; color: #fff; padding: .4rem .9rem; font-size: .9rem; }
   #stap { font-style: italic; opacity: .8; }
   #fout { color: #b00020; white-space: pre-wrap; }
   #resultaat {
@@ -41,48 +49,146 @@
     padding-top: 1.5rem;
     margin-top: 1.5rem;
   }
-  .acties { margin-top: 1rem; display: none; gap: .5rem; }
-  .acties button { background: #555; }
+  #acties { margin-top: 1rem; display: none; gap: .5rem; }
+  details { margin-top: 2rem; font-size: .95rem; }
+  details input[type=url] {
+    width: 100%;
+    box-sizing: border-box;
+    padding: .5rem .7rem;
+    font-size: 1rem;
+    border: 1px solid #aaa;
+    border-radius: .4rem;
+    margin: .5rem 0;
+  }
 </style>
 </head>
 <body>
   <h1>Preekverwerker</h1>
-  <p class="sub">Plak een YouTube-link van een kerkdienst. De preek wordt opgezocht,
+  <p class="sub">Kies een dienst van NGK Middelharnis. De preek wordt opgezocht,
   getranscribeerd en verwerkt tot een samenvatting met zeven daggedeelten.</p>
 
-  <form id="formulier">
-    <input type="url" id="url" placeholder="https://www.youtube.com/watch?v=..." required>
-    <button type="submit" id="knop">Verwerk</button>
-  </form>
-
-  <p id="stap"></p>
+  <p id="stap">Diensten ophalen...</p>
   <p id="fout"></p>
+
+  <div id="lijst"></div>
+
   <div id="resultaat"></div>
-  <div class="acties" id="acties">
-    <button type="button" id="kopieer">Kopieer tekst</button>
+  <div id="acties">
+    <button type="button" class="klein" id="kopieer">Kopieer tekst</button>
+    <button type="button" class="klein" id="terug">Terug naar de lijst</button>
   </div>
 
+  <details id="handmatig">
+    <summary>Of plak zelf een YouTube-link</summary>
+    <input type="url" id="url" placeholder="https://www.youtube.com/watch?v=...">
+    <button type="button" class="klein" id="urlknop">Verwerk deze link</button>
+  </details>
+
 <script>
-const formulier = document.getElementById('formulier');
-const knop = document.getElementById('knop');
 const stapEl = document.getElementById('stap');
 const foutEl = document.getElementById('fout');
+const lijstEl = document.getElementById('lijst');
 const resultaatEl = document.getElementById('resultaat');
 const acties = document.getElementById('acties');
+const handmatig = document.getElementById('handmatig');
+let bezig = false;
 
-formulier.addEventListener('submit', async (e) => {
-  e.preventDefault();
-  knop.disabled = true;
+const WEEKDAG = {weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'};
+
+async function laadDiensten(vernieuw = false) {
+  stapEl.textContent = 'Diensten ophalen...';
   foutEl.textContent = '';
-  resultaatEl.textContent = '';
+  try {
+    const antwoord = await fetch('/api/diensten' + (vernieuw ? '?vernieuw=true' : ''));
+    if (!antwoord.ok) {
+      const data = await antwoord.json().catch(() => ({}));
+      throw new Error(data.detail || 'De dienstenlijst kon niet worden opgehaald.');
+    }
+    toonLijst(await antwoord.json());
+    stapEl.textContent = '';
+  } catch (fout) {
+    stapEl.textContent = '';
+    foutEl.textContent = fout.message;
+  }
+}
+
+function toonLijst(diensten) {
+  lijstEl.innerHTML = '';
+
+  const beschikbaar = diensten.filter(d => !d.gepland);
+  const gepland = diensten.filter(d => d.gepland);
+
+  const kopB = document.createElement('h2');
+  kopB.textContent = 'Beschikbare diensten';
+  lijstEl.appendChild(kopB);
+  lijstEl.appendChild(maakGroepen(beschikbaar, false));
+
+  if (gepland.length) {
+    const det = document.createElement('details');
+    const som = document.createElement('summary');
+    som.textContent = `Geplande diensten (${gepland.length}) — nog niet gestreamd`;
+    det.appendChild(som);
+    det.appendChild(maakGroepen(gepland.slice().reverse(), true));
+    lijstEl.appendChild(det);
+  }
+
+  const vernieuwKnop = document.createElement('button');
+  vernieuwKnop.textContent = 'Vernieuw lijst';
+  vernieuwKnop.className = 'klein';
+  vernieuwKnop.addEventListener('click', () => laadDiensten(true));
+  lijstEl.appendChild(vernieuwKnop);
+}
+
+function maakGroepen(diensten, isGepland) {
+  const houder = document.createElement('div');
+  const perDag = new Map();
+  for (const d of diensten) {
+    const sleutel = d.datum || 'onbekend';
+    if (!perDag.has(sleutel)) perDag.set(sleutel, []);
+    perDag.get(sleutel).push(d);
+  }
+  for (const [datum, items] of perDag) {
+    const blok = document.createElement('div');
+    blok.className = 'dag';
+    const kop = document.createElement('div');
+    kop.className = 'dag-kop';
+    kop.textContent = datum === 'onbekend'
+      ? 'Datum onbekend'
+      : new Date(datum + 'T12:00:00').toLocaleDateString('nl-NL', WEEKDAG);
+    blok.appendChild(kop);
+    items.sort((a, b) => (a.tijd || '').localeCompare(b.tijd || ''));
+    for (const d of items) {
+      const knop = document.createElement('button');
+      knop.className = 'dienst-knop' + (isGepland ? ' gepland' : '');
+      knop.textContent = d.label + (d.tijd ? ` · ${d.tijd}` : '');
+      if (isGepland) {
+        knop.disabled = true;
+        knop.title = 'Deze dienst is nog niet geweest.';
+      } else {
+        knop.addEventListener('click', () => verwerk(d.url, `${kop.textContent} — ${d.label}`));
+      }
+      blok.appendChild(knop);
+    }
+    houder.appendChild(blok);
+  }
+  return houder;
+}
+
+async function verwerk(url, omschrijving) {
+  if (bezig) return;
+  bezig = true;
+  lijstEl.style.display = 'none';
+  handmatig.style.display = 'none';
   acties.style.display = 'none';
-  stapEl.textContent = 'Starten...';
+  resultaatEl.textContent = '';
+  foutEl.textContent = '';
+  stapEl.textContent = `Bezig met: ${omschrijving}...`;
 
   try {
     const antwoord = await fetch('/api/verwerk', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({url: document.getElementById('url').value})
+      body: JSON.stringify({url})
     });
     if (!antwoord.ok) {
       const data = await antwoord.json().catch(() => ({}));
@@ -93,10 +199,12 @@ formulier.addEventListener('submit', async (e) => {
   } catch (fout) {
     stapEl.textContent = '';
     foutEl.textContent = fout.message;
+    lijstEl.style.display = '';
+    handmatig.style.display = '';
   } finally {
-    knop.disabled = false;
+    bezig = false;
   }
-});
+}
 
 async function volg(taakId) {
   while (true) {
@@ -107,7 +215,6 @@ async function volg(taakId) {
     if (taak.status === 'bezig') {
       stapEl.textContent = taak.stap;
     } else if (taak.status === 'fout') {
-      stapEl.textContent = '';
       throw new Error(taak.fout || 'Er is iets misgegaan.');
     } else {
       stapEl.textContent = taak.meta
@@ -125,6 +232,21 @@ document.getElementById('kopieer').addEventListener('click', async () => {
   document.getElementById('kopieer').textContent = 'Gekopieerd ✓';
   setTimeout(() => document.getElementById('kopieer').textContent = 'Kopieer tekst', 2000);
 });
+
+document.getElementById('terug').addEventListener('click', () => {
+  resultaatEl.textContent = '';
+  acties.style.display = 'none';
+  stapEl.textContent = '';
+  lijstEl.style.display = '';
+  handmatig.style.display = '';
+});
+
+document.getElementById('urlknop').addEventListener('click', () => {
+  const url = document.getElementById('url').value.trim();
+  if (url) verwerk(url, 'handmatige link');
+});
+
+laadDiensten();
 </script>
 </body>
 </html>

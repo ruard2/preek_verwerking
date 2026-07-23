@@ -199,6 +199,65 @@ def _vind_preekblok(entries):
     return beste
 
 
+MAANDEN = {
+    "jan": 1, "feb": 2, "mrt": 3, "apr": 4, "mei": 5, "jun": 6,
+    "jul": 7, "aug": 8, "sep": 9, "okt": 10, "nov": 11, "dec": 12,
+}
+DATUM_RE = re.compile(
+    r"(\d{1,2})\s+(jan|feb|mrt|apr|mei|jun|jul|aug|sep|okt|nov|dec)\w*\.?\s+(\d{4})",
+    re.I,
+)
+KLOKTIJD_RE = re.compile(r"\b(\d{1,2}:\d{2})\b")
+
+
+def lijst_diensten(kanaal_url, maximum=120):
+    """Alle streams (gepland en al gestreamd) van het kanaal, met datum/tijd uit de titel."""
+    opties = _basis_opties()
+    opties.update({"extract_flat": "in_playlist", "playlistend": maximum})
+    with yt_dlp.YoutubeDL(opties) as ydl:
+        info = ydl.extract_info(kanaal_url, download=False)
+
+    diensten = []
+    for e in info.get("entries") or []:
+        video_id = e.get("id")
+        titel = e.get("title") or ""
+        if not video_id:
+            continue
+        diensten.append(
+            {
+                "id": video_id,
+                "url": f"https://www.youtube.com/watch?v={video_id}",
+                "titel": titel,
+                "label": _label_uit_titel(titel),
+                "datum": _datum_uit_titel(titel),
+                "tijd": _tijd_uit_titel(titel),
+                "gepland": e.get("live_status") == "is_upcoming",
+            }
+        )
+    return diensten
+
+
+def _datum_uit_titel(titel):
+    m = DATUM_RE.search(titel)
+    if not m:
+        return None
+    dag, maand, jaar = int(m.group(1)), MAANDEN[m.group(2).lower()], int(m.group(3))
+    return f"{jaar:04d}-{maand:02d}-{dag:02d}"
+
+
+def _tijd_uit_titel(titel):
+    m = KLOKTIJD_RE.search(titel)
+    return m.group(1) if m else None
+
+
+def _label_uit_titel(titel):
+    """'NGK Middelharnis - Kerstviering | Ochtenddienst 25 dec 2026 - 10:00' -> 'Kerstviering | Ochtenddienst'."""
+    kaal = titel.split(" - ", 1)[-1]
+    kaal = DATUM_RE.sub("", kaal)
+    kaal = KLOKTIJD_RE.sub("", kaal)
+    return kaal.strip(" -|–") or titel
+
+
 def _fmt(seconden):
     u, rest = divmod(int(seconden), 3600)
     m, s = divmod(rest, 60)
