@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Preekverwerker</title>
+<style>
+  :root { color-scheme: light dark; }
+  body {
+    font-family: Georgia, 'Times New Roman', serif;
+    max-width: 46rem;
+    margin: 0 auto;
+    padding: 2rem 1.25rem 4rem;
+    line-height: 1.6;
+  }
+  h1 { font-size: 1.6rem; margin-bottom: .25rem; }
+  .sub { opacity: .7; margin-top: 0; font-size: .95rem; }
+  form { display: flex; gap: .5rem; margin: 1.5rem 0; flex-wrap: wrap; }
+  input[type=url] {
+    flex: 1 1 20rem;
+    padding: .6rem .8rem;
+    font-size: 1rem;
+    border: 1px solid #aaa;
+    border-radius: .4rem;
+  }
+  button {
+    padding: .6rem 1.2rem;
+    font-size: 1rem;
+    border: none;
+    border-radius: .4rem;
+    background: #2c5f2d;
+    color: #fff;
+    cursor: pointer;
+  }
+  button:disabled { opacity: .5; cursor: wait; }
+  #stap { font-style: italic; opacity: .8; }
+  #fout { color: #b00020; white-space: pre-wrap; }
+  #resultaat {
+    white-space: pre-wrap;
+    border-top: 2px solid #2c5f2d;
+    padding-top: 1.5rem;
+    margin-top: 1.5rem;
+  }
+  .acties { margin-top: 1rem; display: none; gap: .5rem; }
+  .acties button { background: #555; }
+</style>
+</head>
+<body>
+  <h1>Preekverwerker</h1>
+  <p class="sub">Plak een YouTube-link van een kerkdienst. De preek wordt opgezocht,
+  getranscribeerd en verwerkt tot een samenvatting met zeven daggedeelten.</p>
+
+  <form id="formulier">
+    <input type="url" id="url" placeholder="https://www.youtube.com/watch?v=..." required>
+    <button type="submit" id="knop">Verwerk</button>
+  </form>
+
+  <p id="stap"></p>
+  <p id="fout"></p>
+  <div id="resultaat"></div>
+  <div class="acties" id="acties">
+    <button type="button" id="kopieer">Kopieer tekst</button>
+  </div>
+
+<script>
+const formulier = document.getElementById('formulier');
+const knop = document.getElementById('knop');
+const stapEl = document.getElementById('stap');
+const foutEl = document.getElementById('fout');
+const resultaatEl = document.getElementById('resultaat');
+const acties = document.getElementById('acties');
+
+formulier.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  knop.disabled = true;
+  foutEl.textContent = '';
+  resultaatEl.textContent = '';
+  acties.style.display = 'none';
+  stapEl.textContent = 'Starten...';
+
+  try {
+    const antwoord = await fetch('/api/verwerk', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({url: document.getElementById('url').value})
+    });
+    if (!antwoord.ok) {
+      const data = await antwoord.json().catch(() => ({}));
+      throw new Error(data.detail || 'De verwerking kon niet worden gestart.');
+    }
+    const {taak_id} = await antwoord.json();
+    await volg(taak_id);
+  } catch (fout) {
+    stapEl.textContent = '';
+    foutEl.textContent = fout.message;
+  } finally {
+    knop.disabled = false;
+  }
+});
+
+async function volg(taakId) {
+  while (true) {
+    await new Promise(r => setTimeout(r, 2500));
+    const antwoord = await fetch('/api/status/' + taakId);
+    if (!antwoord.ok) throw new Error('De status kon niet worden opgehaald.');
+    const taak = await antwoord.json();
+    if (taak.status === 'bezig') {
+      stapEl.textContent = taak.stap;
+    } else if (taak.status === 'fout') {
+      stapEl.textContent = '';
+      throw new Error(taak.fout || 'Er is iets misgegaan.');
+    } else {
+      stapEl.textContent = taak.meta
+        ? `Klaar. Preek: ${taak.meta.preek_start}–${taak.meta.preek_einde} uit “${taak.meta.titel}”.`
+        : 'Klaar.';
+      resultaatEl.textContent = taak.resultaat;
+      acties.style.display = 'flex';
+      return;
+    }
+  }
+}
+
+document.getElementById('kopieer').addEventListener('click', async () => {
+  await navigator.clipboard.writeText(resultaatEl.textContent);
+  document.getElementById('kopieer').textContent = 'Gekopieerd ✓';
+  setTimeout(() => document.getElementById('kopieer').textContent = 'Kopieer tekst', 2000);
+});
+</script>
+</body>
+</html>
