@@ -8,10 +8,12 @@ Werkwijze:
    door langere stukken muziek/zang wordt onderbroken.
 """
 
+import json
 import os
 import re
 import glob
 import tempfile
+import urllib.request
 
 import yt_dlp
 
@@ -25,6 +27,13 @@ TIJD_RE = re.compile(r"(\d+):(\d\d):(\d\d)\.\d+\s*-->")
 
 # Een blok korter dan dit beschouwen we niet als preek.
 MIN_PREEK_SECONDEN = 8 * 60
+# Extra preekdelen (bij een preek in twee of drie delen, met bijvoorbeeld een
+# lied ertussen): een blok telt mee als het minstens zo lang is als dit én
+# minstens dit aandeel van het langste blok.
+MIN_DEEL_SECONDEN = 5 * 60
+MIN_DEEL_AANDEEL = 0.45
+# Maximale lengte van het meegegeven welkomstfragment (voor de voorganger).
+MAX_WELKOM_TEKENS = 1500
 # Een regel geldt als muziek wanneer er binnen ± dit venster (seconden)
 # minstens MIN_TAGS_IN_VENSTER muziekmarkeringen voorkomen.
 MUZIEK_VENSTER = 30
@@ -32,7 +41,7 @@ MIN_TAGS_IN_VENSTER = 3
 
 
 def haal_preek_transcript(url, voortgang=None):
-    """Geeft (preektekst, meta) terug voor een YouTube-url."""
+    """Geeft (preektekst, welkomstfragment, meta) terug voor een YouTube-url."""
 
     def meld(stap):
         if voortgang:
@@ -55,17 +64,44 @@ def haal_preek_transcript(url, voortgang=None):
         raise RuntimeError("De ondertitels konden niet worden gelezen.")
 
     meld("Preekgedeelte zoeken...")
-    blok = _vind_preekblok(entries)
-    tekst = "\n".join(t for _, t in blok if t)
+    delen, welkom = _vind_preekdelen(entries)
+    tekst = "\n\n[VOLGEND PREEKDEEL — hiervoor werd gezongen]\n\n".join(
+        "\n".join(t for _, t in deel if t) for deel in delen
+    )
+    welkomtekst = None
+    if welkom:
+        welkomtekst = "\n".join(t for _, t in welkom if t)[:MAX_WELKOM_TEKENS]
 
     meta = {
         "titel": titel,
         "taal": taal,
-        "preek_start": _fmt(blok[0][0]),
-        "preek_einde": _fmt(blok[-1][0]),
-        "duur_minuten": round((blok[-1][0] - blok[0][0]) / 60),
+        "preek_start": _fmt(delen[0][0][0]),
+        "preek_einde": _fmt(delen[-1][-1][0]),
+        "delen": len(delen),
+        "duur_minuten": round(
+            sum(deel[-1][0] - deel[0][0] for deel in delen) / 60
+        ),
     }
-    return tekst, meta
+    return tekst, welkomtekst, meta
+
+
+def pot_provider_diagnose():
+    """Controleer of de PO-token-provider geconfigureerd en bereikbaar is."""
+    url = os.environ.get("POT_PROVIDER_URL")
+    if not url:
+        return (
+            "POT_PROVIDER_URL is niet ingesteld — de PO-token-provider wordt "
+            "niet gebruikt. Zie de README voor de twee installatiestappen."
+        )
+    try:
+        with urllib.request.urlopen(url.rstrip("/") + "/ping", timeout=5) as r:
+            data = json.loads(r.read().decode())
+        return (
+            f"PO-token-provider op {url} is bereikbaar "
+            f"(versie {data.get('version', '?')})."
+        )
+    except Exception as fout:  # noqa: BLE001
+        return f"PO-token-provider op {url} is NIET bereikbaar: {fout}"
 
 
 def _basis_opties():
@@ -162,8 +198,8 @@ def _parse_vtt(inhoud):
     return entries
 
 
-def _vind_preekblok(entries):
-    """Kies het langste spraakblok tussen de muziek-/zangstukken.
+def _vind_spraakblokken(entries):
+    """Splits het transcript in spraakblokken, gescheiden door muziek/zang.
 
     Een regel telt als muziek wanneer er rondom die regel (schuivend venster)
     voldoende muziekmarkeringen staan. Zo breken losse zangflarden zonder
@@ -190,20 +226,56 @@ def _vind_preekblok(entries):
             huidig.append((t, schoon))
     if huidig:
         blokken.append(huidig)
+    return blokken
 
+
+def _vind_preekdelen(entries):
+    """Kies de preekdelen en het welkomstblok (waarin de voorganger genoemd wordt).
+
+    De preek is het langste spraakblok. Wordt de preek onderbroken door een
+    lied, dan bestaat hij uit meerdere blokken; andere lange blokken die qua
+    duur in de buurt van het langste komen tellen daarom mee als preekdeel.
+    Korte blokken (gebed, schriftlezing, mededelingen) vallen daarbuiten.
+    """
+    blokken = _vind_spraakblokken(entries)
     if not blokken:
         raise RuntimeError("Geen bruikbare spraak gevonden in de ondertitels.")
 
-    beste = max(blokken, key=lambda b: b[-1][0] - b[0][0])
-    if beste[-1][0] - beste[0][0] < MIN_PREEK_SECONDEN:
+    def duur(blok):
+        return blok[-1][0] - blok[0][0]
+
+    langste = max(blokken, key=duur)
+    if duur(langste) < MIN_PREEK_SECONDEN:
         # Geen duidelijk preekblok gevonden: geef alles terug en laat het
         # taalmodel de liturgie eromheen negeren.
-        return [
+        alles = [
             (t, s)
             for t, x in entries
             if (s := ANNOTATIE_RE.sub(" ", x).strip())
         ]
-    return beste
+        return [alles], None
+
+    grens = max(MIN_DEEL_SECONDEN, MIN_DEEL_AANDEEL * duur(langste))
+    delen = [b for b in blokken if duur(b) >= grens]
+
+    # Welkomstblok: het eerste blok van betekenis vóór de preek, waarin de
+    # ouderling doorgaans meldt wie er voorgaat. Vereis echte inhoud, zodat
+    # flarden uit de intromuziek niet meetellen.
+    def woorden(blok):
+        return sum(len(t.split()) for _, t in blok)
+
+    welkom = next(
+        (
+            b
+            for b in blokken
+            if b[0][0] < delen[0][0][0]
+            and duur(b) >= 30
+            and woorden(b) >= 40
+            and b not in delen
+        ),
+        None,
+    )
+    return delen, welkom
 
 
 MAANDEN = {

@@ -13,8 +13,10 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
+import yt_dlp
+
 from llm import verwerk_preek
-from transcript import haal_preek_transcript, lijst_diensten
+from transcript import haal_preek_transcript, lijst_diensten, pot_provider_diagnose
 
 app = FastAPI(title="Preekverwerker")
 
@@ -35,20 +37,33 @@ class VerwerkVerzoek(BaseModel):
 def _voer_taak_uit(taak_id, url):
     taak = taken[taak_id]
     try:
-        preek, meta = haal_preek_transcript(
+        preek, welkom, meta = haal_preek_transcript(
             url, voortgang=lambda stap: taak.update(stap=stap)
         )
         taak["meta"] = meta
+        delen = f", {meta['delen']} delen" if meta.get("delen", 1) > 1 else ""
         taak["stap"] = (
-            f"Preek gevonden ({meta['preek_start']}–{meta['preek_einde']}, "
-            f"±{meta['duur_minuten']} min). Verwerken met AI — dit kan enkele "
-            "minuten duren..."
+            f"Preek gevonden ({meta['preek_start']}–{meta['preek_einde']}"
+            f"{delen}, ±{meta['duur_minuten']} min). Verwerken met AI — dit "
+            "kan enkele minuten duren..."
         )
-        taak["resultaat"] = verwerk_preek(preek)
+        taak["resultaat"] = verwerk_preek(preek, welkom)
         taak["status"] = "klaar"
     except Exception as fout:  # noqa: BLE001 — alles netjes aan de gebruiker melden
+        melding = str(fout)
+        if "not a bot" in melding or "Sign in to confirm" in melding:
+            melding += "\n\nDiagnose: " + pot_provider_diagnose()
         taak["status"] = "fout"
-        taak["fout"] = str(fout)
+        taak["fout"] = melding
+
+
+@app.get("/api/diagnose")
+def diagnose():
+    return {
+        "yt_dlp_versie": yt_dlp.version.__version__,
+        "pot_provider": pot_provider_diagnose(),
+        "openai_sleutel_ingesteld": bool(os.environ.get("OPENAI_API_KEY")),
+    }
 
 
 @app.get("/api/diensten")

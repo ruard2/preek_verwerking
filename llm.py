@@ -128,29 +128,53 @@ Controleer vóór je het eindresultaat geeft:
 * Is de tekst gereed om zonder verdere bewerking in een app, gemeentemail of weekboekje te plaatsen?
 """
 
+AANVULLENDE_INSTRUCTIES = """\
+
+Aanvullende instructies
+
+* De preek kan uit meerdere delen bestaan wanneer er tussendoor gezongen \
+wordt; die delen zijn gemarkeerd met [VOLGEND PREEKDEEL — hiervoor werd \
+gezongen]. Behandel alle delen samen als één doorlopende preek.
+* In de preek kunnen korte interactieve momenten voorkomen waarin \
+gemeenteleden antwoorden op een vraag van de voorganger; dat hoort bij de \
+preek.
+* Soms is een fragment van het welkomstwoord van het begin van de dienst \
+bijgevoegd. Daarin wordt vaak de voorganger genoemd (bijvoorbeeld: "vanmorgen \
+gaat dominee ... voor"). Als de naam van de voorganger daaruit of uit de \
+preek blijkt, vermeld dan direct onder de regel "Bijbelgedeelte:" een regel \
+"Voorganger: [naam]". Is de naam niet te vinden of onzeker, laat die regel \
+dan helemaal weg; gok nooit een naam. Gebruik het welkomstfragment nergens \
+anders voor.
+"""
+
 GEBRUIKER_INLEIDING = """\
 Hieronder staat de ruwe, automatisch gegenereerde transcriptie van de preek \
 (afkomstig uit YouTube-ondertitels). Aan het begin en het einde kunnen nog \
 restanten van de rest van de kerkdienst staan, zoals liederen, mededelingen \
 of gebeden; laat die buiten beschouwing en verwerk alleen de preek zelf. \
 Geef alleen het eindresultaat in de voorgeschreven structuur.
-
---- TRANSCRIPTIE ---
 """
 
 
-def verwerk_preek(transcript):
+def verwerk_preek(transcript, welkom=None):
     if not os.environ.get("OPENAI_API_KEY"):
         raise RuntimeError(
             "OPENAI_API_KEY is niet ingesteld. Voeg deze toe als "
             "omgevingsvariabele (in Railway: Variables)."
         )
     client = OpenAI()
+    inhoud = GEBRUIKER_INLEIDING
+    if welkom:
+        inhoud += (
+            "\n--- FRAGMENT WELKOMSTWOORD (alleen voor de naam van de "
+            "voorganger) ---\n" + welkom + "\n"
+        )
+    inhoud += "\n--- TRANSCRIPTIE VAN DE PREEK ---\n" + transcript
     antwoord = client.chat.completions.create(
         model=MODEL,
         messages=[
-            {"role": "system", "content": SYSTEEM_PROMPT},
-            {"role": "user", "content": GEBRUIKER_INLEIDING + transcript},
+            {"role": "system", "content": SYSTEEM_PROMPT + AANVULLENDE_INSTRUCTIES},
+            {"role": "user", "content": inhoud},
         ],
     )
     return antwoord.choices[0].message.content
