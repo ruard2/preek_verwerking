@@ -8,6 +8,7 @@ Werkwijze:
    door langere stukken muziek/zang wordt onderbroken.
 """
 
+import base64
 import json
 import os
 import re
@@ -86,18 +87,20 @@ def haal_preek_transcript(url, voortgang=None):
 
 
 def _plugin_geladen():
-    """Is de bgutil-yt-dlp-plugin beschikbaar in deze omgeving?"""
-    try:
-        import yt_dlp_plugins.extractor.getpot_bgutil_http  # noqa: F401
+    """Is de bgutil-yt-dlp-plugin geïnstalleerd? (passief, zonder te importeren
+    — importeren zou de provider dubbel registreren.)"""
+    import importlib.util
 
-        return True
-    except Exception:  # noqa: BLE001
+    for naam in (
+        "yt_dlp_plugins.extractor.getpot_bgutil_http",
+        "bgutil_ytdlp_pot_provider",
+    ):
         try:
-            import bgutil_ytdlp_pot_provider  # noqa: F401
-
-            return True
+            if importlib.util.find_spec(naam) is not None:
+                return True
         except Exception:  # noqa: BLE001
-            return False
+            continue
+    return False
 
 
 def pot_provider_diagnose():
@@ -110,7 +113,7 @@ def pot_provider_diagnose():
     extra = []
     if os.environ.get("YTDLP_PROXY"):
         extra.append("proxy actief")
-    if os.environ.get("YTDLP_COOKIES"):
+    if os.environ.get("YTDLP_COOKIES") or os.environ.get("YTDLP_COOKIES_B64"):
         extra.append("cookies actief")
     staart = f", {plugin}" + ("".join(f", {e}" for e in extra))
 
@@ -136,6 +139,10 @@ def _basis_opties():
         "quiet": True,
         "no_warnings": True,
         "skip_download": True,
+        # We hebben alleen metadata en ondertitels nodig, geen video-/audio-
+        # formaten. Zonder dit breekt "geen formaten beschikbaar" (bij de
+        # web-client met cookies) onnodig de ondertitel-extractie af.
+        "ignore_no_formats_error": True,
     }
     # PO-token-provider (bgutil) tegen YouTube's botdetectie op server-IP's.
     # Wijst naar een draaiende bgutil-ytdlp-pot-provider-service.
@@ -161,10 +168,21 @@ def _basis_opties():
         opties["proxy"] = proxy
 
     # Optioneel alternatief: cookies meegeven als YouTube het IP toch blokkeert.
-    cookies = os.environ.get("YTDLP_COOKIES")
+    # Voorkeur: YTDLP_COOKIES_B64 (base64 van het cookies.txt-bestand) — dat is
+    # één regel zonder tabs/regeleinden en overleeft het plakken in Railway.
+    # YTDLP_COOKIES (platte inhoud) blijft als alternatief ondersteund.
+    cookies = None
+    cookies_b64 = os.environ.get("YTDLP_COOKIES_B64")
+    if cookies_b64:
+        try:
+            cookies = base64.b64decode(cookies_b64).decode("utf-8")
+        except Exception:  # noqa: BLE001
+            cookies = None
+    if cookies is None:
+        cookies = os.environ.get("YTDLP_COOKIES")
     if cookies:
         pad = os.path.join(tempfile.gettempdir(), "yt_cookies.txt")
-        with open(pad, "w", encoding="utf-8") as f:
+        with open(pad, "w", encoding="utf-8", newline="\n") as f:
             f.write(cookies)
         opties["cookiefile"] = pad
     return opties
