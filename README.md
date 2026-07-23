@@ -1,67 +1,79 @@
 # Preekverwerker
 
-Plak een YouTube-link van een kerkdienst; de app zoekt het preekgedeelte op
-(het langste aaneengesloten blok spraak), haalt de automatische ondertitels op
-en verwerkt die via de OpenAI API tot een preekverwerking: titel, samenvatting
-en zeven daggedeelten met vragen voor volwassenen en kinderen.
+Kies een dienst van NGK Middelharnis; de app zoekt het preekgedeelte op (het
+langste aaneengesloten blok spraak tussen de liederen), transcribeert de audio
+van dat stuk via OpenAI en verwerkt die tot een preekverwerking: titel,
+voorganger, samenvatting en zeven daggedeelten met vragen voor volwassenen en
+kinderen.
+
+## Aanbevolen: lokaal draaien (Windows)
+
+De app draait het best **lokaal op je eigen pc**. YouTube blokkeert namelijk
+downloads vanaf datacenter-IP's (zoals Railway); vanaf je thuis-IP niet. Lokaal
+heb je dus geen cookies of proxy nodig.
+
+**Eenmalig instellen:**
+1. Zorg dat [Python](https://www.python.org/) en
+   [Docker Desktop](https://www.docker.com/products/docker-desktop/) zijn
+   geïnstalleerd.
+2. Kopieer `.env.example` naar `.env` en vul je `OPENAI_API_KEY` in.
+
+**Gebruiken:** dubbelklik op **`start.bat`**. Dat installeert (de eerste keer)
+de pakketten, start de PO-token-provider in Docker, opent de browser en start
+de app op http://127.0.0.1:8123. Kies een dienst en wacht op het resultaat.
+Sluit het zwarte venster om te stoppen.
+
+### Transcriptie: audio of ondertitels
+
+- Draait de token-provider (via `start.bat`/Docker), dan wordt de **audio**
+  van de preek getranscribeerd met OpenAI — de beste kwaliteit.
+- Lukt dat niet (Docker uit), dan valt de app automatisch terug op de
+  **YouTube-ondertitels**. Je krijgt altijd een resultaat; de statusregel laat
+  zien welke bron is gebruikt.
+
+Kosten per preek: naast de tekstverwerking ongeveer een paar dubbeltjes voor de
+audio-transcriptie (model `gpt-4o-mini-transcribe`).
 
 ## Opbouw
 
-- `main.py` — FastAPI-app: start verwerking als achtergrondtaak, frontend pollt de status.
-- `transcript.py` — ondertitels ophalen met yt-dlp en het preekblok detecteren.
+- `main.py` — FastAPI-app: orkestreert segmentatie → transcriptie → verwerking,
+  als achtergrondtaak; de frontend pollt de status.
+- `transcript.py` — ondertitels ophalen met yt-dlp en het preekgedeelte (met
+  tijden) detecteren; ook de yt-dlp-opties (provider/proxy/cookies).
+- `audio.py` — de preekaudio downloaden, per deel knippen met ffmpeg en
+  transcriberen via de OpenAI-audio-API.
 - `llm.py` — de verwerkingsinstructie (systeemprompt) en de OpenAI-aanroep.
-- `static/index.html` — frontend: één invoerveld voor de link.
+- `static/index.html` — frontend: klikbare dienstenlijst per dag.
+- `start.bat` — lokale één-klik-starter (provider + app + browser).
 
-## Deployen op Railway
+## Instellingen (.env of omgevingsvariabelen)
 
-1. Zet deze map in een GitHub-repository en push.
-2. Maak op [railway.app](https://railway.app) een nieuw project → *Deploy from GitHub repo*.
-3. Zet bij **Variables**:
-   - `OPENAI_API_KEY` — verplicht.
-   - `POT_PROVIDER_URL` — sterk aangeraden, zie "YouTube-botdetectie" hieronder.
-   - `OPENAI_MODEL` — optioneel, standaard `gpt-5`.
-   - `KANAAL_URL` — optioneel, standaard de streams-pagina van NGK Middelharnis.
-   - `YTDLP_COOKIES` — optioneel, noodoplossing (zie hieronder).
-4. Genereer onder **Settings → Networking** een publiek domein.
+- `OPENAI_API_KEY` — verplicht.
+- `POT_PROVIDER_URL` — adres van de PO-token-provider (lokaal
+  `http://127.0.0.1:4416`, door `start.bat` gestart).
+- `OPENAI_MODEL` — verwerkingsmodel, standaard `gpt-5`.
+- `OPENAI_TRANSCRIBE_MODEL` — transcriptiemodel, standaard `gpt-4o-mini-transcribe`.
+- `KANAAL_URL` — standaard de streams-pagina van NGK Middelharnis.
+- `YTDLP_PROXY` / `YTDLP_COOKIES` / `YTDLP_COOKIES_B64` — alleen nodig bij
+  hosten op een datacenter-IP; lokaal niet.
 
-Railway herkent het project automatisch als Python (via `requirements.txt` en
-de `Procfile`).
+## Eventueel: hosten op Railway
 
-## Lokaal draaien
+Lokaal draaien heeft de voorkeur. Wil je het tóch hosten, houd er dan rekening
+mee dat YouTube het datacenter-IP blokkeert. Nodig:
 
-```bash
-pip install -r requirements.txt
-set OPENAI_API_KEY=sk-...   # Windows; op Linux/Mac: export
-uvicorn main:app --reload
-```
-
-Open daarna http://127.0.0.1:8000.
-
-## YouTube-botdetectie (belangrijk voor Railway)
-
-YouTube blokkeert verzoeken vanaf datacenter-IP's ("Sign in to confirm you're
-not a bot"). De structurele oplossing is een PO-token-provider naast de app:
-
-1. Voeg in hetzelfde Railway-project een tweede service toe:
-   **New → Docker Image** → `brainicism/bgutil-ytdlp-pot-provider:latest`.
-   Geef hem bijvoorbeeld de naam `pot-provider`. Geen publiek domein nodig.
-2. Zet bij de app-service de variabele
-   `POT_PROVIDER_URL=http://pot-provider.railway.internal:4416`
-   (vervang `pot-provider` door de werkelijke servicenaam). De provider
-   luistert op IPv6 en werkt dus met Railway's interne netwerk.
-3. De bijbehorende yt-dlp-plugin (`bgutil-ytdlp-pot-provider` in
-   `requirements.txt`) pakt dit automatisch op.
-
-Blijft de blokkade ondanks de provider terugkomen, dan is er een noodoplossing:
-exporteer cookies van een ingelogde YouTube-sessie (extensie "Get cookies.txt
-LOCALLY", bij voorkeur vanuit een incognitovenster met een apart account) en
-plak de inhoud in de variabele `YTDLP_COOKIES`. Cookies verlopen na verloop
-van tijd; de token-provider niet.
+1. Tweede service in het project: **Docker Image**
+   `brainicism/bgutil-ytdlp-pot-provider:latest`, en bij de app-service
+   `POT_PROVIDER_URL=http://<servicenaam>.railway.internal:4416`.
+2. Vaak aanvullend een residentiële proxy (`YTDLP_PROXY`) of ingelogde cookies
+   (`YTDLP_COOKIES_B64`, base64 van een `cookies.txt`), omdat de audiodownload
+   zwaarder wordt geblokkeerd dan alleen ondertitels. Cookies verlopen na
+   verloop van tijd; lokaal draaien voorkomt dit gedoe volledig.
 
 ## Overige aandachtspunten
 
-- **Geen ondertitels?** Zonder (automatische) ondertitels kan de app niet
-  transcriberen; dan volgt een nette foutmelding. Vrijwel alle YouTube-video's
-  hebben automatische ondertitels.
-- De takenlijst leeft in het geheugen: na een herstart van de server zijn
-  lopende taken weg. Voor dit gebruik (één verwerking tegelijk) is dat prima.
+- **Geen ondertitels?** De app gebruikt de ondertitels om het preekgedeelte te
+  vinden. Zonder (automatische) ondertitels volgt een nette foutmelding.
+  Vrijwel alle diensten op het kanaal hebben automatische ondertitels.
+- De takenlijst leeft in het geheugen: na een herstart zijn lopende taken weg.
+  Voor dit gebruik (één verwerking tegelijk) is dat prima.

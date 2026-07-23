@@ -218,7 +218,8 @@ async function volg(taakId) {
       throw new Error(taak.fout || 'Er is iets misgegaan.');
     } else {
       stapEl.textContent = taak.meta
-        ? `Klaar. Preek: ${taak.meta.preek_start}–${taak.meta.preek_einde} uit “${taak.meta.titel}”.`
+        ? `Klaar. Preek: ${taak.meta.preek_start}–${taak.meta.preek_einde} uit “${taak.meta.titel}”`
+          + (taak.meta.transcriptie_bron ? ` · bron: ${taak.meta.transcriptie_bron}` : '') + '.'
         : 'Klaar.';
       resultaatEl.textContent = taak.resultaat;
       acties.style.display = 'flex';

@@ -41,8 +41,16 @@ MUZIEK_VENSTER = 30
 MIN_TAGS_IN_VENSTER = 3
 
 
-def haal_preek_transcript(url, voortgang=None):
-    """Geeft (preektekst, welkomstfragment, meta) terug voor een YouTube-url."""
+def haal_preek_segmentatie(url, voortgang=None):
+    """Bepaal via de ondertitels waar de preek zit.
+
+    Geeft een dict terug met:
+      - meta: titel, taal, start/einde, aantal delen, duur
+      - welkom: welkomstfragment (voor de naam van de voorganger), of None
+      - tijden: [(start_sec, eind_sec), ...] per preekdeel — om audio te knippen
+      - ondertitel_tekst: de preektekst uit de ondertitels (terugval als er
+        geen audio-transcriptie beschikbaar is)
+    """
 
     def meld(stap):
         if voortgang:
@@ -55,24 +63,25 @@ def haal_preek_transcript(url, voortgang=None):
     taal = _kies_taal(info)
     if taal is None:
         raise RuntimeError(
-            "Deze video heeft geen (automatische) ondertitels; "
-            "transcriptie is dan niet mogelijk."
+            "Deze video heeft geen (automatische) ondertitels; het "
+            "preekgedeelte kan dan niet worden bepaald."
         )
 
-    meld(f"Ondertitels downloaden ({taal})...")
+    meld(f"Ondertitels ophalen ({taal})...")
     entries = _download_ondertitels(url, taal)
     if not entries:
         raise RuntimeError("De ondertitels konden niet worden gelezen.")
 
     meld("Preekgedeelte zoeken...")
     delen, welkom = _vind_preekdelen(entries)
-    tekst = "\n\n[VOLGEND PREEKDEEL — hiervoor werd gezongen]\n\n".join(
+    ondertitel_tekst = "\n\n[VOLGEND PREEKDEEL — hiervoor werd gezongen]\n\n".join(
         "\n".join(t for _, t in deel if t) for deel in delen
     )
     welkomtekst = None
     if welkom:
         welkomtekst = "\n".join(t for _, t in welkom if t)[:MAX_WELKOM_TEKENS]
 
+    tijden = [(deel[0][0], deel[-1][0]) for deel in delen]
     meta = {
         "titel": titel,
         "taal": taal,
@@ -83,7 +92,12 @@ def haal_preek_transcript(url, voortgang=None):
             sum(deel[-1][0] - deel[0][0] for deel in delen) / 60
         ),
     }
-    return tekst, welkomtekst, meta
+    return {
+        "meta": meta,
+        "welkom": welkomtekst,
+        "tijden": tijden,
+        "ondertitel_tekst": ondertitel_tekst,
+    }
 
 
 def _plugin_geladen():
@@ -186,6 +200,23 @@ def _basis_opties():
             f.write(cookies)
         opties["cookiefile"] = pad
     return opties
+
+
+def basis_opties():
+    """Publieke toegang tot de yt-dlp-opties (provider/proxy/cookies) voor hergebruik."""
+    return _basis_opties()
+
+
+def provider_bereikbaar():
+    """Is de PO-token-provider ingesteld én bereikbaar? (nodig voor audiodownload)"""
+    url = os.environ.get("POT_PROVIDER_URL")
+    if not url:
+        return False
+    try:
+        urllib.request.urlopen(url.rstrip("/") + "/ping", timeout=5).read()
+        return True
+    except Exception:  # noqa: BLE001
+        return False
 
 
 def _haal_info(url):

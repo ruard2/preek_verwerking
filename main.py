@@ -9,14 +9,24 @@ import threading
 import time
 import uuid
 
+from dotenv import load_dotenv
+
+load_dotenv()  # leest een .env-bestand in de projectmap (lokaal gebruik)
+
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 import yt_dlp
 
+from audio import transcribeer_preek
 from llm import verwerk_preek
-from transcript import haal_preek_transcript, lijst_diensten, pot_provider_diagnose
+from transcript import (
+    haal_preek_segmentatie,
+    lijst_diensten,
+    pot_provider_diagnose,
+    provider_bereikbaar,
+)
 
 app = FastAPI(title="Preekverwerker")
 
@@ -36,18 +46,37 @@ class VerwerkVerzoek(BaseModel):
 
 def _voer_taak_uit(taak_id, url):
     taak = taken[taak_id]
+
+    def meld(stap):
+        taak["stap"] = stap
+
     try:
-        preek, welkom, meta = haal_preek_transcript(
-            url, voortgang=lambda stap: taak.update(stap=stap)
-        )
+        seg = haal_preek_segmentatie(url, voortgang=meld)
+        meta = seg["meta"]
         taak["meta"] = meta
         delen = f", {meta['delen']} delen" if meta.get("delen", 1) > 1 else ""
-        taak["stap"] = (
+        gevonden = (
             f"Preek gevonden ({meta['preek_start']}–{meta['preek_einde']}"
-            f"{delen}, ±{meta['duur_minuten']} min). Verwerken met AI — dit "
-            "kan enkele minuten duren..."
+            f"{delen}, ±{meta['duur_minuten']} min). "
         )
-        taak["resultaat"] = verwerk_preek(preek, welkom)
+
+        # Bron voor de transcriptie: bij voorkeur audio via OpenAI (betere
+        # kwaliteit), anders de ondertitels. Valt automatisch terug.
+        transcript = seg["ondertitel_tekst"]
+        bron = "ondertitels"
+        if provider_bereikbaar():
+            try:
+                meld(gevonden + "Audio ophalen en transcriberen...")
+                transcript = transcribeer_preek(url, seg["tijden"], voortgang=meld)
+                bron = "audio (OpenAI-transcriptie)"
+            except Exception:  # noqa: BLE001 — terugval op ondertitels
+                transcript = seg["ondertitel_tekst"]
+                bron = "ondertitels (audio niet beschikbaar)"
+        meta["transcriptie_bron"] = bron
+
+        meld(gevonden + f"Bron: {bron}. Verwerken met AI — dit kan enkele "
+             "minuten duren...")
+        taak["resultaat"] = verwerk_preek(transcript, seg["welkom"])
         taak["status"] = "klaar"
     except Exception as fout:  # noqa: BLE001 — alles netjes aan de gebruiker melden
         melding = str(fout)
