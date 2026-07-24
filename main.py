@@ -98,7 +98,7 @@ def _laad_diensten(typ, kanaal_url, vernieuw=False):
             if typ == "kdg":
                 nieuw = kerkdienstgemist.lijst_diensten(kanaal_url)
             else:
-                nieuw = lijst_diensten(_youtube_kanaal_url(kanaal_url))
+                nieuw = _lijst_youtube(kanaal_url)
             store.diensten_opslaan(kanaal_url, nieuw)
             lijst = nieuw
         except Exception as fout:  # noqa: BLE001
@@ -108,6 +108,16 @@ def _laad_diensten(typ, kanaal_url, vernieuw=False):
                 )
             # Verouderde lijst is beter dan geen lijst.
     return lijst
+
+
+def _lijst_youtube(kanaal_url):
+    """YouTube-kanaallijst via yt-dlp; bij een blokkade terugvallen op Supadata."""
+    try:
+        return lijst_diensten(_youtube_kanaal_url(kanaal_url))
+    except Exception as fout:  # noqa: BLE001
+        if supadata.beschikbaar():
+            return supadata.lijst_kanaal(kanaal_url)
+        raise fout
 
 
 def _proces_kerkdienstgemist(url, meld):

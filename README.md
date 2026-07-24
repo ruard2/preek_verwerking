@@ -111,8 +111,9 @@ tier volstaat voor een kerk met enkele diensten per week.
    API-sleutel.
 2. Zet in Railway bij **Variables**: `SUPADATA_API_KEY=...` (en `OPENAI_API_KEY`).
 3. Klaar. De app gebruikt dan Supadata i.p.v. yt-dlp; de PO-token-provider,
-   proxy of cookies zijn niet nodig. De kanaallijst blijft via yt-dlp lopen
-   (die lichte aanvraag wordt niet geblokkeerd).
+   proxy of cookies zijn niet nodig. De kanaallijst gaat eerst via yt-dlp
+   (lichte aanvraag) en valt bij een blokkade **automatisch terug op Supadata**
+   (recente video's, `SUPADATA_KANAAL_MAX`, standaard 20).
 
 Controleer na deploy `https://<app>/api/diagnose`: bij `transcript_bron` moet
 "Supadata" staan.
