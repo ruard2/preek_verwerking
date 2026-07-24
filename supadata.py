@@ -55,15 +55,24 @@ def _get(pad, params):
         raise RuntimeError(f"Supadata-API gaf status {e.code}: {body}") from None
 
 
-def haal_transcript(url, taal="nl", voortgang=None):
-    """Geeft de transcriptie als lijst [(seconden, tekst), ...] terug."""
+def haal_transcript(url, taal=None, voortgang=None):
+    """Haal de transcriptie op.
+
+    Geeft (entries, taal) terug, waarbij entries = [(seconden, tekst), ...] en
+    taal de ISO-code is die Supadata detecteerde. Wordt `taal` niet opgegeven,
+    dan levert Supadata de oorspronkelijke taal van de video — zo krijgen we
+    een Afrikaanse preek in het Afrikaans, een Engelse in het Engels, enz.
+    """
 
     def meld(s):
         if voortgang:
             voortgang(s)
 
     meld("Transcript opvragen bij Supadata...")
-    data = _get("transcript", {"url": url, "lang": taal, "text": "false"})
+    params = {"url": url, "text": "false"}
+    if taal:
+        params["lang"] = taal
+    data = _get("transcript", params)
 
     # Langere video's kunnen asynchroon verwerkt worden: dan komt er een jobId
     # terug die we pollen tot de transcriptie klaar is.
@@ -96,7 +105,8 @@ def haal_transcript(url, taal="nl", voortgang=None):
     entries = _naar_entries(inhoud)
     if not entries:
         raise RuntimeError("Supadata gaf een lege transcriptie terug.")
-    return entries
+    gedetecteerd = (data.get("lang") or taal or "").split("-")[0].lower() or None
+    return entries, gedetecteerd
 
 
 def _naar_entries(inhoud):

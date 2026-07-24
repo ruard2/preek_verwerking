@@ -1,5 +1,6 @@
 """Verwerking van het preektranscript via de OpenAI API."""
 
+import json
 import os
 
 from openai import OpenAI
@@ -47,7 +48,7 @@ Maak op basis van het opgeschoonde transcript de volgende onderdelen:
 
 Algemene eisen
 
-* Schrijf in helder, warm en toegankelijk Nederlands.
+* Schrijf in helder, warm en toegankelijk taalgebruik, in de taal van de preek.
 * Blijf dicht bij de inhoud en accenten van de preek.
 * Maak de tekst geschikt voor gebruik door gemeenteleden thuis, alleen of als gezin.
 * Vermijd kerkelijk jargon waar een eenvoudiger woord mogelijk is.
@@ -80,37 +81,30 @@ Maak precies zeven daggedeelten.
 Iedere overdenking bestaat uit ongeveer 100 tot 160 woorden.
 Een daggedeelte moet zelfstandig te begrijpen zijn, maar tegelijk onderdeel zijn van de doorgaande lijn van de week.
 
-Gewenste uitvoerstructuur
-Gebruik exact deze structuur:
+Uitvoer
+Geef je antwoord UITSLUITEND als één geldig JSON-object, zonder enige tekst
+eromheen, met exact deze velden:
 
-[Titel van de preekverwerking]
+{
+  "taal": "<ISO-taalcode van de preek, bijvoorbeeld nl, af of en>",
+  "titel": "<titel van de preekverwerking>",
+  "bijbelgedeelte": "<centraal Bijbelgedeelte>",
+  "voorganger": "<naam van de voorganger, of null als die onbekend of onzeker is>",
+  "samenvatting": "<samenvatting van 150 tot 200 woorden>",
+  "dagen": [
+    {
+      "titel": "<korte titel>",
+      "bijbeltekst": "<passend Bijbelexcerpt>",
+      "gedachte": "<overdenking van ongeveer 100 tot 160 woorden>",
+      "vraag_volwassenen": "<één reflectievraag voor volwassenen>",
+      "vraag_kinderen": "<één eenvoudige gespreksvraag voor kinderen>"
+    }
+  ]
+}
 
-Bijbelgedeelte: [centrale Bijbelgedeelte]
-
-Samenvatting
-[Samenvatting van 150 tot 200 woorden]
-
-Dag 1 – [Korte titel]
-Bijbeltekst
-[Passend Bijbelexcerpt]
-Gedachte
-[Overdenking van ongeveer 100 tot 160 woorden]
-Vraag
-[Reflectievraag voor volwassenen]
-Vraag voor kinderen
-[Eenvoudige gesprekvraag voor kinderen]
-
-Dag 2 – [Korte titel]
-Bijbeltekst
-[Passend Bijbelexcerpt]
-Gedachte
-[Overdenking]
-Vraag
-[Reflectievraag voor volwassenen]
-Vraag voor kinderen
-[Eenvoudige gesprekvraag voor kinderen]
-
-Ga op dezelfde manier door tot en met dag 7.
+De lijst "dagen" bevat precies zeven objecten (dag 1 tot en met dag 7), in
+volgorde. Gebruik geen extra velden en laat geen veld weg; alleen "voorganger"
+mag null zijn.
 
 Inhoudelijke controle vóór uitvoer
 Controleer vóór je het eindresultaat geeft:
@@ -141,10 +135,19 @@ preek.
 * Soms is een fragment van het welkomstwoord van het begin van de dienst \
 bijgevoegd. Daarin wordt vaak de voorganger genoemd (bijvoorbeeld: "vanmorgen \
 gaat dominee ... voor"). Als de naam van de voorganger daaruit of uit de \
-preek blijkt, vermeld dan direct onder de regel "Bijbelgedeelte:" een regel \
-"Voorganger: [naam]". Is de naam niet te vinden of onzeker, laat die regel \
-dan helemaal weg; gok nooit een naam. Gebruik het welkomstfragment nergens \
-anders voor.
+preek blijkt, vul dan het veld "voorganger" met die naam. Is de naam niet te \
+vinden of onzeker, zet "voorganger" dan op null; gok nooit een naam. Gebruik \
+het welkomstfragment nergens anders voor.
+
+Taal van de uitvoer
+* Schrijf de VOLLEDIGE inhoud — titel, samenvatting, alle dagen en beide \
+vragen — in de taal van de preek zelf. Is de preek in het Afrikaans, schrijf \
+dan in het Afrikaans; is hij in het Engels, in het Engels; enzovoort. Vertaal \
+de inhoud niet naar het Nederlands.
+* Citeer Bijbelteksten in diezelfde taal, uit een gangbare vertaling in die \
+taal (Nederlands: NBV21; Engels: bijvoorbeeld de NIV; Afrikaans: de Afrikaanse \
+Bybel), tenzij in de preek een andere vertaling wordt gebruikt.
+* Zet in het veld "taal" de ISO-code van die taal (nl, af, en, ...).
 """
 
 GEBRUIKER_INLEIDING = """\
@@ -156,7 +159,12 @@ Geef alleen het eindresultaat in de voorgeschreven structuur.
 """
 
 
-def verwerk_preek(transcript, welkom=None):
+def verwerk_preek(transcript, welkom=None, taal_hint=None):
+    """Verwerk het transcript tot een gestructureerd resultaat (dict).
+
+    Geeft een dict met de velden: taal, titel, bijbelgedeelte, voorganger,
+    samenvatting, dagen[7]. Werpt een fout bij een ongeldig antwoord.
+    """
     if not os.environ.get("OPENAI_API_KEY"):
         raise RuntimeError(
             "OPENAI_API_KEY is niet ingesteld. Voeg deze toe als "
@@ -164,6 +172,11 @@ def verwerk_preek(transcript, welkom=None):
         )
     client = OpenAI()
     inhoud = GEBRUIKER_INLEIDING
+    if taal_hint:
+        inhoud += (
+            f"\nDe preek is (automatisch gedetecteerd) in de taal met code "
+            f"'{taal_hint}'. Schrijf de volledige uitvoer in die taal.\n"
+        )
     if welkom:
         inhoud += (
             "\n--- FRAGMENT WELKOMSTWOORD (alleen voor de naam van de "
@@ -172,9 +185,35 @@ def verwerk_preek(transcript, welkom=None):
     inhoud += "\n--- TRANSCRIPTIE VAN DE PREEK ---\n" + transcript
     antwoord = client.chat.completions.create(
         model=MODEL,
+        response_format={"type": "json_object"},
         messages=[
             {"role": "system", "content": SYSTEEM_PROMPT + AANVULLENDE_INSTRUCTIES},
             {"role": "user", "content": inhoud},
         ],
     )
-    return antwoord.choices[0].message.content
+    ruw = antwoord.choices[0].message.content
+    try:
+        data = json.loads(ruw)
+    except (json.JSONDecodeError, TypeError) as fout:
+        raise RuntimeError(f"Ongeldig JSON-antwoord van het model: {fout}") from None
+    return _valideer(data, taal_hint)
+
+
+def _valideer(data, taal_hint):
+    if not isinstance(data, dict) or "dagen" not in data:
+        raise RuntimeError("Het model gaf geen bruikbare preekverwerking terug.")
+    dagen = data.get("dagen") or []
+    if not isinstance(dagen, list) or not dagen:
+        raise RuntimeError("De preekverwerking bevat geen daggedeelten.")
+    for dag in dagen:
+        for veld in ("titel", "bijbeltekst", "gedachte", "vraag_volwassenen",
+                     "vraag_kinderen"):
+            dag.setdefault(veld, "")
+    data["dagen"] = dagen
+    data.setdefault("titel", "Preekverwerking")
+    data.setdefault("bijbelgedeelte", "")
+    data.setdefault("samenvatting", "")
+    data.setdefault("voorganger", None)
+    if not data.get("taal"):
+        data["taal"] = (taal_hint or "nl")
+    return data

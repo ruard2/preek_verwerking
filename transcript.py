@@ -20,7 +20,11 @@ import yt_dlp
 
 # Markeringen die op zang/muziek wijzen (niet [snuift]/[schraapt keel] e.d.,
 # want die komen ook midden in de preek voor).
-MUZIEK_TAG_RE = re.compile(r"\[\s*(muziek|zingt|applaus)\s*\]", re.I)
+MUZIEK_TAG_RE = re.compile(
+    r"\[\s*(muziek|musiek|music|zingt|zingen|sing(?:ing)?|applaus|applause)"
+    r"[^\]]*\]",
+    re.I,
+)
 # Alle [annotaties] die uit de uitvoertekst gestript worden.
 ANNOTATIE_RE = re.compile(r"\[[^\]]+\]")
 TAG_RE = re.compile(r"<[^>]+>")
