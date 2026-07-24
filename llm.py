@@ -106,6 +106,12 @@ De lijst "dagen" bevat precies zeven objecten (dag 1 tot en met dag 7), in
 volgorde. Gebruik geen extra velden en laat geen veld weg; alleen "voorganger"
 mag null zijn.
 
+BELANGRIJK: de JSON-sleutels (veldnamen zoals "titel", "bijbeltekst",
+"gedachte", "vraag_volwassenen", "vraag_kinderen", "samenvatting", "dagen")
+blijven ALTIJD exact zoals hierboven, in het Nederlands. Vertaal de sleutels
+NOOIT, ook niet als de inhoud in het Afrikaans, Engels of een andere taal is.
+Alleen de waarden staan in de taal van de preek; de sleutels niet.
+
 Inhoudelijke controle vóór uitvoer
 Controleer vóór je het eindresultaat geeft:
 
@@ -204,8 +210,62 @@ def verwerk_preek(transcript, welkom=None, taal_hint=None, extra_context=None):
     return _valideer(data, taal_hint)
 
 
+# Als het model bij een andere taal (bijv. Afrikaans) tóch de JSON-sleutels
+# vertaalt, herstellen we ze hiermee. Per canonieke sleutel een lijst mogelijke
+# vertalingen/varianten (Afrikaans, Engels, spelvarianten).
+_DATA_SYNONIEMEN = {
+    "titel": ["title", "tital"],
+    "bijbelgedeelte": ["bybelgedeelte", "skrifgedeelte", "skriflesing",
+                        "bible_passage", "scripture_passage", "passage", "gedeelte"],
+    "samenvatting": ["samevatting", "opsomming", "summary"],
+    "voorganger": ["predikant", "prediker", "dominee", "preacher"],
+    "taal": ["language", "lang", "taalkode"],
+    "dagen": ["dae", "days"],
+}
+_DAG_SYNONIEMEN = {
+    "titel": ["title", "opskrif"],
+    "bijbeltekst": ["bybelteks", "bibeltekst", "bible_text", "bibletext",
+                    "scripture", "teks", "text", "vers", "verse"],
+    "gedachte": ["gedagte", "oordenking", "overdenking", "besinning",
+                 "bespreking", "meditation", "reflection", "thought"],
+    "vraag_volwassenen": ["vraag_volwassenes", "vraag_volwasse",
+                          "vraag_grootmense", "vraag_vir_volwassenes",
+                          "adult_question", "question_adults"],
+    "vraag_kinderen": ["vraag_kinders", "vraag_vir_kinders", "kindervraag",
+                       "child_question", "children_question", "question_children"],
+}
+
+
+def _vul_synoniemen(d, synoniemen):
+    if not isinstance(d, dict):
+        return
+    for canoniek, varianten in synoniemen.items():
+        if not d.get(canoniek):
+            for v in varianten:
+                if d.get(v):
+                    d[canoniek] = d[v]
+                    break
+
+
+def normaliseer(data):
+    """Herstel eventueel vertaalde JSON-sleutels naar de canonieke namen.
+
+    Idempotent, zodat we het ook op al opgeslagen (mogelijk kapotte) resultaten
+    kunnen toepassen bij het inlezen.
+    """
+    if not isinstance(data, dict):
+        return data
+    _vul_synoniemen(data, _DATA_SYNONIEMEN)
+    for dag in data.get("dagen") or []:
+        _vul_synoniemen(dag, _DAG_SYNONIEMEN)
+    return data
+
+
 def _valideer(data, taal_hint):
-    if not isinstance(data, dict) or "dagen" not in data:
+    if not isinstance(data, dict):
+        raise RuntimeError("Het model gaf geen bruikbare preekverwerking terug.")
+    normaliseer(data)
+    if "dagen" not in data:
         raise RuntimeError("Het model gaf geen bruikbare preekverwerking terug.")
     dagen = data.get("dagen") or []
     if not isinstance(dagen, list) or not dagen:

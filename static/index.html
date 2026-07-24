@@ -137,6 +137,7 @@ const lijstEl = document.getElementById('lijst');
 const resultaatEl = document.getElementById('resultaat');
 let bezig = false;
 let huidigKanaal = null;
+let huidigeUrl = null;
 const WEEKDAG = {weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'};
 
 function bezigStand(aan) { bezig = aan; laadbalk.classList.toggle('aan', aan); }
@@ -275,8 +276,9 @@ function maakGroepen(diensten, isGepland) {
   return houder;
 }
 
-async function verwerk(url, omschrijving) {
+async function verwerk(url, omschrijving, herverwerk = false) {
   if (bezig) return;
+  huidigeUrl = url;
   bezigStand(true);
   lijstEl.style.display = 'none';
   resultaatEl.innerHTML = '';
@@ -285,7 +287,7 @@ async function verwerk(url, omschrijving) {
   try {
     const antwoord = await fetch('/api/verwerk', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({url})
+      body: JSON.stringify({url, herverwerk})
     });
     if (!antwoord.ok) {
       throw new Error(await fouttekst(antwoord, 'De verwerking kon niet worden gestart.'));
@@ -357,6 +359,12 @@ function toonResultaat(taak) {
     pdf.href = '/api/pdf/' + res.video_id;
     pdf.style.textDecoration = 'none';
     rechts.appendChild(pdf);
+  }
+  if (huidigeUrl) {
+    const opnieuw = el('button', 'klein', 'Opnieuw verwerken');
+    opnieuw.title = 'Negeer de opgeslagen versie en verwerk deze preek opnieuw.';
+    opnieuw.addEventListener('click', () => verwerk(huidigeUrl, 'opnieuw verwerken', true));
+    rechts.appendChild(opnieuw);
   }
   balk.appendChild(rechts);
   resultaatEl.appendChild(balk);

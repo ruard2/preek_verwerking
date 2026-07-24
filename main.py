@@ -28,6 +28,7 @@ import supadata
 import transcript as ts
 from audio import transcribeer_preek
 from llm import verwerk_preek
+from llm import normaliseer as llm_normaliseer
 from transcript import (
     haal_preek_segmentatie,
     lijst_diensten,
@@ -50,6 +51,7 @@ taken = {}
 
 class VerwerkVerzoek(BaseModel):
     url: str
+    herverwerk: bool = False
 
 
 def _video_id(url):
@@ -214,13 +216,18 @@ def _voer_taak_uit(taak_id, url):
         vid = kerkdienstgemist.video_id(url) if is_kdg else _video_id(url)
 
         # 1. Al eerder verwerkt? Dan meteen uit de cache.
-        if vid:
+        if vid and not taken[taak_id].get("_herverwerk"):
             bewaard = store.resultaat_ophalen(vid)
             if bewaard and bewaard.get("data"):
+                # Oudere caches kunnen vertaalde sleutels bevatten (leeg veld);
+                # normaliseren herstelt dat en we bewaren de gerepareerde versie.
+                data = llm_normaliseer(bewaard["data"])
+                tekst = render.naar_tekst(data)
+                store.resultaat_opslaan(vid, {**bewaard, "data": data, "tekst": tekst})
                 taak["meta"] = bewaard.get("meta")
                 taak["resultaat"] = {
-                    "data": _met_labels(bewaard["data"]),
-                    "tekst": bewaard.get("tekst") or render.naar_tekst(bewaard["data"]),
+                    "data": _met_labels(data),
+                    "tekst": tekst,
                     "video_id": vid,
                 }
                 taak["stap"] = "Uit opslag geladen."
@@ -310,6 +317,7 @@ def start_verwerking(verzoek: VerwerkVerzoek):
         "resultaat": None,
         "fout": None,
         "meta": None,
+        "_herverwerk": verzoek.herverwerk,
     }
     threading.Thread(target=_voer_taak_uit, args=(taak_id, url), daemon=True).start()
     return {"taak_id": taak_id}
