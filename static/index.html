@@ -189,11 +189,10 @@ async function laadKanaal(url, vernieuw = false) {
   resultaatEl.innerHTML = '';
   lijstEl.innerHTML = '';
   try {
-    const q = new URLSearchParams({url: url || '', vernieuw: vernieuw ? 'true' : ''});
+    const q = new URLSearchParams({url: url || '', vernieuw: vernieuw ? 'true' : 'false'});
     const antwoord = await fetch('/api/kanaal?' + q);
     if (!antwoord.ok) {
-      const d = await antwoord.json().catch(() => ({}));
-      throw new Error(d.detail || 'Kon de link niet laden.');
+      throw new Error(await fouttekst(antwoord, 'Kon de link niet laden.'));
     }
     const data = await antwoord.json();
     stapEl.textContent = '';
@@ -288,8 +287,7 @@ async function verwerk(url, omschrijving) {
       body: JSON.stringify({url})
     });
     if (!antwoord.ok) {
-      const d = await antwoord.json().catch(() => ({}));
-      throw new Error(d.detail || 'De verwerking kon niet worden gestart.');
+      throw new Error(await fouttekst(antwoord, 'De verwerking kon niet worden gestart.'));
     }
     const {taak_id} = await antwoord.json();
     await volg(taak_id);
@@ -312,6 +310,15 @@ async function volg(taakId) {
     else if (taak.status === 'fout') throw new Error(taak.fout || 'Er is iets misgegaan.');
     else { stapEl.textContent = ''; toonResultaat(taak); return; }
   }
+}
+
+// Foutmelding uit een mislukt antwoord halen; FastAPI's detail kan een string
+// zijn of een lijst validatiefouten (anders zou je "[object Object]" zien).
+async function fouttekst(antwoord, standaard) {
+  const d = await antwoord.json().catch(() => ({}));
+  if (typeof d.detail === 'string') return d.detail;
+  if (Array.isArray(d.detail)) return d.detail.map(e => e.msg || '').join('; ') || standaard;
+  return standaard;
 }
 
 function el(tag, cls, tekst) {
@@ -404,3 +411,6 @@ toonRecent();
 const laatste = recenteKanalen()[0];
 if (laatste) { kanaalInput.value = laatste; laadKanaal(laatste); }
 else { laadKanaal(''); }  // standaardkanaal (server-side KANAAL_URL)
+</script>
+</body>
+</html>
