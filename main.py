@@ -5,6 +5,7 @@ en pollt de frontend op /api/status/<id>.
 """
 
 import os
+import re
 import threading
 import time
 import uuid
@@ -19,6 +20,8 @@ from pydantic import BaseModel
 
 import yt_dlp
 
+import supadata
+import transcript as ts
 from audio import transcribeer_preek
 from llm import verwerk_preek
 from transcript import (
@@ -27,6 +30,26 @@ from transcript import (
     pot_provider_diagnose,
     provider_bereikbaar,
 )
+
+VIDEO_ID_RE = re.compile(r"(?:v=|youtu\.be/|/live/|/embed/|/shorts/)([A-Za-z0-9_-]{11})")
+
+
+def _video_id(url):
+    m = VIDEO_ID_RE.search(url)
+    return m.group(1) if m else None
+
+
+def _titel_uit_cache(url):
+    """Zoek de titel van de dienst in de (op Railway wél werkende) dienstenlijst,
+    zodat we geen geblokkeerde yt-dlp-info-call nodig hebben."""
+    vid = _video_id(url)
+    data = _diensten_cache.get("data")
+    if not vid or not data:
+        return None
+    for d in data:
+        if d.get("id") == vid:
+            return d.get("titel")
+    return None
 
 app = FastAPI(title="Preekverwerker")
 
@@ -51,7 +74,18 @@ def _voer_taak_uit(taak_id, url):
         taak["stap"] = stap
 
     try:
-        seg = haal_preek_segmentatie(url, voortgang=meld)
+        # Transcriptbron kiezen:
+        # - Supadata (gehost): haalt de YouTube-transcriptie op zonder dat het
+        #   datacenter-IP geblokkeerd wordt. Geen audio/Whisper-stap.
+        # - Lokaal (yt-dlp): ondertitels + eventueel audio via OpenAI (Whisper).
+        if supadata.beschikbaar():
+            entries = supadata.haal_transcript(url, voortgang=meld)
+            titel = _titel_uit_cache(url) or "YouTube-dienst"
+            meld("Preekgedeelte zoeken...")
+            seg = ts.segmenteer(entries, titel=titel)
+        else:
+            seg = haal_preek_segmentatie(url, voortgang=meld)
+
         meta = seg["meta"]
         taak["meta"] = meta
         delen = f", {meta['delen']} delen" if meta.get("delen", 1) > 1 else ""
@@ -60,18 +94,23 @@ def _voer_taak_uit(taak_id, url):
             f"{delen}, ±{meta['duur_minuten']} min). "
         )
 
-        # Bron voor de transcriptie: bij voorkeur audio via OpenAI (betere
-        # kwaliteit), anders de ondertitels. Valt automatisch terug.
         transcript = seg["ondertitel_tekst"]
-        bron = "ondertitels"
-        if provider_bereikbaar():
-            try:
-                meld(gevonden + "Audio ophalen en transcriberen...")
-                transcript = transcribeer_preek(url, seg["tijden"], voortgang=meld)
-                bron = "audio (OpenAI-transcriptie)"
-            except Exception:  # noqa: BLE001 — terugval op ondertitels
-                transcript = seg["ondertitel_tekst"]
-                bron = "ondertitels (audio niet beschikbaar)"
+        if supadata.beschikbaar():
+            bron = "YouTube-ondertitels via Supadata"
+        else:
+            # Lokaal: bij voorkeur audio via OpenAI (betere kwaliteit),
+            # anders de ondertitels. Valt automatisch terug.
+            bron = "ondertitels"
+            if provider_bereikbaar():
+                try:
+                    meld(gevonden + "Audio ophalen en transcriberen...")
+                    transcript = transcribeer_preek(
+                        url, seg["tijden"], voortgang=meld
+                    )
+                    bron = "audio (OpenAI-transcriptie)"
+                except Exception:  # noqa: BLE001 — terugval op ondertitels
+                    transcript = seg["ondertitel_tekst"]
+                    bron = "ondertitels (audio niet beschikbaar)"
         meta["transcriptie_bron"] = bron
 
         meld(gevonden + f"Bron: {bron}. Verwerken met AI — dit kan enkele "
@@ -90,6 +129,10 @@ def _voer_taak_uit(taak_id, url):
 def diagnose():
     return {
         "yt_dlp_versie": yt_dlp.version.__version__,
+        "transcript_bron": (
+            "Supadata" if supadata.beschikbaar() else "yt-dlp (lokaal)"
+        ),
+        "supadata": supadata.diagnose(),
         "pot_provider": pot_provider_diagnose(),
         "openai_sleutel_ingesteld": bool(os.environ.get("OPENAI_API_KEY")),
     }

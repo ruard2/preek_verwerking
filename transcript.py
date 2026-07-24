@@ -73,6 +73,18 @@ def haal_preek_segmentatie(url, voortgang=None):
         raise RuntimeError("De ondertitels konden niet worden gelezen.")
 
     meld("Preekgedeelte zoeken...")
+    return segmenteer(entries, titel=titel, taal=taal)
+
+
+def segmenteer(entries, titel="Onbekende dienst", taal="nl"):
+    """Bepaal de preekdelen + het welkomstblok uit (seconden, tekst)-entries.
+
+    Gedeeld door de yt-dlp- en de Supadata-bron: beide leveren entries in
+    hetzelfde formaat aan, zodat de preekdetectie identiek werkt.
+    """
+    if not entries:
+        raise RuntimeError("Lege transcriptie ontvangen.")
+
     delen, welkom = _vind_preekdelen(entries)
     ondertitel_tekst = "\n\n[VOLGEND PREEKDEEL — hiervoor werd gezongen]\n\n".join(
         "\n".join(t for _, t in deel if t) for deel in delen

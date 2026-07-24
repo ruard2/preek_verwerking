@@ -57,18 +57,35 @@ audio-transcriptie (model `gpt-4o-mini-transcribe`).
 - `YTDLP_PROXY` / `YTDLP_COOKIES` / `YTDLP_COOKIES_B64` — alleen nodig bij
   hosten op een datacenter-IP; lokaal niet.
 
-## Eventueel: hosten op Railway
+## Hosten op Railway (aanbevolen: via Supadata)
 
-Lokaal draaien heeft de voorkeur. Wil je het tóch hosten, houd er dan rekening
-mee dat YouTube het datacenter-IP blokkeert. Nodig:
+YouTube blokkeert downloads vanaf datacenter-IP's (zoals Railway). Gehost werkt
+daarom het eenvoudigst via **Supadata**: een kant-en-klare dienst die de
+YouTube-transcriptie ophaalt en die blokkade aan hún kant oplost. De gratis
+tier volstaat voor een kerk met enkele diensten per week.
 
-1. Tweede service in het project: **Docker Image**
-   `brainicism/bgutil-ytdlp-pot-provider:latest`, en bij de app-service
-   `POT_PROVIDER_URL=http://<servicenaam>.railway.internal:4416`.
-2. Vaak aanvullend een residentiële proxy (`YTDLP_PROXY`) of ingelogde cookies
-   (`YTDLP_COOKIES_B64`, base64 van een `cookies.txt`), omdat de audiodownload
-   zwaarder wordt geblokkeerd dan alleen ondertitels. Cookies verlopen na
-   verloop van tijd; lokaal draaien voorkomt dit gedoe volledig.
+1. Maak een account op [supadata.ai](https://supadata.ai) en kopieer je
+   API-sleutel.
+2. Zet in Railway bij **Variables**: `SUPADATA_API_KEY=...` (en `OPENAI_API_KEY`).
+3. Klaar. De app gebruikt dan Supadata i.p.v. yt-dlp; de PO-token-provider,
+   proxy of cookies zijn niet nodig. De kanaallijst blijft via yt-dlp lopen
+   (die lichte aanvraag wordt niet geblokkeerd).
+
+Controleer na deploy `https://<app>/api/diagnose`: bij `transcript_bron` moet
+"Supadata" staan.
+
+> Let op: via Supadata krijg je YouTube's *automatische* ondertitels — prima
+> bruikbaar, maar ruwer dan de audio-transcriptie (Whisper) die je lokaal
+> krijgt. Wil je gehost tóch Whisper-kwaliteit, dan is een residentiële proxy
+> (`YTDLP_PROXY`) met de PO-token-provider nodig; dat kost een paar euro per
+> maand.
+
+### Alternatief: eigen yt-dlp gehost
+
+Zonder Supadata, met de PO-token-provider (Docker-image
+`brainicism/bgutil-ytdlp-pot-provider:latest`, `POT_PROVIDER_URL=...`) plus een
+residentiële proxy (`YTDLP_PROXY`) of ingelogde cookies (`YTDLP_COOKIES_B64`).
+Bewerkelijker en cookies verlopen; Supadata of lokaal draaien is eenvoudiger.
 
 ## Overige aandachtspunten
 
