@@ -6,43 +6,44 @@
 <title>Preekverwerker</title>
 <style>
   :root {
-    --groen: #2c5f2d;
-    --groen-licht: #eaf3ea;
-    --rand: #e2e2dd;
-    --tekst: #23231f;
-    --grijs: #6b6b64;
-    --bg: #faf9f5;
-    --kaart: #ffffff;
+    --groen: #2c5f2d; --groen-licht: #eaf3ea; --rand: #e2e2dd;
+    --tekst: #23231f; --grijs: #6b6b64; --bg: #faf9f5; --kaart: #ffffff;
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --groen: #7bb87c;
-      --groen-licht: #1c2a1c;
-      --rand: #33332e;
-      --tekst: #ecebe4;
-      --grijs: #a5a59b;
-      --bg: #17171a;
-      --kaart: #1f1f22;
+      --groen: #7bb87c; --groen-licht: #1c2a1c; --rand: #33332e;
+      --tekst: #ecebe4; --grijs: #a5a59b; --bg: #17171a; --kaart: #1f1f22;
     }
   }
   * { box-sizing: border-box; }
   body {
-    font-family: Georgia, 'Times New Roman', serif;
-    max-width: 48rem;
-    margin: 0 auto;
-    padding: 2.5rem 1.25rem 5rem;
-    line-height: 1.65;
-    background: var(--bg);
-    color: var(--tekst);
+    font-family: Georgia, 'Times New Roman', serif; max-width: 48rem;
+    margin: 0 auto; padding: 2.5rem 1.25rem 5rem; line-height: 1.65;
+    background: var(--bg); color: var(--tekst);
   }
   h1 { font-size: 1.7rem; margin: 0 0 .2rem; color: var(--groen); }
   .sub { color: var(--grijs); margin-top: 0; font-size: .95rem; }
-  h2 { font-size: 1.05rem; margin: 2rem 0 .6rem; letter-spacing: .01em; }
-  button {
+  h2 { font-size: 1.05rem; margin: 2rem 0 .6rem; }
+  button, .knoplink {
     font-family: inherit; font-size: 1rem; border: none;
     border-radius: .5rem; cursor: pointer;
   }
-  /* Dienstenlijst */
+  form.kanaal { display: flex; gap: .5rem; flex-wrap: wrap; margin: 1.25rem 0 .5rem; }
+  form.kanaal input {
+    flex: 1 1 22rem; padding: .6rem .8rem; font-size: 1rem;
+    border: 1px solid var(--rand); border-radius: .5rem;
+    background: var(--kaart); color: var(--tekst);
+  }
+  form.kanaal button {
+    padding: .6rem 1.3rem; background: var(--groen); color: #fff;
+  }
+  .recent { display: flex; flex-wrap: wrap; gap: .4rem; margin-bottom: .5rem; }
+  .chip {
+    font-size: .82rem; padding: .3rem .7rem; border: 1px solid var(--rand);
+    border-radius: 1rem; background: var(--kaart); color: var(--grijs);
+    cursor: pointer;
+  }
+  .chip:hover { border-color: var(--groen); color: var(--tekst); }
   .dag { margin-bottom: 1.1rem; }
   .dag-kop {
     font-size: .8rem; text-transform: uppercase; letter-spacing: .06em;
@@ -50,28 +51,21 @@
   }
   .knoppen { display: flex; flex-wrap: wrap; gap: .5rem; }
   .dienst-knop {
-    display: inline-flex; align-items: center; gap: .4rem;
-    padding: .55rem 1rem; background: var(--groen); color: #fff;
-    box-shadow: 0 1px 2px rgba(0,0,0,.12); transition: transform .05s ease;
+    display: inline-flex; align-items: center; gap: .4rem; padding: .55rem 1rem;
+    background: var(--groen); color: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.12);
   }
   .dienst-knop:hover { transform: translateY(-1px); }
   .dienst-knop.gepland {
-    background: transparent; color: var(--grijs);
-    border: 1px dashed var(--rand); box-shadow: none; cursor: default;
+    background: transparent; color: var(--grijs); border: 1px dashed var(--rand);
+    box-shadow: none; cursor: default;
   }
   .klein {
     background: var(--kaart); color: var(--tekst); border: 1px solid var(--rand);
     padding: .45rem 1rem; font-size: .9rem;
   }
   .klein:hover { border-color: var(--groen); }
-  details { margin-top: 1.5rem; }
+  details { margin-top: 1.2rem; }
   summary { cursor: pointer; color: var(--grijs); font-size: .95rem; }
-  details input[type=url] {
-    width: 100%; padding: .55rem .7rem; font-size: 1rem; margin: .6rem 0;
-    border: 1px solid var(--rand); border-radius: .5rem;
-    background: var(--kaart); color: var(--tekst);
-  }
-  /* Voortgang / fout */
   #stap { color: var(--grijs); font-style: italic; min-height: 1.2rem; }
   .laadbalk {
     height: 3px; border-radius: 3px; background: var(--groen-licht);
@@ -85,12 +79,8 @@
   }
   @keyframes schuif { 0%{margin-left:-40%} 100%{margin-left:100%} }
   #fout { color: #c0392b; white-space: pre-wrap; }
-  /* Resultaat */
   #resultaat { margin-top: 1.5rem; }
-  .balk {
-    display: flex; flex-wrap: wrap; gap: .5rem; align-items: center;
-    margin-bottom: 1.25rem;
-  }
+  .balk { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; margin-bottom: 1.25rem; }
   .balk .rechts { margin-left: auto; display: flex; gap: .5rem; }
   .titelkaart {
     background: var(--groen); color: #fff; border-radius: .7rem;
@@ -109,7 +99,7 @@
     color: var(--grijs); margin: .7rem 0 .15rem; font-family: system-ui, sans-serif;
   }
   .citaat {
-    font-style: italic; color: var(--tekst); border-left: 3px solid var(--groen);
+    font-style: italic; border-left: 3px solid var(--groen);
     padding-left: .8rem; margin: .1rem 0;
   }
   .kaart p { margin: .1rem 0; }
@@ -119,9 +109,14 @@
 </head>
 <body>
   <h1>Preekverwerker</h1>
-  <p class="sub">Kies een dienst. De preek wordt opgezocht, getranscribeerd en
-  verwerkt tot een samenvatting met zeven daggedeelten — met vragen voor
-  volwassenen en kinderen.</p>
+  <p class="sub">Plak een <b>kanaal</b> (YouTube-kanaal of Kerkdienstgemist-kerk)
+  om alle diensten te zien, of een <b>directe link</b> naar één preek.</p>
+
+  <form class="kanaal" id="kanaalform">
+    <input type="url" id="kanaal" placeholder="https://youtube.com/@…  ·  https://kerkdienstgemist.nl/stations/…  ·  of een preek-link">
+    <button type="submit">Laden</button>
+  </form>
+  <div class="recent" id="recent"></div>
 
   <p id="stap"></p>
   <div class="laadbalk" id="laadbalk"></div>
@@ -131,39 +126,90 @@
   <div id="resultaat"></div>
 
 <script>
+const kanaalForm = document.getElementById('kanaalform');
+const kanaalInput = document.getElementById('kanaal');
+const recentEl = document.getElementById('recent');
 const stapEl = document.getElementById('stap');
 const laadbalk = document.getElementById('laadbalk');
 const foutEl = document.getElementById('fout');
 const lijstEl = document.getElementById('lijst');
 const resultaatEl = document.getElementById('resultaat');
 let bezig = false;
-let handmatigEl = null;
-
+let huidigKanaal = null;
 const WEEKDAG = {weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'};
 
-function bezigStand(aan) {
-  bezig = aan;
-  laadbalk.classList.toggle('aan', aan);
+function bezigStand(aan) { bezig = aan; laadbalk.classList.toggle('aan', aan); }
+
+// ---- Recente kanalen (localStorage) ----
+function recenteKanalen() {
+  try { return JSON.parse(localStorage.getItem('kanalen') || '[]'); } catch { return []; }
+}
+function onthoudKanaal(url) {
+  let lijst = recenteKanalen().filter(u => u !== url);
+  lijst.unshift(url);
+  localStorage.setItem('kanalen', JSON.stringify(lijst.slice(0, 6)));
+  toonRecent();
+}
+function kortLabel(url) {
+  try {
+    const u = new URL(url);
+    if (u.hostname.includes('kerkdienstgemist')) {
+      const m = u.pathname.match(/stations\/(\d+)/);
+      return 'Kerkdienstgemist ' + (m ? m[1] : '');
+    }
+    const h = u.pathname.match(/@[\w.-]+/);
+    return 'YouTube ' + (h ? h[0] : u.pathname.split('/').filter(Boolean)[0] || '');
+  } catch { return url.slice(0, 30); }
+}
+function toonRecent() {
+  const lijst = recenteKanalen();
+  recentEl.innerHTML = '';
+  lijst.forEach(url => {
+    const c = document.createElement('span');
+    c.className = 'chip';
+    c.textContent = kortLabel(url);
+    c.title = url;
+    c.addEventListener('click', () => { kanaalInput.value = url; laadKanaal(url); });
+    recentEl.appendChild(c);
+  });
 }
 
-async function laadDiensten(vernieuw = false) {
-  stapEl.textContent = 'Diensten ophalen…';
+// ---- Kanaal laden of enkele link verwerken ----
+kanaalForm.addEventListener('submit', (e) => {
+  e.preventDefault();
+  const url = kanaalInput.value.trim();
+  if (url) laadKanaal(url);
+});
+
+async function laadKanaal(url, vernieuw = false) {
+  if (bezig) return;
+  stapEl.textContent = 'Laden…';
   laadbalk.classList.add('aan');
   foutEl.textContent = '';
+  resultaatEl.innerHTML = '';
+  lijstEl.innerHTML = '';
   try {
-    const antwoord = await fetch('/api/diensten' + (vernieuw ? '?vernieuw=true' : ''));
+    const q = new URLSearchParams({url: url || '', vernieuw: vernieuw ? 'true' : ''});
+    const antwoord = await fetch('/api/kanaal?' + q);
     if (!antwoord.ok) {
-      const data = await antwoord.json().catch(() => ({}));
-      throw new Error(data.detail || 'De dienstenlijst kon niet worden opgehaald.');
+      const d = await antwoord.json().catch(() => ({}));
+      throw new Error(d.detail || 'Kon de link niet laden.');
     }
-    window._diensten = await antwoord.json();
-    toonLijst(window._diensten);
+    const data = await antwoord.json();
     stapEl.textContent = '';
+    laadbalk.classList.remove('aan');
+    if (data.soort === 'enkel') {
+      verwerk(data.url, 'geplakte preek-link');
+    } else {
+      huidigKanaal = data.kanaal;
+      window._diensten = data.diensten;
+      if (url) onthoudKanaal(data.kanaal);
+      toonLijst(data.diensten);
+    }
   } catch (fout) {
     stapEl.textContent = '';
-    foutEl.textContent = fout.message;
-  } finally {
     laadbalk.classList.remove('aan');
+    foutEl.textContent = fout.message;
   }
 }
 
@@ -176,42 +222,24 @@ function toonLijst(diensten) {
   const gepland = diensten.filter(d => d.gepland);
 
   const kop = document.createElement('h2');
-  kop.textContent = 'Beschikbare diensten';
+  kop.textContent = 'Beschikbare diensten' + (beschikbaar.length ? ` (${beschikbaar.length})` : '');
   lijstEl.appendChild(kop);
+  if (!beschikbaar.length) {
+    lijstEl.appendChild(el('p', 'sub', 'Geen diensten gevonden voor dit kanaal.'));
+  }
   lijstEl.appendChild(maakGroepen(beschikbaar, false));
 
   if (gepland.length) {
     const det = document.createElement('details');
-    const som = document.createElement('summary');
-    som.textContent = `Geplande diensten (${gepland.length}) — nog niet gestreamd`;
-    det.appendChild(som);
+    det.appendChild(el('summary', null, `Geplande diensten (${gepland.length}) — nog niet gestreamd`));
     det.appendChild(maakGroepen(gepland.slice().reverse(), true));
     lijstEl.appendChild(det);
   }
 
-  const acties = document.createElement('div');
-  acties.style.marginTop = '1.5rem';
-  const vernieuwKnop = document.createElement('button');
-  vernieuwKnop.textContent = 'Vernieuw lijst';
-  vernieuwKnop.className = 'klein';
-  vernieuwKnop.addEventListener('click', () => laadDiensten(true));
-  acties.appendChild(vernieuwKnop);
-  lijstEl.appendChild(acties);
-
-  lijstEl.appendChild(maakHandmatig());
-}
-
-function maakHandmatig() {
-  const det = document.createElement('details');
-  det.innerHTML = `
-    <summary>Of plak zelf een YouTube-link</summary>
-    <input type="url" id="url" placeholder="https://www.youtube.com/watch?v=…">
-    <button type="button" class="klein" id="urlknop">Verwerk deze link</button>`;
-  det.querySelector('#urlknop').addEventListener('click', () => {
-    const url = det.querySelector('#url').value.trim();
-    if (url) verwerk(url, 'handmatige link');
-  });
-  return det;
+  const vernieuwKnop = el('button', 'klein', 'Vernieuw lijst');
+  vernieuwKnop.style.marginTop = '1.2rem';
+  vernieuwKnop.addEventListener('click', () => laadKanaal(huidigKanaal, true));
+  lijstEl.appendChild(vernieuwKnop);
 }
 
 function maakGroepen(diensten, isGepland) {
@@ -223,27 +251,21 @@ function maakGroepen(diensten, isGepland) {
     perDag.get(sleutel).push(d);
   }
   for (const [datum, items] of perDag) {
-    const blok = document.createElement('div');
-    blok.className = 'dag';
-    const kop = document.createElement('div');
-    kop.className = 'dag-kop';
-    kop.textContent = datum === 'onbekend'
+    const blok = el('div', 'dag');
+    const kop = el('div', 'dag-kop', datum === 'onbekend'
       ? 'Datum onbekend'
-      : new Date(datum + 'T12:00:00').toLocaleDateString('nl-NL', WEEKDAG);
+      : new Date(datum + 'T12:00:00').toLocaleDateString('nl-NL', WEEKDAG));
     blok.appendChild(kop);
-    const kn = document.createElement('div');
-    kn.className = 'knoppen';
+    const kn = el('div', 'knoppen');
     items.sort((a, b) => (a.tijd || '').localeCompare(b.tijd || ''));
     for (const d of items) {
-      const knop = document.createElement('button');
-      knop.className = 'dienst-knop' + (isGepland ? ' gepland' : '');
-      knop.textContent = d.label + (d.tijd ? ` · ${d.tijd}` : '');
+      const knop = el('button', 'dienst-knop' + (isGepland ? ' gepland' : ''),
+        d.label + (d.tijd ? ` · ${d.tijd}` : ''));
       if (isGepland) {
         knop.disabled = true;
         knop.title = 'Deze dienst is nog niet geweest.';
       } else {
-        knop.addEventListener('click',
-          () => verwerk(d.url, `${kop.textContent} — ${d.label}`));
+        knop.addEventListener('click', () => verwerk(d.url, `${kop.textContent} — ${d.label}`));
       }
       kn.appendChild(knop);
     }
@@ -260,16 +282,14 @@ async function verwerk(url, omschrijving) {
   resultaatEl.innerHTML = '';
   foutEl.textContent = '';
   stapEl.textContent = `Bezig met: ${omschrijving}…`;
-
   try {
     const antwoord = await fetch('/api/verwerk', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
+      method: 'POST', headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({url})
     });
     if (!antwoord.ok) {
-      const data = await antwoord.json().catch(() => ({}));
-      throw new Error(data.detail || 'De verwerking kon niet worden gestart.');
+      const d = await antwoord.json().catch(() => ({}));
+      throw new Error(d.detail || 'De verwerking kon niet worden gestart.');
     }
     const {taak_id} = await antwoord.json();
     await volg(taak_id);
@@ -288,15 +308,9 @@ async function volg(taakId) {
     const antwoord = await fetch('/api/status/' + taakId);
     if (!antwoord.ok) throw new Error('De status kon niet worden opgehaald.');
     const taak = await antwoord.json();
-    if (taak.status === 'bezig') {
-      stapEl.textContent = taak.stap;
-    } else if (taak.status === 'fout') {
-      throw new Error(taak.fout || 'Er is iets misgegaan.');
-    } else {
-      stapEl.textContent = '';
-      toonResultaat(taak);
-      return;
-    }
+    if (taak.status === 'bezig') stapEl.textContent = taak.stap;
+    else if (taak.status === 'fout') throw new Error(taak.fout || 'Er is iets misgegaan.');
+    else { stapEl.textContent = ''; toonResultaat(taak); return; }
   }
 }
 
@@ -312,10 +326,12 @@ function toonResultaat(taak) {
   const data = res.data;
   resultaatEl.innerHTML = '';
 
-  // Actiebalk
   const balk = el('div', 'balk');
   const terug = el('button', 'klein', '← Terug naar de lijst');
-  terug.addEventListener('click', () => { toonLijst(window._diensten || []); });
+  terug.addEventListener('click', () => {
+    resultaatEl.innerHTML = '';
+    if (window._diensten) toonLijst(window._diensten); else lijstEl.style.display = '';
+  });
   balk.appendChild(terug);
   const rechts = el('div', 'rechts');
   const kopieer = el('button', 'klein', 'Kopieer tekst');
@@ -334,12 +350,10 @@ function toonResultaat(taak) {
   balk.appendChild(rechts);
   resultaatEl.appendChild(balk);
 
-  if (!data) {  // terugval: platte tekst
-    const pre = el('pre');
-    pre.style.whiteSpace = 'pre-wrap';
+  if (!data) {
+    const pre = el('pre'); pre.style.whiteSpace = 'pre-wrap';
     pre.textContent = res.tekst || '';
-    resultaatEl.appendChild(pre);
-    return;
+    resultaatEl.appendChild(pre); return;
   }
 
   const L = data._labels || {};
@@ -355,8 +369,7 @@ function toonResultaat(taak) {
 
   const sam = el('div', 'kaart');
   sam.appendChild(el('h4', null, L.samenvatting || 'Samenvatting'));
-  const samP = el('p', 'samenvatting', data.samenvatting || '');
-  sam.appendChild(samP);
+  sam.appendChild(el('p', 'samenvatting', data.samenvatting || ''));
   resultaatEl.appendChild(sam);
 
   (data.dagen || []).forEach((dag, i) => {
@@ -372,9 +385,22 @@ function toonResultaat(taak) {
     k.appendChild(el('p', 'vraag', dag.vraag_kinderen || ''));
     resultaatEl.appendChild(k);
   });
+
+  if (data.liturgie) {
+    const det = document.createElement('details');
+    det.className = 'kaart';
+    const som = el('summary', null, L.liturgie || 'Liturgie');
+    som.style.color = 'var(--groen)';
+    det.appendChild(som);
+    const pre = el('p'); pre.style.whiteSpace = 'pre-wrap'; pre.style.marginTop = '.6rem';
+    pre.textContent = data.liturgie;
+    det.appendChild(pre);
+    resultaatEl.appendChild(det);
+  }
 }
 
-laadDiensten();
-</script>
-</body>
-</html>
+// Startup: prefill met het laatst gebruikte kanaal en laad het automatisch.
+toonRecent();
+const laatste = recenteKanalen()[0];
+if (laatste) { kanaalInput.value = laatste; laadKanaal(laatste); }
+else { laadKanaal(''); }  // standaardkanaal (server-side KANAAL_URL)

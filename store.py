@@ -9,6 +9,7 @@ Opslagmap via DATA_DIR (standaard ./data). Op Railway koppel je daar een
 volume aan zodat de cache een herstart/redeploy overleeft.
 """
 
+import hashlib
 import json
 import os
 import re
@@ -17,7 +18,7 @@ from datetime import datetime, timedelta
 
 DATA_DIR = os.environ.get("DATA_DIR", os.path.join(os.path.dirname(__file__), "data"))
 _RESULT_DIR = os.path.join(DATA_DIR, "resultaten")
-_DIENSTEN_BESTAND = os.path.join(DATA_DIR, "diensten.json")
+_DIENSTEN_DIR = os.path.join(DATA_DIR, "diensten")
 # Kerkweek-grens: zondag 20:00 (na de avonddienst). Na dit moment geldt de
 # dienstenlijst als verouderd tot hij opnieuw is opgehaald.
 WEEKGRENS_UUR = int(os.environ.get("DIENSTEN_WEEKGRENS_UUR", "20"))
@@ -56,9 +57,14 @@ def _laatste_weekgrens(nu):
     return zondag
 
 
-def diensten_ophalen():
-    """(diensten, is_vers). is_vers=False betekent: nog geen/verouderde cache."""
-    data = _lees(_DIENSTEN_BESTAND)
+def _diensten_pad(kanaal):
+    sleutel = hashlib.sha1((kanaal or "").encode("utf-8")).hexdigest()[:16]
+    return os.path.join(_DIENSTEN_DIR, sleutel + ".json")
+
+
+def diensten_ophalen(kanaal):
+    """(diensten, is_vers) voor dit kanaal. is_vers=False = geen/verouderde cache."""
+    data = _lees(_diensten_pad(kanaal))
     if not data or "diensten" not in data:
         return None, False
     try:
@@ -69,12 +75,24 @@ def diensten_ophalen():
     return data["diensten"], vers
 
 
-def diensten_opslaan(diensten):
+def diensten_opslaan(kanaal, diensten):
     _schrijf_atomisch(
-        _DIENSTEN_BESTAND,
+        _diensten_pad(kanaal),
         {"opgehaald": datetime.now().isoformat(timespec="seconds"),
-         "diensten": diensten},
+         "kanaal": kanaal, "diensten": diensten},
     )
+
+
+def zoek_dienst_titel(video_id):
+    """Zoek de titel van een dienst in alle gecachete kanaallijsten."""
+    if not os.path.isdir(_DIENSTEN_DIR):
+        return None
+    for naam in os.listdir(_DIENSTEN_DIR):
+        data = _lees(os.path.join(_DIENSTEN_DIR, naam))
+        for d in (data or {}).get("diensten", []):
+            if d.get("id") == video_id:
+                return d.get("titel")
+    return None
 
 
 # ---- Preekresultaten -----------------------------------------------------

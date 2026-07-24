@@ -20,6 +20,8 @@ from pydantic import BaseModel
 
 import yt_dlp
 
+import audio
+import kerkdienstgemist
 import render
 import store
 import supadata
@@ -64,16 +66,131 @@ def _met_labels(data):
 
 
 def _titel_uit_cache(url):
-    """Titel van de dienst uit de (persistente) dienstenlijst, zodat we geen
-    geblokkeerde yt-dlp-info-call nodig hebben."""
+    """Titel van de dienst uit de gecachete kanaallijsten (geen yt-dlp-call)."""
     vid = _video_id(url)
-    lijst, _ = store.diensten_ophalen()
-    if not vid or not lijst:
-        return None
-    for d in lijst:
-        if d.get("id") == vid:
-            return d.get("titel")
-    return None
+    return store.zoek_dienst_titel(vid) if vid else None
+
+
+def _classificeer(url):
+    """(type, soort) — type: 'youtube'|'kdg'|None; soort: 'kanaal'|'enkel'."""
+    u = (url or "").lower()
+    if kerkdienstgemist.is_kerkdienstgemist(url):
+        return ("kdg", "enkel" if "/recording/" in u else "kanaal")
+    if "youtube.com" in u or "youtu.be" in u:
+        enkel = _video_id(url) and any(
+            m in u for m in ("watch", "v=", "youtu.be/", "/live/", "/shorts/")
+        )
+        return ("youtube", "enkel" if enkel else "kanaal")
+    return (None, None)
+
+
+def _youtube_kanaal_url(url):
+    """Zorg dat we het streams-tabblad van een YouTube-kanaal ophalen."""
+    if re.search(r"/(streams|videos|featured|playlists)\b", url):
+        return url
+    return url.rstrip("/") + "/streams"
+
+
+def _laad_diensten(typ, kanaal_url, vernieuw=False):
+    lijst, vers = store.diensten_ophalen(kanaal_url)
+    if vernieuw or not vers:
+        try:
+            if typ == "kdg":
+                nieuw = kerkdienstgemist.lijst_diensten(kanaal_url)
+            else:
+                nieuw = lijst_diensten(_youtube_kanaal_url(kanaal_url))
+            store.diensten_opslaan(kanaal_url, nieuw)
+            lijst = nieuw
+        except Exception as fout:  # noqa: BLE001
+            if not lijst:
+                raise HTTPException(
+                    502, f"De dienstenlijst kon niet worden opgehaald: {fout}"
+                )
+            # Verouderde lijst is beter dan geen lijst.
+    return lijst
+
+
+def _proces_kerkdienstgemist(url, meld):
+    """Kerkdienstgemist: alleen het preekgedeelte transcriberen via OpenAI.
+
+    Geeft (data, tekst, meta, ondertitel) terug.
+    """
+    meld("Opname-informatie ophalen (Kerkdienstgemist)...")
+    o = kerkdienstgemist.haal_opname(url)
+    preek_min = round((o["duur"] - o["sermon_start"]) / 60)
+    meld(
+        f"Preek gevonden (±{preek_min} min). Audio ophalen en transcriberen "
+        "met OpenAI — dit kan enkele minuten duren..."
+    )
+    transcript = audio.transcribeer_hls(
+        o["hls_url"], o["sermon_start"], o["duur"], voortgang=meld
+    )
+
+    context = []
+    if o.get("bijbelgedeelte"):
+        context.append(f"Bijbelgedeelte (preektekst): {o['bijbelgedeelte']}")
+    if o.get("voorganger"):
+        context.append(f"Voorganger: {o['voorganger']}")
+
+    meld("Verwerken met AI — dit kan enkele minuten duren...")
+    data = verwerk_preek(
+        transcript, taal_hint="nl", extra_context="\n".join(context) or None
+    )
+    # Liturgie altijd meebewaren (Kerkdienstgemist levert die; YouTube niet).
+    if o.get("liturgie"):
+        data["liturgie"] = o["liturgie"]
+    tekst = render.naar_tekst(data)
+    meta = {
+        "titel": o["titel"],
+        "voorganger": o.get("voorganger"),
+        "duur_minuten": preek_min,
+        "transcriptie_bron": "Kerkdienstgemist (audio via OpenAI)",
+    }
+    return data, tekst, meta, o["titel"]
+
+
+def _proces_youtube(url, meld):
+    """YouTube: transcriptbron kiezen (Supadata gehost / yt-dlp lokaal).
+
+    Geeft (data, tekst, meta, ondertitel) terug.
+    """
+    if supadata.beschikbaar():
+        entries, taal = supadata.haal_transcript(url, voortgang=meld)
+        titel = _titel_uit_cache(url) or "YouTube-dienst"
+        meld("Preekgedeelte zoeken...")
+        seg = ts.segmenteer(entries, titel=titel, taal=taal or "nl")
+        taal_hint = taal
+    else:
+        seg = haal_preek_segmentatie(url, voortgang=meld)
+        taal_hint = (seg["meta"].get("taal") or "nl").split("-")[0]
+
+    meta = seg["meta"]
+    delen = f", {meta['delen']} delen" if meta.get("delen", 1) > 1 else ""
+    gevonden = (
+        f"Preek gevonden ({meta['preek_start']}–{meta['preek_einde']}"
+        f"{delen}, ±{meta['duur_minuten']} min). "
+    )
+
+    transcript = seg["ondertitel_tekst"]
+    if supadata.beschikbaar():
+        bron = "YouTube-ondertitels via Supadata"
+    else:
+        bron = "ondertitels"
+        if provider_bereikbaar():
+            try:
+                meld(gevonden + "Audio ophalen en transcriberen...")
+                transcript = transcribeer_preek(url, seg["tijden"], voortgang=meld)
+                bron = "audio (OpenAI-transcriptie)"
+            except Exception:  # noqa: BLE001 — terugval op ondertitels
+                transcript = seg["ondertitel_tekst"]
+                bron = "ondertitels (audio niet beschikbaar)"
+    meta["transcriptie_bron"] = bron
+
+    meld(gevonden + f"Bron: {bron}. Verwerken met AI — dit kan enkele "
+         "minuten duren...")
+    data = verwerk_preek(transcript, seg["welkom"], taal_hint=taal_hint)
+    tekst = render.naar_tekst(data)
+    return data, tekst, meta, meta.get("titel")
 
 
 def _voer_taak_uit(taak_id, url):
@@ -83,7 +200,8 @@ def _voer_taak_uit(taak_id, url):
         taak["stap"] = stap
 
     try:
-        vid = _video_id(url)
+        is_kdg = kerkdienstgemist.is_kerkdienstgemist(url)
+        vid = kerkdienstgemist.video_id(url) if is_kdg else _video_id(url)
 
         # 1. Al eerder verwerkt? Dan meteen uit de cache.
         if vid:
@@ -99,52 +217,13 @@ def _voer_taak_uit(taak_id, url):
                 taak["status"] = "klaar"
                 return
 
-        # 2. Transcriptbron kiezen:
-        # - Supadata (gehost): haalt de YouTube-transcriptie op zonder dat het
-        #   datacenter-IP geblokkeerd wordt. Taal wordt automatisch gedetecteerd.
-        # - Lokaal (yt-dlp): ondertitels + eventueel audio via OpenAI (Whisper).
-        if supadata.beschikbaar():
-            entries, taal = supadata.haal_transcript(url, voortgang=meld)
-            titel = _titel_uit_cache(url) or "YouTube-dienst"
-            meld("Preekgedeelte zoeken...")
-            seg = ts.segmenteer(entries, titel=titel, taal=taal or "nl")
-            taal_hint = taal
+        # 2. Verwerken via de juiste bron.
+        if is_kdg:
+            data, tekst, meta, ondertitel = _proces_kerkdienstgemist(url, meld)
         else:
-            seg = haal_preek_segmentatie(url, voortgang=meld)
-            taal_hint = (seg["meta"].get("taal") or "nl").split("-")[0]
+            data, tekst, meta, ondertitel = _proces_youtube(url, meld)
 
-        meta = seg["meta"]
         taak["meta"] = meta
-        delen = f", {meta['delen']} delen" if meta.get("delen", 1) > 1 else ""
-        gevonden = (
-            f"Preek gevonden ({meta['preek_start']}–{meta['preek_einde']}"
-            f"{delen}, ±{meta['duur_minuten']} min). "
-        )
-
-        transcript = seg["ondertitel_tekst"]
-        if supadata.beschikbaar():
-            bron = "YouTube-ondertitels via Supadata"
-        else:
-            # Lokaal: bij voorkeur audio via OpenAI (betere kwaliteit),
-            # anders de ondertitels. Valt automatisch terug.
-            bron = "ondertitels"
-            if provider_bereikbaar():
-                try:
-                    meld(gevonden + "Audio ophalen en transcriberen...")
-                    transcript = transcribeer_preek(
-                        url, seg["tijden"], voortgang=meld
-                    )
-                    bron = "audio (OpenAI-transcriptie)"
-                except Exception:  # noqa: BLE001 — terugval op ondertitels
-                    transcript = seg["ondertitel_tekst"]
-                    bron = "ondertitels (audio niet beschikbaar)"
-        meta["transcriptie_bron"] = bron
-
-        meld(gevonden + f"Bron: {bron}. Verwerken met AI — dit kan enkele "
-             "minuten duren...")
-        data = verwerk_preek(transcript, seg["welkom"], taal_hint=taal_hint)
-        tekst = render.naar_tekst(data)
-
         taak["resultaat"] = {"data": _met_labels(data), "tekst": tekst, "video_id": vid}
         taak["status"] = "klaar"
 
@@ -152,8 +231,7 @@ def _voer_taak_uit(taak_id, url):
         if vid:
             store.resultaat_opslaan(
                 vid,
-                {"data": data, "tekst": tekst, "meta": meta,
-                 "ondertitel": meta.get("titel")},
+                {"data": data, "tekst": tekst, "meta": meta, "ondertitel": ondertitel},
             )
     except Exception as fout:  # noqa: BLE001 — alles netjes aan de gebruiker melden
         melding = str(fout)
@@ -177,29 +255,36 @@ def diagnose():
     }
 
 
-@app.get("/api/diensten")
-def diensten(vernieuw: bool = False):
-    """Persistente dienstenlijst; ververst één keer per week (na zondag)."""
-    lijst, vers = store.diensten_ophalen()
-    if vernieuw or not vers:
-        try:
-            nieuw = lijst_diensten(KANAAL_URL)
-            store.diensten_opslaan(nieuw)
-            lijst = nieuw
-        except Exception as fout:  # noqa: BLE001
-            if not lijst:
-                raise HTTPException(
-                    502, f"De dienstenlijst kon niet worden opgehaald: {fout}"
-                )
-            # Verouderde lijst is beter dan geen lijst.
-    return lijst
+@app.get("/api/kanaal")
+def kanaal(url: str = "", vernieuw: bool = False):
+    """Herken een geplakte link: kanaal → dienstenlijst; enkele preek → verwerken.
+
+    Zonder url: het standaardkanaal (KANAAL_URL)."""
+    url = (url or "").strip() or KANAAL_URL
+    typ, soort = _classificeer(url)
+    if typ is None:
+        raise HTTPException(400, "Geef een YouTube- of Kerkdienstgemist-link op.")
+    if soort == "enkel":
+        return {"soort": "enkel", "url": url}
+    return {
+        "soort": "lijst",
+        "kanaal": url,
+        "diensten": _laad_diensten(typ, url, vernieuw),
+    }
 
 
 @app.post("/api/verwerk")
 def start_verwerking(verzoek: VerwerkVerzoek):
     url = verzoek.url.strip()
-    if "youtube.com/" not in url and "youtu.be/" not in url:
-        raise HTTPException(400, "Geef een geldige YouTube-link op.")
+    geldig = (
+        "youtube.com/" in url
+        or "youtu.be/" in url
+        or kerkdienstgemist.is_kerkdienstgemist(url)
+    )
+    if not geldig:
+        raise HTTPException(
+            400, "Geef een geldige YouTube- of Kerkdienstgemist-link op."
+        )
     taak_id = uuid.uuid4().hex
     taken[taak_id] = {
         "status": "bezig",

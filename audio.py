@@ -68,12 +68,64 @@ def _knip(ffmpeg, bron, start, eind, doel):
     )
 
 
-def _transcribeer_bestand(client, pad):
+def _transcribeer_bestand(client, pad, taal=None):
+    # Zonder taal laten we het model automatisch detecteren, zodat ook
+    # Afrikaanse/Engelse preken goed getranscribeerd worden. Alleen een
+    # betrouwbaar bekende taalcode meegeven als hint.
+    argumenten = {"model": TRANSCRIBE_MODEL}
+    if taal and len(taal) == 2:
+        argumenten["language"] = taal
     with open(pad, "rb") as f:
-        antwoord = client.audio.transcriptions.create(
-            model=TRANSCRIBE_MODEL, file=f, language="nl"
-        )
+        antwoord = client.audio.transcriptions.create(file=f, **argumenten)
     return antwoord.text.strip()
+
+
+def _knip_stream(ffmpeg, url, start, lengte, doel):
+    """Haal met ffmpeg alleen [start, start+lengte] audio uit een stream (HLS/mp4)."""
+    subprocess.run(
+        [
+            ffmpeg, "-y", "-ss", str(start), "-i", url, "-t", str(lengte),
+            "-vn", "-ac", "1", "-ar", "16000", "-b:a", "32k", doel,
+        ],
+        capture_output=True,
+        check=True,
+    )
+
+
+def transcribeer_hls(url, start, eind, voortgang=None):
+    """Transcribeer alleen het gedeelte [start, eind] (seconden) uit een stream.
+
+    Voor Kerkdienstgemist: alleen de preek (vanaf de markering tot het einde)
+    wordt opgehaald en getranscribeerd — niet de hele dienst.
+    """
+
+    def meld(stap):
+        if voortgang:
+            voortgang(stap)
+
+    if not os.environ.get("OPENAI_API_KEY"):
+        raise RuntimeError("OPENAI_API_KEY is niet ingesteld.")
+    if eind <= start:
+        raise RuntimeError("Ongeldig preekgedeelte (einde vóór begin).")
+
+    client = OpenAI()
+    ffmpeg = _ffmpeg()
+    with tempfile.TemporaryDirectory() as tmp:
+        stukken = []
+        begin, idx = start, 0
+        while begin < eind:
+            stop = min(begin + MAX_DEEL_SECONDEN, eind)
+            pad = os.path.join(tmp, f"deel_{idx}.mp3")
+            meld(f"Preekaudio ophalen (deel {idx + 1})...")
+            _knip_stream(ffmpeg, url, begin, stop - begin, pad)
+            stukken.append(pad)
+            begin, idx = stop, idx + 1
+
+        teksten = []
+        for i, pad in enumerate(stukken):
+            meld(f"Audio transcriberen ({i + 1}/{len(stukken)})...")
+            teksten.append(_transcribeer_bestand(client, pad))
+    return " ".join(t for t in teksten if t).strip()
 
 
 def transcribeer_preek(url, tijden, voortgang=None):

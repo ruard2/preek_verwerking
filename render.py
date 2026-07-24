@@ -32,6 +32,7 @@ LABELS = {
         "vraag": "Vraag",
         "vraag_kinderen": "Vraag voor kinderen",
         "week": "Weekboekje bij de preek",
+        "liturgie": "Liturgie",
     },
     "en": {
         "bijbelgedeelte": "Scripture",
@@ -43,6 +44,7 @@ LABELS = {
         "vraag": "Question",
         "vraag_kinderen": "Question for children",
         "week": "Weekly devotional",
+        "liturgie": "Order of service",
     },
     "af": {
         "bijbelgedeelte": "Skrifgedeelte",
@@ -54,6 +56,7 @@ LABELS = {
         "vraag": "Vraag",
         "vraag_kinderen": "Vraag vir kinders",
         "week": "Weeklikse oordenking",
+        "liturgie": "Liturgie",
     },
 }
 
@@ -82,6 +85,8 @@ def naar_tekst(data):
         r.append(L["vraag_kinderen"])
         r.append(dag.get("vraag_kinderen", ""))
         r.append("")
+    if data.get("liturgie"):
+        r += ["", L["liturgie"], data["liturgie"]]
     return "\n".join(r).strip()
 
 
@@ -166,6 +171,10 @@ def naar_pdf(data, ondertitel=None):
         ]
         # Houd een daggedeelte zoveel mogelijk bij elkaar op één pagina.
         flow.append(KeepTogether(blok))
+
+    if data.get("liturgie"):
+        flow.append(_p(L["liturgie"], s["kop"]))
+        flow.append(_p(data["liturgie"], s["tekst"]))
 
     doc.build(flow)
     return buf.getvalue()

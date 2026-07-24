@@ -159,7 +159,7 @@ Geef alleen het eindresultaat in de voorgeschreven structuur.
 """
 
 
-def verwerk_preek(transcript, welkom=None, taal_hint=None):
+def verwerk_preek(transcript, welkom=None, taal_hint=None, extra_context=None):
     """Verwerk het transcript tot een gestructureerd resultaat (dict).
 
     Geeft een dict met de velden: taal, titel, bijbelgedeelte, voorganger,
@@ -172,6 +172,11 @@ def verwerk_preek(transcript, welkom=None, taal_hint=None):
         )
     client = OpenAI()
     inhoud = GEBRUIKER_INLEIDING
+    if extra_context:
+        inhoud += (
+            "\nBekende gegevens uit de liturgie (betrouwbaar; neem deze over in "
+            "de betreffende velden en verzin niets anders):\n" + extra_context + "\n"
+        )
     if taal_hint:
         inhoud += (
             f"\nDe preek is (automatisch gedetecteerd) in de taal met code "
