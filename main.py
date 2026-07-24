@@ -251,9 +251,17 @@ def _voer_taak_uit(taak_id, url):
         taak["fout"] = melding
 
 
+VERSIE = (
+    os.environ.get("RAILWAY_GIT_COMMIT_SHA")
+    or os.environ.get("SOURCE_VERSION")
+    or "lokaal"
+)[:12]
+
+
 @app.get("/api/diagnose")
 def diagnose():
     return {
+        "versie": VERSIE,
         "yt_dlp_versie": yt_dlp.version.__version__,
         "transcript_bron": (
             "Supadata" if supadata.beschikbaar() else "yt-dlp (lokaal)"

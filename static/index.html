@@ -124,6 +124,7 @@
 
   <div id="lijst"></div>
   <div id="resultaat"></div>
+  <p id="versie" style="margin-top:3rem;font-size:.72rem;opacity:.45;font-family:system-ui,sans-serif"></p>
 
 <script>
 const kanaalForm = document.getElementById('kanaalform');
@@ -304,6 +305,9 @@ async function volg(taakId) {
   while (true) {
     await new Promise(r => setTimeout(r, 2500));
     const antwoord = await fetch('/api/status/' + taakId);
+    if (antwoord.status === 404) throw new Error(
+      'De verwerking is onderbroken doordat de server opnieuw is gestart. '
+      + 'Klik de dienst opnieuw aan.');
     if (!antwoord.ok) throw new Error('De status kon niet worden opgehaald.');
     const taak = await antwoord.json();
     if (taak.status === 'bezig') stapEl.textContent = taak.stap;
@@ -405,6 +409,12 @@ function toonResultaat(taak) {
     resultaatEl.appendChild(det);
   }
 }
+
+// Draaiende versie tonen (helpt bevestigen dat een nieuwe deploy live is).
+fetch('/api/diagnose').then(r => r.json()).then(d => {
+  document.getElementById('versie').textContent =
+    'versie ' + (d.versie || '?') + (d.transcript_bron ? ' · ' + d.transcript_bron : '');
+}).catch(() => {});
 
 // Startup: prefill met het laatst gebruikte kanaal en laad het automatisch.
 toonRecent();
