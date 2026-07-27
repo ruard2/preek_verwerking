@@ -25,12 +25,14 @@
   .ok { background: #e9f5ea; color: #1f6b25; } .fout { background: #fdecea; color: #b0201a; }
   @media (prefers-color-scheme: dark) { .ok { background:#1c2a1c; color:#9fd6a3; } .fout { background:#3a1c1a; color:#f0a9a3; } }
 </style>
+<link rel="stylesheet" href="/static/dashboard.css">
 </head>
 <body>
   <h1 id="titel">Aanmelden</h1>
   <p class="sub" id="onder">Ontvang de wekelijkse overdenkingen bij de preek.</p>
   <div id="melding"></div>
   <div id="inhoud"></div>
+<script src="/static/ui-i18n.js"></script>
 <script>
 const params = new URLSearchParams(location.search);
 const kerkId = params.get('kerk');
@@ -49,7 +51,8 @@ if (!kerkId) {
 } else {
   fetch('/api/kerk/' + kerkId).then(r => r.ok ? r.json() : Promise.reject())
     .then(k => {
-      document.getElementById('titel').textContent = 'Aanmelden — ' + k.naam;
+      AfterSermonI18n.set(k.inschrijf_taal || 'auto');
+      document.getElementById('titel').textContent = AfterSermonI18n.text('Aanmelden') + ' — ' + k.naam;
       bouwFormulier();
     })
     .catch(() => toon('fout', 'Deze kerk bestaat niet (controleer de link).'));

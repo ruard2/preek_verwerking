@@ -5,6 +5,7 @@ from xml.sax.saxutils import escape
 import brevo
 import render
 import subscribers
+import ui_i18n
 
 
 def _dag_blok(L, dag, nummer):
@@ -26,7 +27,8 @@ def _dag_blok(L, dag, nummer):
     )
 
 
-def bouw_email(data, kerk_naam, base_url, voorkeur_token, alleen_dag=None):
+def bouw_email(data, kerk_naam, base_url, voorkeur_token, alleen_dag=None,
+               communicatie_taal="nl"):
     """Geef (onderwerp, html) voor het weekboekje of één dag (0-geïndexeerd)."""
     L = render.labels(data.get("taal"))
     titel = data.get("titel", L["week"])
@@ -56,12 +58,13 @@ def bouw_email(data, kerk_naam, base_url, voorkeur_token, alleen_dag=None):
 
     afmeld = f"{base_url}/afmelden?token={voorkeur_token}"
     voorkeur = f"{base_url}/voorkeuren?token={voorkeur_token}"
+    C = ui_i18n.messages(communicatie_taal)
     voettekst = (
         f'<hr style="border:none;border-top:1px solid #e2e2dd;margin:2em 0 1em">'
-        f'<p style="color:#8a8a80;font-size:12px">Je ontvangt dit van '
-        f'{escape(kerk_naam)}. '
-        f'<a href="{voorkeur}" style="color:#2c5f2d">Voorkeuren wijzigen</a> · '
-        f'<a href="{afmeld}" style="color:#2c5f2d">Afmelden</a></p>'
+        f'<p style="color:#8a8a80;font-size:12px">'
+        f'{escape(C["receiving"].format(church=kerk_naam))} '
+        f'<a href="{voorkeur}" style="color:#2c5f2d">{escape(C["preferences"])}</a> · '
+        f'<a href="{afmeld}" style="color:#2c5f2d">{escape(C["unsubscribe"])}</a></p>'
     )
     html = (
         '<div style="font-family:Georgia,serif;max-width:640px;margin:0 auto;'
@@ -73,7 +76,8 @@ def bouw_email(data, kerk_naam, base_url, voorkeur_token, alleen_dag=None):
 def verstuur_een(kerk, data, base_url, sub, alleen_dag=None):
     """Stuur één e-mail (heel boekje of één dag) naar één inschrijver."""
     onderwerp, html = bouw_email(
-        data, kerk.naam or "je kerk", base_url, sub.voorkeur_token, alleen_dag
+        data, kerk.naam or "AfterSermon", base_url, sub.voorkeur_token, alleen_dag,
+        kerk.communicatie_taal,
     )
     return brevo.verzend(
         sub.email, onderwerp, html,

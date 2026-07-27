@@ -25,11 +25,13 @@
   .ok { background: #e9f5ea; color: #1f6b25; } .fout { background: #fdecea; color: #b0201a; }
   @media (prefers-color-scheme: dark) { .ok { background:#1c2a1c; color:#9fd6a3; } .fout { background:#3a1c1a; color:#f0a9a3; } }
 </style>
+<link rel="stylesheet" href="/static/dashboard.css">
 </head>
 <body>
   <h1>Je voorkeuren</h1>
   <div id="melding"></div>
   <div id="inhoud"></div>
+<script src="/static/ui-i18n.js"></script>
 <script>
 const token = new URLSearchParams(location.search).get('token');
 const afmeldModus = location.pathname.includes('afmelden');
@@ -48,6 +50,7 @@ else {
 }
 
 function bouw(s) {
+  AfterSermonI18n.set(s.communicatie_taal || 'auto');
   if (afmeldModus) toon('', '');
   inhoud.innerHTML = `
     <div class="kaart">

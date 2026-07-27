@@ -53,6 +53,7 @@
   }
   .weg { display: none; }
 </style>
+<link rel="stylesheet" href="/static/dashboard.css">
 </head>
 <body>
   <h1>AfterSermon</h1>
@@ -60,6 +61,7 @@
   <div id="melding"></div>
   <div id="inhoud"></div>
 
+<script src="/static/ui-i18n.js"></script>
 <script>
 const inhoud = document.getElementById('inhoud');
 const meldingEl = document.getElementById('melding');
@@ -149,7 +151,8 @@ function toonLogin() {
     const knop = el('button', {}, 'Account aanmaken');
     knop.onclick = async () => {
       try {
-        await post('/api/admin/register', {naam: val('n'), email: val('e'), wachtwoord: val('w')});
+        await post('/api/admin/register', {naam: val('n'), email: val('e'), wachtwoord: val('w'),
+          taal: AfterSermonI18n.current});
         toon('ok', 'Account aangemaakt. Check je e-mail en klik op de bevestigingslink.');
         inhoud.innerHTML = '';
       } catch (f) { toon('fout', f.message); }
@@ -196,10 +199,19 @@ function toonReset(token) {
 
 function toonDashboard(mij) {
   inhoud.innerHTML = '';
+  AfterSermonI18n.set(mij.admin_taal || 'auto');
   document.getElementById('onderschrift').textContent =
     `Ingelogd als ${mij.email}${mij.naam ? ' · ' + mij.naam : ''}`;
 
-  const kaart = el('div', {className: 'kaart'});
+  const stappen = el('div', {className: 'steps'});
+  [['1','Bron instellen','YouTube of Kerkdienstgemist'],['2','Communicatie instellen','Taal, timing en goedkeuring'],
+   ['3','Inschrijvers uitnodigen','Deel link of QR-code'],['4','Klaar voor automatische verwerking','AfterSermon doet de rest']]
+    .forEach(s => { const x=el('div',{className:'step'}); x.innerHTML=`<div class="step-number">${s[0]}</div><div><b>${s[1]}</b><span>${s[2]}</span></div>`; stappen.appendChild(x); });
+  inhoud.appendChild(stappen);
+  const grid = el('div', {className:'dashboard-grid'}); inhoud.appendChild(grid);
+
+  const kaart = el('div', {className: 'kaart wide'});
+  kaart.appendChild(el('div',{className:'eyebrow'},'Overzicht'));
   kaart.appendChild(el('h2', {}, 'Kanaal'));
   kaart.appendChild(el('p', {className: 'sub'},
     'De YouTube- of Kerkdienstgemist-link waar je preken vandaan komen.'));
@@ -230,13 +242,29 @@ function toonDashboard(mij) {
       await post('/api/admin/kanaal', {
         kanaal_url: val('kanaal'), tijdzone: val('tz'),
         auto_versturen: document.getElementById('auto').checked,
-        versturen_zonder_goedkeuring: document.getElementById('zonder').checked
+        versturen_zonder_goedkeuring: document.getElementById('zonder').checked,
+        admin_taal: val('admin_taal'), inschrijf_taal: val('inschrijf_taal'),
+        communicatie_taal: val('communicatie_taal')
       });
       toon('ok', 'Instellingen opgeslagen.');
     } catch (f) { toon('fout', f.message); }
   };
   kaart.appendChild(knop);
-  inhoud.appendChild(kaart);
+  const talen = el('div');
+  talen.appendChild(el('h2',{},'Talen'));
+  function taalSelect(label,id,value,auto=true) {
+    talen.appendChild(el('label',{htmlFor:id},label));
+    const s=el('select',{id});
+    if(auto) s.appendChild(el('option',{value:'auto'},'Automatisch (browsertaal)'));
+    [['nl','🇳🇱 Nederlands'],['en','🇬🇧 English'],['af','🇿🇦 Afrikaans']]
+      .forEach(x=>s.appendChild(el('option',{value:x[0]},x[1])));
+    s.value=value || (auto?'auto':'nl'); talen.appendChild(s);
+  }
+  taalSelect('Taal beheeromgeving','admin_taal',mij.admin_taal);
+  taalSelect('Taal inschrijfpagina','inschrijf_taal',mij.inschrijf_taal);
+  taalSelect('Taal communicatie','communicatie_taal',mij.communicatie_taal,false);
+  kaart.insertBefore(talen, knop);
+  grid.appendChild(kaart);
 
   // --- Diensten & verzending ---
   const auto = el('div', {className: 'kaart'});
@@ -256,7 +284,7 @@ function toonDashboard(mij) {
   auto.appendChild(scanKnop);
   const ulijst = el('div', {id: 'uitz'}); ulijst.style.marginTop = '.8rem';
   auto.appendChild(ulijst);
-  inhoud.appendChild(auto);
+  grid.appendChild(auto);
   laadUitzendingen();
 
   // --- Inschrijvers ---
@@ -280,7 +308,7 @@ function toonDashboard(mij) {
     } catch (f) { toon('fout', f.message); }
   };
   subs.appendChild(stoe);
-  inhoud.appendChild(subs);
+  grid.appendChild(subs);
   laadInschrijvers();
 
   // --- Delen ---
@@ -292,7 +320,7 @@ function toonDashboard(mij) {
   const img = el('img', {id: 'qr'}); img.style.marginTop = '1rem'; img.style.width = '180px';
   img.src = '/api/admin/qr';
   deel.appendChild(img);
-  inhoud.appendChild(deel);
+  grid.appendChild(deel);
   fetch('/api/admin/inschrijflink').then(r => r.json()).then(d => linkveld.value = d.url);
 
   const uit = el('button', {className: 'link'}, 'Uitloggen');

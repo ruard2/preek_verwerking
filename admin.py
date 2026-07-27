@@ -19,6 +19,7 @@ import levering
 import render
 import store
 import subscribers
+import ui_i18n
 from db import Church, SessionLocal, Subscriber, Uitzending, Verzending
 
 router = APIRouter()
@@ -78,6 +79,7 @@ class RegistratieBody(BaseModel):
     naam: str = ""
     email: str
     wachtwoord: str
+    taal: str = "auto"
 
 
 class LoginBody(BaseModel):
@@ -99,6 +101,9 @@ class KanaalBody(BaseModel):
     auto_versturen: bool = False
     tijdzone: str = "Europe/Amsterdam"
     versturen_zonder_goedkeuring: bool = False
+    admin_taal: str = "auto"
+    inschrijf_taal: str = "auto"
+    communicatie_taal: str = "nl"
 
 
 class InschrijverBody(BaseModel):
@@ -130,24 +135,26 @@ class VoorkeurBody(BaseModel):
 # ---- E-mails ----
 def _stuur_verificatie(request, kerk, token):
     link = f"{_basis_url(request)}/api/admin/verify?token={token}"
+    t = ui_i18n.messages(kerk.communicatie_taal)
     brevo.verzend(
         kerk.email,
-        "Bevestig je Preekverwerker-account",
-        f"<p>Welkom{' ' + kerk.naam if kerk.naam else ''}!</p>"
-        f"<p>Bevestig je account via deze link:</p>"
+        t["verify_subject"],
+        f"<p>{t['welcome']}{' ' + kerk.naam if kerk.naam else ''}!</p>"
+        f"<p>{t['verify_account']}</p>"
         f'<p><a href="{link}">{link}</a></p>',
-        tekst=f"Bevestig je account: {link}",
+        tekst=f"{t['verify_account']} {link}",
     )
 
 
 def _stuur_reset(request, kerk, token):
     link = f"{_basis_url(request)}/admin?reset={token}"
+    t = ui_i18n.messages(kerk.communicatie_taal)
     brevo.verzend(
         kerk.email,
-        "Wachtwoord opnieuw instellen",
-        f"<p>Stel een nieuw wachtwoord in via deze link (2 uur geldig):</p>"
+        t["reset_subject"],
+        f"<p>{t['reset_body']}</p>"
         f'<p><a href="{link}">{link}</a></p>',
-        tekst=f"Nieuw wachtwoord instellen: {link}",
+        tekst=f"{t['reset_subject']}: {link}",
     )
 
 
@@ -158,6 +165,10 @@ def register(body: RegistratieBody, request: Request, db=Depends(get_db)):
         kerk, token = auth.registreer(db, body.naam, body.email, body.wachtwoord)
     except auth.RegistratieFout as fout:
         raise HTTPException(400, str(fout))
+    kerk.admin_taal = ui_i18n.valid(body.taal, "auto")
+    kerk.inschrijf_taal = kerk.admin_taal
+    kerk.communicatie_taal = ui_i18n.valid(body.taal, "nl", allow_auto=False)
+    db.commit()
     _stuur_verificatie(request, kerk, token)
     return {"ok": True, "email": kerk.email}
 
@@ -221,6 +232,9 @@ def mij(request: Request, db=Depends(get_db)):
         "auto_versturen": kerk.auto_versturen,
         "tijdzone": kerk.tijdzone,
         "versturen_zonder_goedkeuring": kerk.versturen_zonder_goedkeuring,
+        "admin_taal": kerk.admin_taal,
+        "inschrijf_taal": kerk.inschrijf_taal,
+        "communicatie_taal": kerk.communicatie_taal,
     }
 
 
@@ -231,17 +245,25 @@ def kanaal(body: KanaalBody, request: Request, db=Depends(get_db)):
     kerk.auto_versturen = bool(body.auto_versturen)
     kerk.tijdzone = (body.tijdzone or "Europe/Amsterdam").strip()
     kerk.versturen_zonder_goedkeuring = bool(body.versturen_zonder_goedkeuring)
+    kerk.admin_taal = ui_i18n.valid(body.admin_taal, "auto")
+    kerk.inschrijf_taal = ui_i18n.valid(body.inschrijf_taal, "auto")
+    kerk.communicatie_taal = ui_i18n.valid(
+        body.communicatie_taal, "nl", allow_auto=False
+    )
     db.commit()
     return {"ok": True, "kanaal_url": kerk.kanaal_url}
 
 
 # ---- Inschrijverbeheer (admin) ----
 def _sub_json(s):
-    return {
+    data = {
         "id": s.id, "naam": s.naam, "email": s.email, "telefoon": s.telefoon,
         "frequentie": s.frequentie, "ontvang_dag": s.ontvang_dag,
         "ontvang_tijd": s.ontvang_tijd, "bevestigd": s.bevestigd,
     }
+    if getattr(s, "kerk", None):
+        data["communicatie_taal"] = s.kerk.communicatie_taal
+    return data
 
 
 @router.get("/api/admin/inschrijvers")
@@ -399,7 +421,7 @@ def kerk_info(kerk_id: int, db=Depends(get_db)):
     kerk = db.get(Church, kerk_id)
     if not kerk:
         raise HTTPException(404, "Kerk niet gevonden.")
-    return {"naam": kerk.naam or "deze kerk"}
+    return {"naam": kerk.naam or "AfterSermon", "inschrijf_taal": kerk.inschrijf_taal}
 
 
 @router.post("/api/inschrijven")
@@ -415,13 +437,14 @@ def inschrijven(body: InschrijvenBody, request: Request, db=Depends(get_db)):
         raise HTTPException(400, str(fout))
     if not sub.bevestigd and sub.bevestig_token:
         link = f"{_basis_url(request)}/api/inschrijven/bevestig?token={sub.bevestig_token}"
+        t = ui_i18n.messages(kerk.communicatie_taal)
         brevo.verzend(
             sub.email,
-            f"Bevestig je aanmelding bij {kerk.naam or 'de kerk'}",
-            f"<p>Bevestig je aanmelding voor de overdenkingen via deze link:</p>"
+            t["subscribe_subject"].format(church=kerk.naam or t["church"]),
+            f"<p>{t['subscribe_body']}</p>"
             f'<p><a href="{link}">{link}</a></p>'
-            f"<p>Heb je je niet aangemeld? Dan kun je deze mail negeren.</p>",
-            tekst=f"Bevestig je aanmelding: {link}",
+            f"<p>{t['ignore']}</p>",
+            tekst=f"{t['subscribe_body']} {link}",
             van_naam=kerk.naam or None, antwoord_naar=kerk.email or None,
         )
     return {"ok": True}

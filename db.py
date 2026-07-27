@@ -60,6 +60,9 @@ class Church(Base):
     auto_versturen: Mapped[bool] = mapped_column(Boolean, default=False)
     auto_scan: Mapped[bool] = mapped_column(Boolean, default=True)  # automatisch nieuwe diensten oppikken
     tijdzone: Mapped[str] = mapped_column(String(50), default="Europe/Amsterdam")
+    admin_taal: Mapped[str] = mapped_column(String(5), default="auto")
+    inschrijf_taal: Mapped[str] = mapped_column(String(5), default="auto")
+    communicatie_taal: Mapped[str] = mapped_column(String(5), default="nl")
     # Bij "kerk moet goedkeuren": toch versturen als er op het verzendmoment nog
     # geen goedkeuring is?
     versturen_zonder_goedkeuring: Mapped[bool] = mapped_column(Boolean, default=False)

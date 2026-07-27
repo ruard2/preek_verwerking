@@ -16,6 +16,7 @@ load_dotenv()  # leest een .env-bestand in de projectmap (lokaal gebruik)
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, Response
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from starlette.middleware.sessions import SessionMiddleware
 
@@ -41,6 +42,7 @@ from transcript import (
 )
 
 app = FastAPI(title="Preekverwerker")
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Ondertekende sessie-cookie voor de admin-login. SECRET_KEY op Railway zetten.
 app.add_middleware(

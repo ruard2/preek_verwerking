@@ -24,6 +24,7 @@ import kerkdienstgemist
 import levering
 import store
 import transcript as ts
+import ui_i18n
 from db import Church, SessionLocal, Subscriber, Uitzending, Verzending
 
 # Alleen diensten van de afgelopen zoveel dagen automatisch oppikken (voorkomt
@@ -150,17 +151,17 @@ def scan_kerk(db, kerk, base_url, nu_lokaal=None):
 def _stuur_goedkeur_mail(kerk, uit, base_url):
     goedkeur = f"{base_url}/api/uitzending/goedkeuren?token={uit.goedkeur_token}"
     bewerk = f"{base_url}/uitzending?token={uit.goedkeur_token}"
+    t = ui_i18n.messages(kerk.communicatie_taal)
     html = (
-        f"<p>Er staat een nieuwe overdenking klaar bij de dienst van "
-        f"<b>{uit.datum:%d-%m-%Y}</b>: <i>{uit.titel}</i>.</p>"
-        f'<p><a href="{bewerk}">Bekijk en bewerk</a> — of keur direct goed:</p>'
+        f"<p>{t['approval_ready'].format(date=uit.datum.isoformat(), title=uit.titel)}</p>"
+        f'<p><a href="{bewerk}">{t["review"]}</a></p>'
         f'<p><a href="{goedkeur}" style="background:#2c5f2d;color:#fff;'
         f'padding:.6em 1.2em;border-radius:.4em;text-decoration:none">'
-        f"Goedkeuren &amp; versturen</a></p>"
+        f'{t["approve"]}</a></p>'
     )
     brevo.verzend(
-        kerk.email, f"Overdenking klaar om goed te keuren: {uit.titel}", html,
-        tekst=f"Bekijken/bewerken: {bewerk}\nGoedkeuren: {goedkeur}",
+        kerk.email, t["approval_subject"].format(title=uit.titel), html,
+        tekst=f'{t["review"]}: {bewerk}\n{t["approve"]}: {goedkeur}',
     )
 
 
