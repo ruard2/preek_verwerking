@@ -49,6 +49,20 @@ def _ffmpeg():
     return doel
 
 
+def ffmpeg_diagnose():
+    """Korte beschrijving van de ffmpeg die gebruikt wordt (voor /api/diagnose)."""
+    systeem = shutil.which("ffmpeg")
+    try:
+        pad = _ffmpeg()
+        uit = subprocess.run([pad, "-version"], capture_output=True, text=True)
+        regels = (uit.stdout or uit.stderr or "").splitlines()
+        versie = regels[0] if regels else "?"
+        soort = "systeem" if systeem else "gebundeld (imageio-ffmpeg)"
+        return f"{soort}: {pad} — {versie}"
+    except Exception as fout:  # noqa: BLE001
+        return f"ffmpeg niet bruikbaar: {fout}"
+
+
 def _download_audio(url, map_):
     opties = ts.basis_opties()
     opties.update(

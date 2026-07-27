@@ -295,6 +295,7 @@ VERSIE = (
 def diagnose():
     return {
         "versie": VERSIE,
+        "ffmpeg": audio.ffmpeg_diagnose(),
         "yt_dlp_versie": yt_dlp.version.__version__,
         "transcript_bron": (
             "Supadata" if supadata.beschikbaar() else "yt-dlp (lokaal)"
