@@ -92,11 +92,13 @@ def _nu_lokaal(kerk):
 
 def _kanaal_diensten(kerk):
     url = kerk.kanaal_url or ""
-    if kerkdienstgemist.is_kerkdienstgemist(url):
-        return kerkdienstgemist.lijst_diensten(url)
     import main  # laat-import om circulaire import te vermijden
 
-    return ts.lijst_diensten(main._youtube_kanaal_url(url))
+    typ, soort = main._classificeer(url)
+    if not typ or soort != "kanaal":
+        return []
+    # Gebruik exact dezelfde gecachete kanaallijst als de demo.
+    return main._laad_diensten(typ, url)
 
 
 # ---------- Scannen + verwerken ----------

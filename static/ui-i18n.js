@@ -35,6 +35,12 @@ window.AfterSermonI18n = (() => {
     ,"Koppel je YouTube- of Kerkdienstgemist-kanaal en het gaat vanzelf. Log in of maak een account om te beginnen.":"Connect your YouTube or Kerkdienstgemist channel and the rest runs automatically. Sign in or create an account to get started."
     ,"Plak een kanaal (YouTube-kanaal of Kerkdienstgemist-kerk) om alle diensten te zien, of een directe link naar één preek.":"Paste a channel (YouTube or Kerkdienstgemist) to retrieve all services, or paste a direct link to process one sermon."
     ,"Laden":"Load","Beschikbare diensten":"Available services","Vernieuwen":"Refresh"
+    ,"Diensten & verzending":"Services & delivery","Scan nu op nieuwe diensten":"Scan for new services"
+    ,"Gevonden op het kanaal":"Found on the channel","Verwerking & verzending":"Processing & delivery"
+    ,"Verwerkt":"Processed","Wordt gecontroleerd":"Being checked"
+    ,"Vul hierboven een kanaallink in. De diensten verschijnen hier automatisch.":"Enter a channel link above. Services will appear here automatically."
+    ,"Kanaal wordt opgehaald…":"Retrieving channel…","Bezig met scannen…":"Scanning…"
+    ,"Nieuwe diensten worden gecontroleerd en verwerkt…":"New services are being checked and processed…"
   };
   const af = {
     "Van zondagse preek naar een week vol verdieping.":"Van Sondag se preek na ’n week vol verdieping.",
@@ -66,6 +72,12 @@ window.AfterSermonI18n = (() => {
     ,"Koppel je YouTube- of Kerkdienstgemist-kanaal en het gaat vanzelf. Log in of maak een account om te beginnen.":"Koppel jou YouTube- of Kerkdienstgemist-kanaal en die res gebeur outomaties. Meld aan of skep ’n rekening om te begin."
     ,"Plak een kanaal (YouTube-kanaal of Kerkdienstgemist-kerk) om alle diensten te zien, of een directe link naar één preek.":"Plak ’n kanaal (YouTube of Kerkdienstgemist) om alle dienste te laai, of plak ’n direkte skakel om een preek te verwerk."
     ,"Laden":"Laai","Beschikbare diensten":"Beskikbare dienste","Vernieuwen":"Verfris"
+    ,"Diensten & verzending":"Dienste en versending","Scan nu op nieuwe diensten":"Soek vir nuwe dienste"
+    ,"Gevonden op het kanaal":"Op die kanaal gevind","Verwerking & verzending":"Verwerking en versending"
+    ,"Verwerkt":"Verwerk","Wordt gecontroleerd":"Word nagegaan"
+    ,"Vul hierboven een kanaallink in. De diensten verschijnen hier automatisch.":"Vul ’n kanaalskakel hierbo in. Die dienste verskyn outomaties hier."
+    ,"Kanaal wordt opgehaald…":"Kanaal word opgehaal…","Bezig met scannen…":"Besig om te soek…"
+    ,"Nieuwe diensten worden gecontroleerd en verwerkt…":"Nuwe dienste word nagegaan en verwerk…"
   };
   let current = "nl";
   const base = new WeakMap();

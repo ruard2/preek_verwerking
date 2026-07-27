@@ -239,14 +239,21 @@ function toonDashboard(mij) {
   const knop = el('button', {}, 'Instellingen opslaan');
   knop.onclick = async () => {
     try {
+      const kanaalUrl = val('kanaal');
       await post('/api/admin/kanaal', {
-        kanaal_url: val('kanaal'), tijdzone: val('tz'),
+        kanaal_url: kanaalUrl, tijdzone: val('tz'),
         auto_versturen: document.getElementById('auto').checked,
         versturen_zonder_goedkeuring: document.getElementById('zonder').checked,
         admin_taal: val('admin_taal'), inschrijf_taal: val('inschrijf_taal'),
         communicatie_taal: val('communicatie_taal')
       });
-      toon('ok', 'Instellingen opgeslagen.');
+      toon('ok', kanaalUrl
+        ? 'Instellingen opgeslagen. Het kanaal wordt nu direct gescand.'
+        : 'Instellingen opgeslagen.');
+      if (kanaalUrl) {
+        await laadKanaalDiensten(kanaalUrl);
+        startScan();
+      }
     } catch (f) { toon('fout', f.message); }
   };
   kaart.appendChild(knop);
@@ -272,20 +279,17 @@ function toonDashboard(mij) {
   auto.appendChild(el('p', {className: 'sub'},
     'Nieuwe diensten worden automatisch opgepikt en verwerkt. Staat "automatisch versturen" uit, dan krijg je een mail om goed te keuren.'));
   const scanKnop = el('button', {className: 'klein'}, 'Scan nu op nieuwe diensten');
-  scanKnop.onclick = async () => {
-    scanKnop.disabled = true; scanKnop.textContent = 'Bezig met scannen…';
-    try {
-      await post('/api/admin/scan-nu', {});
-      toon('ok', 'Scan gestart. Verwerken kan enkele minuten duren; ververs daarna de lijst.');
-      setTimeout(laadUitzendingen, 5000);
-    } catch (f) { toon('fout', f.message); }
-    scanKnop.disabled = false; scanKnop.textContent = 'Scan nu op nieuwe diensten';
-  };
+  scanKnop.id = 'scanKnop';
+  scanKnop.onclick = () => startScan();
   auto.appendChild(scanKnop);
+  auto.appendChild(el('p', {id: 'scanStatus', className: 'sub'}, ''));
   const ulijst = el('div', {id: 'uitz'}); ulijst.style.marginTop = '.8rem';
   auto.appendChild(ulijst);
   grid.appendChild(auto);
   laadUitzendingen();
+  if (mij.kanaal_url) {
+    laadKanaalDiensten(mij.kanaal_url).then(() => startScan(true));
+  }
 
   // --- Inschrijvers ---
   const subs = el('div', {className: 'kaart'});
@@ -328,19 +332,94 @@ function toonDashboard(mij) {
   inhoud.appendChild(uit);
 }
 
-async function laadUitzendingen() {
+let kanaalDiensten = [];
+let verwerkteDiensten = [];
+let scanTimer = null;
+
+function renderDiensten() {
   const lijst = document.getElementById('uitz');
   if (!lijst) return;
-  const rijen = await fetch('/api/admin/uitzendingen').then(r => r.json()).catch(() => []);
-  if (!rijen.length) { lijst.innerHTML = '<p class="sub">Nog geen verwerkte diensten.</p>'; return; }
   lijst.innerHTML = '';
-  rijen.forEach(u => {
+  if (kanaalDiensten.length) {
+    lijst.appendChild(el('h3', {}, `Gevonden op het kanaal (${kanaalDiensten.length})`));
+    kanaalDiensten.slice(0, 12).forEach(d => {
+      const verwerkt = verwerkteDiensten.find(u => u.video_id === d.id);
+      const r = el('div', {className: 'rij dienstregel'});
+      r.style.borderBottom = '1px solid var(--rand)'; r.style.padding = '.55rem 0';
+      r.appendChild(el('span', {}, `${d.datum || ''} · ${d.titel || d.label || 'Dienst'}`));
+      r.appendChild(el('small', {className: verwerkt ? 'status-klaar' : 'sub'},
+        verwerkt ? 'Verwerkt' : 'Wordt gecontroleerd'));
+      lijst.appendChild(r);
+    });
+  }
+  if (verwerkteDiensten.length) {
+    lijst.appendChild(el('h3', {}, 'Verwerking & verzending'));
+  }
+  verwerkteDiensten.forEach(u => {
     const r = el('div', {className: 'rij'}); r.style.justifyContent = 'space-between';
     r.style.borderBottom = '1px solid var(--rand)'; r.style.padding = '.4rem 0';
     const status = u.goedgekeurd ? `goedgekeurd · ${u.verzonden} verzonden` : 'wacht op goedkeuring';
     r.appendChild(el('span', {}, `${u.datum} · ${u.titel} — ${status}`));
     lijst.appendChild(r);
   });
+  if (!kanaalDiensten.length && !verwerkteDiensten.length) {
+    lijst.innerHTML = '<p class="sub">Vul hierboven een kanaallink in. De diensten verschijnen hier automatisch.</p>';
+  }
+}
+
+async function laadKanaalDiensten(url) {
+  if (!url) { kanaalDiensten = []; renderDiensten(); return; }
+  const status = document.getElementById('scanStatus');
+  if (status) status.textContent = 'Kanaal wordt opgehaald…';
+  try {
+    const data = await fetch('/api/kanaal?' + new URLSearchParams({url}))
+      .then(async r => {
+        if (!r.ok) throw new Error(await fouttekst(r, 'Kanaal kon niet worden geladen.'));
+        return r.json();
+      });
+    kanaalDiensten = data.diensten || [];
+    if (status) status.textContent =
+      `${kanaalDiensten.length} diensten gevonden. Nieuwe diensten worden verwerkt.`;
+    renderDiensten();
+  } catch (f) {
+    if (status) status.textContent = '';
+    toon('fout', f.message);
+  }
+}
+
+async function laadUitzendingen() {
+  verwerkteDiensten = await fetch('/api/admin/uitzendingen')
+    .then(r => r.json()).catch(() => []);
+  renderDiensten();
+}
+
+async function startScan(stil = false) {
+  const knop = document.getElementById('scanKnop');
+  const status = document.getElementById('scanStatus');
+  if (knop) { knop.disabled = true; knop.textContent = 'Bezig met scannen…'; }
+  if (status && !status.textContent) {
+    status.textContent = 'Nieuwe diensten worden gecontroleerd en verwerkt…';
+  }
+  try {
+    await post('/api/admin/scan-nu', {});
+    if (!stil) toon('ok', 'Scan gestart. Deze lijst wordt automatisch bijgewerkt.');
+    clearInterval(scanTimer);
+    let rondes = 0;
+    scanTimer = setInterval(async () => {
+      await laadUitzendingen();
+      rondes += 1;
+      if (rondes >= 24) {
+        clearInterval(scanTimer);
+        if (knop) { knop.disabled = false; knop.textContent = 'Scan nu op nieuwe diensten'; }
+        if (status) {
+          status.textContent = 'Scan afgerond. Nieuwe diensten worden voortaan automatisch opgepikt.';
+        }
+      }
+    }, 5000);
+  } catch (f) {
+    toon('fout', f.message);
+    if (knop) { knop.disabled = false; knop.textContent = 'Scan nu op nieuwe diensten'; }
+  }
 }
 
 async function laadInschrijvers() {
