@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Preekverwerker — beheer</title>
+<style>
+  :root {
+    --groen: #2c5f2d; --rand: #e2e2dd; --tekst: #23231f;
+    --grijs: #6b6b64; --bg: #faf9f5; --kaart: #ffffff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --groen: #7bb87c; --rand: #33332e; --tekst: #ecebe4;
+      --grijs: #a5a59b; --bg: #17171a; --kaart: #1f1f22;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: Georgia, 'Times New Roman', serif; max-width: 34rem;
+    margin: 0 auto; padding: 2.5rem 1.25rem 4rem; line-height: 1.6;
+    background: var(--bg); color: var(--tekst);
+  }
+  h1 { font-size: 1.6rem; margin: 0 0 .3rem; color: var(--groen); }
+  h2 { font-size: 1.15rem; margin: 1.6rem 0 .6rem; }
+  .sub { color: var(--grijs); margin-top: 0; font-size: .95rem; }
+  label { display: block; font-size: .82rem; color: var(--grijs); margin: .7rem 0 .15rem;
+    text-transform: uppercase; letter-spacing: .05em; font-family: system-ui, sans-serif; }
+  input, select {
+    width: 100%; padding: .55rem .7rem; font-size: 1rem; font-family: inherit;
+    border: 1px solid var(--rand); border-radius: .45rem;
+    background: var(--kaart); color: var(--tekst);
+  }
+  .rij { display: flex; align-items: center; gap: .5rem; }
+  .rij input[type=checkbox] { width: auto; }
+  .rij label { margin: 0; text-transform: none; letter-spacing: 0; font-size: .95rem; color: var(--tekst); font-family: inherit; }
+  button {
+    margin-top: 1.1rem; padding: .6rem 1.3rem; font-size: 1rem; font-family: inherit;
+    border: none; border-radius: .45rem; background: var(--groen); color: #fff; cursor: pointer;
+  }
+  button.link {
+    background: none; color: var(--groen); padding: 0; margin: .8rem 0 0; text-decoration: underline;
+  }
+  .kaart { background: var(--kaart); border: 1px solid var(--rand); border-radius: .7rem; padding: 1.3rem 1.4rem; margin-top: 1rem; }
+  .tabs { display: flex; gap: .5rem; margin-top: 1rem; }
+  .tabs button { margin: 0; background: var(--kaart); color: var(--tekst); border: 1px solid var(--rand); }
+  .tabs button.actief { background: var(--groen); color: #fff; border-color: var(--groen); }
+  .melding { padding: .6rem .8rem; border-radius: .45rem; margin-top: 1rem; font-size: .95rem; }
+  .fout { background: #fdecea; color: #b0201a; }
+  .ok { background: #e9f5ea; color: #1f6b25; }
+  @media (prefers-color-scheme: dark) {
+    .fout { background: #3a1c1a; color: #f0a9a3; } .ok { background: #1c2a1c; color: #9fd6a3; }
+  }
+  .weg { display: none; }
+</style>
+</head>
+<body>
+  <h1>Preekverwerker — beheer</h1>
+  <p class="sub" id="onderschrift">Beheer je kerkaccount en instellingen.</p>
+  <div id="melding"></div>
+  <div id="inhoud"></div>
+
+<script>
+const inhoud = document.getElementById('inhoud');
+const meldingEl = document.getElementById('melding');
+const params = new URLSearchParams(location.search);
+
+function toon(soort, tekst) {
+  meldingEl.innerHTML = '';
+  if (!tekst) return;
+  const d = document.createElement('div');
+  d.className = 'melding ' + soort;
+  d.textContent = tekst;
+  meldingEl.appendChild(d);
+}
+async function fouttekst(r, standaard) {
+  const d = await r.json().catch(() => ({}));
+  if (typeof d.detail === 'string') return d.detail;
+  if (Array.isArray(d.detail)) return d.detail.map(e => e.msg || '').join('; ') || standaard;
+  return standaard;
+}
+function el(tag, attrs = {}, tekst) {
+  const e = document.createElement(tag);
+  Object.assign(e, attrs);
+  if (tekst != null) e.textContent = tekst;
+  return e;
+}
+async function post(url, body) {
+  const r = await fetch(url, {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(body || {})
+  });
+  if (!r.ok) throw new Error(await fouttekst(r, 'Er ging iets mis.'));
+  return r.json();
+}
+
+// ---- Views ----
+function veld(labelTekst, id, type = 'text', waarde = '') {
+  const wrap = el('div');
+  wrap.appendChild(el('label', {htmlFor: id}, labelTekst));
+  wrap.appendChild(el('input', {id, type, value: waarde}));
+  return wrap;
+}
+
+function toonLogin() {
+  inhoud.innerHTML = '';
+  const tabs = el('div', {className: 'tabs'});
+  const bLogin = el('button', {className: 'actief'}, 'Inloggen');
+  const bReg = el('button', {}, 'Account aanmaken');
+  tabs.append(bLogin, bReg); inhoud.appendChild(tabs);
+  const kaart = el('div', {className: 'kaart'}); inhoud.appendChild(kaart);
+
+  function login() {
+    bLogin.className = 'actief'; bReg.className = '';
+    kaart.innerHTML = '';
+    kaart.append(veld('E-mailadres', 'e', 'email'), veld('Wachtwoord', 'w', 'password'));
+    const knop = el('button', {}, 'Inloggen');
+    knop.onclick = async () => {
+      try {
+        await post('/api/admin/login', {email: val('e'), wachtwoord: val('w')});
+        location.href = '/admin';
+      } catch (f) { toon('fout', f.message); }
+    };
+    kaart.appendChild(knop);
+    const verg = el('button', {className: 'link'}, 'Wachtwoord vergeten?');
+    verg.onclick = toonVergeten;
+    kaart.appendChild(verg);
+  }
+  function registreer() {
+    bLogin.className = ''; bReg.className = 'actief';
+    kaart.innerHTML = '';
+    kaart.append(
+      veld('Naam van de kerk', 'n'), veld('E-mailadres', 'e', 'email'),
+      veld('Wachtwoord (min. 8 tekens)', 'w', 'password')
+    );
+    const knop = el('button', {}, 'Account aanmaken');
+    knop.onclick = async () => {
+      try {
+        await post('/api/admin/register', {naam: val('n'), email: val('e'), wachtwoord: val('w')});
+        toon('ok', 'Account aangemaakt. Check je e-mail en klik op de bevestigingslink.');
+        inhoud.innerHTML = '';
+      } catch (f) { toon('fout', f.message); }
+    };
+    kaart.appendChild(knop);
+  }
+  bLogin.onclick = login; bReg.onclick = registreer;
+  login();
+}
+
+function toonVergeten() {
+  inhoud.innerHTML = '';
+  const kaart = el('div', {className: 'kaart'}); inhoud.appendChild(kaart);
+  kaart.appendChild(el('h2', {}, 'Wachtwoord vergeten'));
+  kaart.appendChild(veld('E-mailadres', 'e', 'email'));
+  const knop = el('button', {}, 'Stuur resetlink');
+  knop.onclick = async () => {
+    try {
+      await post('/api/admin/reset-aanvraag', {email: val('e')});
+      toon('ok', 'Als dit adres bekend is, is er een resetlink verstuurd. Check je e-mail.');
+    } catch (f) { toon('fout', f.message); }
+  };
+  kaart.appendChild(knop);
+  const terug = el('button', {className: 'link'}, '← Terug naar inloggen');
+  terug.onclick = toonLogin; kaart.appendChild(terug);
+}
+
+function toonReset(token) {
+  inhoud.innerHTML = '';
+  const kaart = el('div', {className: 'kaart'}); inhoud.appendChild(kaart);
+  kaart.appendChild(el('h2', {}, 'Nieuw wachtwoord instellen'));
+  kaart.appendChild(veld('Nieuw wachtwoord (min. 8 tekens)', 'w', 'password'));
+  const knop = el('button', {}, 'Opslaan');
+  knop.onclick = async () => {
+    try {
+      await post('/api/admin/reset', {token, wachtwoord: val('w')});
+      toon('ok', 'Wachtwoord gewijzigd. Je kunt nu inloggen.');
+      history.replaceState({}, '', '/admin');
+      toonLogin();
+    } catch (f) { toon('fout', f.message); }
+  };
+  kaart.appendChild(knop);
+}
+
+function toonDashboard(mij) {
+  inhoud.innerHTML = '';
+  document.getElementById('onderschrift').textContent =
+    `Ingelogd als ${mij.email}${mij.naam ? ' · ' + mij.naam : ''}`;
+
+  const kaart = el('div', {className: 'kaart'});
+  kaart.appendChild(el('h2', {}, 'Kanaal'));
+  kaart.appendChild(el('p', {className: 'sub'},
+    'De YouTube- of Kerkdienstgemist-link waar je preken vandaan komen.'));
+  kaart.appendChild(veld('Kanaal-URL', 'kanaal', 'text', mij.kanaal_url || ''));
+
+  kaart.appendChild(el('label', {}, 'Bezorgfrequentie'));
+  const sel = el('select', {id: 'freq'});
+  sel.append(el('option', {value: 'wekelijks'}, 'Wekelijks (hele weekboekje ineens)'),
+             el('option', {value: 'dagelijks'}, 'Dagelijks (één dag per keer)'));
+  sel.value = mij.frequentie || 'wekelijks';
+  kaart.appendChild(sel);
+
+  const rij = el('div', {className: 'rij'}); rij.style.marginTop = '.9rem';
+  const chk = el('input', {id: 'auto', type: 'checkbox', checked: !!mij.auto_versturen});
+  rij.append(chk, el('label', {htmlFor: 'auto'},
+    'Automatisch versturen (uit = eerst zelf controleren en goedkeuren)'));
+  kaart.appendChild(rij);
+
+  const knop = el('button', {}, 'Opslaan');
+  knop.onclick = async () => {
+    try {
+      await post('/api/admin/kanaal', {
+        kanaal_url: val('kanaal'), frequentie: val('freq'),
+        auto_versturen: document.getElementById('auto').checked
+      });
+      toon('ok', 'Instellingen opgeslagen.');
+    } catch (f) { toon('fout', f.message); }
+  };
+  kaart.appendChild(knop);
+  inhoud.appendChild(kaart);
+
+  const uit = el('button', {className: 'link'}, 'Uitloggen');
+  uit.onclick = async () => { await post('/api/admin/logout'); location.href = '/admin'; };
+  inhoud.appendChild(uit);
+}
+
+const val = id => document.getElementById(id).value.trim();
+
+// ---- Router op basis van sessie + querystring ----
+(async function start() {
+  if (params.get('geverifieerd')) toon('ok', 'E-mailadres bevestigd. Je kunt nu inloggen.');
+  if (params.get('verify_mislukt')) toon('fout', 'Bevestigingslink ongeldig of verlopen.');
+  if (params.get('reset')) { toonReset(params.get('reset')); return; }
+
+  const mij = await fetch('/api/admin/mij').then(r => r.json()).catch(() => ({ingelogd: false}));
+  if (mij.ingelogd) toonDashboard(mij); else toonLogin();
+})();
+</script>
+</body>
+</html>

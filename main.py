@@ -17,10 +17,13 @@ load_dotenv()  # leest een .env-bestand in de projectmap (lokaal gebruik)
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
+from starlette.middleware.sessions import SessionMiddleware
 
 import yt_dlp
 
+import admin
 import audio
+import db as database
 import kerkdienstgemist
 import render
 import store
@@ -38,6 +41,20 @@ from transcript import (
 )
 
 app = FastAPI(title="Preekverwerker")
+
+# Ondertekende sessie-cookie voor de admin-login. SECRET_KEY op Railway zetten.
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=os.environ.get("SECRET_KEY", "dev-onveilig-wijzig-mij"),
+    https_only=bool(os.environ.get("RAILWAY_GIT_COMMIT_SHA")),
+    max_age=60 * 60 * 24 * 30,
+)
+app.include_router(admin.router)
+
+
+@app.on_event("startup")
+def _startup():
+    database.init_db()
 
 KANAAL_URL = os.environ.get(
     "KANAAL_URL", "https://www.youtube.com/@GKvMiddelharnis_HetBaken/streams"
