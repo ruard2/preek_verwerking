@@ -15,5 +15,5 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-# Railway levert $PORT aan; shell-vorm zodat de variabele wordt ingevuld.
-CMD uvicorn main:app --host 0.0.0.0 --port ${PORT:-8080}
+# main.py leest zelf de $PORT uit de omgeving (geen shell-expansie nodig).
+CMD ["python", "main.py"]

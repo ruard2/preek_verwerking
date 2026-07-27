@@ -432,3 +432,11 @@ def index():
     return FileResponse(
         "static/index.html", headers={"Cache-Control": "no-cache"}
     )
+
+
+if __name__ == "__main__":
+    # Zelfstandig starten (Docker/Railway): lees de poort uit de omgeving, zodat
+    # we niet afhankelijk zijn van shell-expansie van $PORT in het startcommando.
+    import uvicorn
+
+    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", "8080")))
