@@ -41,6 +41,9 @@ window.AfterSermonI18n = (() => {
     ,"Vul hierboven een kanaallink in. De diensten verschijnen hier automatisch.":"Enter a channel link above. Services will appear here automatically."
     ,"Kanaal wordt opgehaald…":"Retrieving channel…","Bezig met scannen…":"Scanning…"
     ,"Nieuwe diensten worden gecontroleerd en verwerkt…":"New services are being checked and processed…"
+    ,"Bedankt voor je aanmelding!":"Thank you for subscribing!"
+    ,"Je e-mailadres is bevestigd. Vanaf nu ontvang je de overdenkingen van deze kerk volgens de gekozen frequentie.":"Your email address has been confirmed. From now on, you will receive this church’s devotionals at your chosen frequency."
+    ,"We hopen dat ze je helpen om de boodschap van zondag mee te nemen in de week.":"We hope they help you carry Sunday’s message into the week."
   };
   const af = {
     "Van zondagse preek naar een week vol verdieping.":"Van Sondag se preek na ’n week vol verdieping.",
@@ -78,6 +81,9 @@ window.AfterSermonI18n = (() => {
     ,"Vul hierboven een kanaallink in. De diensten verschijnen hier automatisch.":"Vul ’n kanaalskakel hierbo in. Die dienste verskyn outomaties hier."
     ,"Kanaal wordt opgehaald…":"Kanaal word opgehaal…","Bezig met scannen…":"Besig om te soek…"
     ,"Nieuwe diensten worden gecontroleerd en verwerkt…":"Nuwe dienste word nagegaan en verwerk…"
+    ,"Bedankt voor je aanmelding!":"Dankie vir jou inskrywing!"
+    ,"Je e-mailadres is bevestigd. Vanaf nu ontvang je de overdenkingen van deze kerk volgens de gekozen frequentie.":"Jou e-posadres is bevestig. Van nou af ontvang jy hierdie kerk se oordenkings volgens jou gekose frekwensie."
+    ,"We hopen dat ze je helpen om de boodschap van zondag mee te nemen in de week.":"Ons hoop dit help jou om Sondag se boodskap deur die week saam te dra."
   };
   let current = "nl";
   const base = new WeakMap();

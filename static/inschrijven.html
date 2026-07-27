@@ -23,6 +23,12 @@
   .kaart { background: var(--kaart); border: 1px solid var(--rand); border-radius: .7rem; padding: 1.4rem; margin-top: 1.2rem; }
   .melding { padding: .7rem .9rem; border-radius: .45rem; margin-top: 1rem; }
   .ok { background: #e9f5ea; color: #1f6b25; } .fout { background: #fdecea; color: #b0201a; }
+  .bedankt { text-align:center; padding:2.5rem 2rem; }
+  .bedankt-icoon { width:3.5rem; height:3.5rem; margin:0 auto 1.1rem; border-radius:50%;
+    display:grid; place-items:center; background:var(--soft); color:var(--groen);
+    font-size:1.7rem; font-weight:800; }
+  .bedankt h2 { font-size:1.45rem; margin:.2rem 0 .65rem; }
+  .bedankt p { max-width:30rem; margin:.35rem auto; color:var(--grijs); }
   @media (prefers-color-scheme: dark) { .ok { background:#1c2a1c; color:#9fd6a3; } .fout { background:#3a1c1a; color:#f0a9a3; } }
 </style>
 <link rel="stylesheet" href="/static/dashboard.css">
@@ -43,7 +49,6 @@ const val = id => document.getElementById(id).value.trim();
 
 async function fouttekst(r) { const d = await r.json().catch(()=>({})); return (typeof d.detail==='string'?d.detail:null) || 'Er ging iets mis.'; }
 
-if (params.get('bevestigd')) toon('ok', 'Je aanmelding is bevestigd. Je ontvangt vanaf nu de overdenkingen.');
 if (params.get('bevestig_mislukt')) toon('fout', 'Deze bevestigingslink is ongeldig of verlopen.');
 
 if (!kerkId) {
@@ -52,10 +57,27 @@ if (!kerkId) {
   fetch('/api/kerk/' + kerkId).then(r => r.ok ? r.json() : Promise.reject())
     .then(k => {
       AfterSermonI18n.set(k.inschrijf_taal || 'auto');
-      document.getElementById('titel').textContent = AfterSermonI18n.text('Aanmelden') + ' — ' + k.naam;
-      bouwFormulier();
+      if (params.get('bevestigd')) toonBedankt(k);
+      else {
+        document.getElementById('titel').textContent =
+          AfterSermonI18n.text('Aanmelden') + ' — ' + k.naam;
+        bouwFormulier();
+      }
     })
     .catch(() => toon('fout', 'Deze kerk bestaat niet (controleer de link).'));
+}
+
+function toonBedankt(kerk) {
+  meldingEl.innerHTML = '';
+  document.getElementById('titel').textContent = 'AfterSermon';
+  document.getElementById('onder').textContent = kerk.naam;
+  inhoud.innerHTML = `
+    <div class="kaart bedankt">
+      <div class="bedankt-icoon" aria-hidden="true">✓</div>
+      <h2>${AfterSermonI18n.text('Bedankt voor je aanmelding!')}</h2>
+      <p>${AfterSermonI18n.text('Je e-mailadres is bevestigd. Vanaf nu ontvang je de overdenkingen van deze kerk volgens de gekozen frequentie.')}</p>
+      <p>${AfterSermonI18n.text('We hopen dat ze je helpen om de boodschap van zondag mee te nemen in de week.')}</p>
+    </div>`;
 }
 
 function bouwFormulier() {

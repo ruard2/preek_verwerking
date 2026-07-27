@@ -453,7 +453,10 @@ def inschrijven(body: InschrijvenBody, request: Request, db=Depends(get_db)):
 @router.get("/api/inschrijven/bevestig")
 def inschrijven_bevestig(token: str, db=Depends(get_db)):
     sub = subscribers.bevestig(db, token)
-    doel = "/inschrijven?bevestigd=1" if sub else "/inschrijven?bevestig_mislukt=1"
+    doel = (
+        f"/inschrijven?kerk={sub.kerk_id}&bevestigd=1"
+        if sub else "/inschrijven?bevestig_mislukt=1"
+    )
     return RedirectResponse(doel, status_code=303)
 
 
