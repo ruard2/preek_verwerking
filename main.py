@@ -483,10 +483,10 @@ def transcript_ruw(video_id: str):
                     _bestandsnaam(bewaard["data"], "-transcript", "txt"))
 
 
-@app.get("/")
-def index():
-    # no-cache: de browser haalt na een update altijd de nieuwste pagina op
-    # (voorkomt dat een oude versie blijft hangen na een deploy).
+@app.get("/demo")
+def demo():
+    # De preekverwerker-tool zelf, nu als demo. De homepage (/) is de
+    # landings-/loginpagina (static/admin.html).
     return FileResponse(
         "static/index.html", headers={"Cache-Control": "no-cache"}
     )

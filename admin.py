@@ -477,6 +477,7 @@ def afmelden_pagina():
     return FileResponse("static/voorkeuren.html", headers={"Cache-Control": "no-cache"})
 
 
+@router.get("/")
 @router.get("/admin")
 def admin_pagina():
     return FileResponse("static/admin.html", headers={"Cache-Control": "no-cache"})

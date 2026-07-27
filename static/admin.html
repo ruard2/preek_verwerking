@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Preekverwerker — beheer</title>
+<title>AfterSermon</title>
 <style>
   :root {
     --groen: #2c5f2d; --rand: #e2e2dd; --tekst: #23231f;
@@ -55,8 +55,8 @@
 </style>
 </head>
 <body>
-  <h1>Preekverwerker — beheer</h1>
-  <p class="sub" id="onderschrift">Beheer je kerkaccount en instellingen.</p>
+  <h1>AfterSermon</h1>
+  <p class="sub" id="onderschrift">Van zondagse preek naar een week vol verdieping.</p>
   <div id="melding"></div>
   <div id="inhoud"></div>
 
@@ -104,6 +104,19 @@ function veld(labelTekst, id, type = 'text', waarde = '') {
 
 function toonLogin() {
   inhoud.innerHTML = '';
+
+  const uitleg = el('div', {className: 'kaart'});
+  uitleg.innerHTML =
+    '<p style="margin-top:0"><b>AfterSermon</b> maakt van je zondagse preek automatisch een ' +
+    'weekboekje: een korte samenvatting en zeven dagoverdenkingen met vragen voor volwassenen ' +
+    'en kinderen — en mailt die elke week naar je gemeenteleden.</p>' +
+    '<p style="margin-bottom:0">Koppel je YouTube- of Kerkdienstgemist-kanaal en het gaat vanzelf. ' +
+    'Log in of maak een account om te beginnen.</p>';
+  const demo = el('a', {href: '/demo'}, 'Bekijk eerst de demo →');
+  demo.style.cssText = 'display:inline-block;margin-top:.8rem;color:var(--groen)';
+  uitleg.appendChild(demo);
+  inhoud.appendChild(uitleg);
+
   const tabs = el('div', {className: 'tabs'});
   const bLogin = el('button', {className: 'actief'}, 'Inloggen');
   const bReg = el('button', {}, 'Account aanmaken');
@@ -118,7 +131,7 @@ function toonLogin() {
     knop.onclick = async () => {
       try {
         await post('/api/admin/login', {email: val('e'), wachtwoord: val('w')});
-        location.href = '/admin';
+        location.href = '/';
       } catch (f) { toon('fout', f.message); }
     };
     kaart.appendChild(knop);
@@ -283,7 +296,7 @@ function toonDashboard(mij) {
   fetch('/api/admin/inschrijflink').then(r => r.json()).then(d => linkveld.value = d.url);
 
   const uit = el('button', {className: 'link'}, 'Uitloggen');
-  uit.onclick = async () => { await post('/api/admin/logout'); location.href = '/admin'; };
+  uit.onclick = async () => { await post('/api/admin/logout'); location.href = '/'; };
   inhoud.appendChild(uit);
 }
 
