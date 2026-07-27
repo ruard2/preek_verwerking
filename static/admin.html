@@ -192,25 +192,32 @@ function toonDashboard(mij) {
     'De YouTube- of Kerkdienstgemist-link waar je preken vandaan komen.'));
   kaart.appendChild(veld('Kanaal-URL', 'kanaal', 'text', mij.kanaal_url || ''));
 
-  kaart.appendChild(el('label', {}, 'Bezorgfrequentie'));
-  const sel = el('select', {id: 'freq'});
-  sel.append(el('option', {value: 'wekelijks'}, 'Wekelijks (hele weekboekje ineens)'),
-             el('option', {value: 'dagelijks'}, 'Dagelijks (één dag per keer)'));
-  sel.value = mij.frequentie || 'wekelijks';
-  kaart.appendChild(sel);
+  kaart.appendChild(el('label', {}, 'Tijdzone (waar de diensten gehouden worden)'));
+  const tz = el('select', {id: 'tz'});
+  ['Europe/Amsterdam','Africa/Johannesburg','Europe/London','America/New_York','America/Chicago','Australia/Sydney']
+    .forEach(z => tz.appendChild(el('option', {value: z}, z)));
+  tz.value = mij.tijdzone || 'Europe/Amsterdam';
+  kaart.appendChild(tz);
 
   const rij = el('div', {className: 'rij'}); rij.style.marginTop = '.9rem';
   const chk = el('input', {id: 'auto', type: 'checkbox', checked: !!mij.auto_versturen});
   rij.append(chk, el('label', {htmlFor: 'auto'},
-    'Automatisch versturen (uit = eerst zelf controleren en goedkeuren)'));
+    'Automatisch versturen (uit = eerst zelf goedkeuren via de mail die je krijgt)'));
   kaart.appendChild(rij);
 
-  const knop = el('button', {}, 'Opslaan');
+  const rij2 = el('div', {className: 'rij'}); rij2.style.marginTop = '.5rem';
+  const chk2 = el('input', {id: 'zonder', type: 'checkbox', checked: !!mij.versturen_zonder_goedkeuring});
+  rij2.append(chk2, el('label', {htmlFor: 'zonder'},
+    'Tóch versturen als goedkeuring op tijd uitblijft'));
+  kaart.appendChild(rij2);
+
+  const knop = el('button', {}, 'Instellingen opslaan');
   knop.onclick = async () => {
     try {
       await post('/api/admin/kanaal', {
-        kanaal_url: val('kanaal'), frequentie: val('freq'),
-        auto_versturen: document.getElementById('auto').checked
+        kanaal_url: val('kanaal'), tijdzone: val('tz'),
+        auto_versturen: document.getElementById('auto').checked,
+        versturen_zonder_goedkeuring: document.getElementById('zonder').checked
       });
       toon('ok', 'Instellingen opgeslagen.');
     } catch (f) { toon('fout', f.message); }
@@ -218,9 +225,105 @@ function toonDashboard(mij) {
   kaart.appendChild(knop);
   inhoud.appendChild(kaart);
 
+  // --- Diensten & verzending ---
+  const auto = el('div', {className: 'kaart'});
+  auto.appendChild(el('h2', {}, 'Diensten & verzending'));
+  auto.appendChild(el('p', {className: 'sub'},
+    'Nieuwe diensten worden automatisch opgepikt en verwerkt. Staat "automatisch versturen" uit, dan krijg je een mail om goed te keuren.'));
+  const scanKnop = el('button', {className: 'klein'}, 'Scan nu op nieuwe diensten');
+  scanKnop.onclick = async () => {
+    scanKnop.disabled = true; scanKnop.textContent = 'Bezig met scannen…';
+    try {
+      await post('/api/admin/scan-nu', {});
+      toon('ok', 'Scan gestart. Verwerken kan enkele minuten duren; ververs daarna de lijst.');
+      setTimeout(laadUitzendingen, 5000);
+    } catch (f) { toon('fout', f.message); }
+    scanKnop.disabled = false; scanKnop.textContent = 'Scan nu op nieuwe diensten';
+  };
+  auto.appendChild(scanKnop);
+  const ulijst = el('div', {id: 'uitz'}); ulijst.style.marginTop = '.8rem';
+  auto.appendChild(ulijst);
+  inhoud.appendChild(auto);
+  laadUitzendingen();
+
+  // --- Inschrijvers ---
+  const subs = el('div', {className: 'kaart'});
+  subs.appendChild(el('h2', {}, 'Inschrijvers'));
+  const lijst = el('div', {id: 'subs'}); subs.appendChild(lijst);
+  subs.appendChild(el('label', {}, 'Handmatig toevoegen'));
+  subs.append(veld('Naam', 's_naam'), veld('E-mailadres', 's_email', 'email'),
+              veld('Telefoon (optioneel)', 's_tel'));
+  const sfreq = el('select', {id: 's_freq'});
+  sfreq.append(el('option', {value: 'wekelijks'}, 'Wekelijks'), el('option', {value: 'dagelijks'}, 'Dagelijks'));
+  subs.appendChild(el('label', {}, 'Frequentie')); subs.appendChild(sfreq);
+  const stoe = el('button', {}, 'Toevoegen');
+  stoe.onclick = async () => {
+    try {
+      await post('/api/admin/inschrijvers', {naam: val('s_naam'), email: val('s_email'),
+        telefoon: val('s_tel'), frequentie: val('s_freq')});
+      document.getElementById('s_naam').value = ''; document.getElementById('s_email').value = '';
+      document.getElementById('s_tel').value = '';
+      laadInschrijvers();
+    } catch (f) { toon('fout', f.message); }
+  };
+  subs.appendChild(stoe);
+  inhoud.appendChild(subs);
+  laadInschrijvers();
+
+  // --- Delen ---
+  const deel = el('div', {className: 'kaart'});
+  deel.appendChild(el('h2', {}, 'Inschrijfpagina delen'));
+  deel.appendChild(el('p', {className: 'sub'}, 'Deel deze link of QR-code zodat gemeenteleden zich kunnen aanmelden.'));
+  const linkveld = el('input', {id: 'deellink', readOnly: true});
+  deel.appendChild(linkveld);
+  const img = el('img', {id: 'qr'}); img.style.marginTop = '1rem'; img.style.width = '180px';
+  img.src = '/api/admin/qr';
+  deel.appendChild(img);
+  inhoud.appendChild(deel);
+  fetch('/api/admin/inschrijflink').then(r => r.json()).then(d => linkveld.value = d.url);
+
   const uit = el('button', {className: 'link'}, 'Uitloggen');
   uit.onclick = async () => { await post('/api/admin/logout'); location.href = '/admin'; };
   inhoud.appendChild(uit);
+}
+
+async function laadUitzendingen() {
+  const lijst = document.getElementById('uitz');
+  if (!lijst) return;
+  const rijen = await fetch('/api/admin/uitzendingen').then(r => r.json()).catch(() => []);
+  if (!rijen.length) { lijst.innerHTML = '<p class="sub">Nog geen verwerkte diensten.</p>'; return; }
+  lijst.innerHTML = '';
+  rijen.forEach(u => {
+    const r = el('div', {className: 'rij'}); r.style.justifyContent = 'space-between';
+    r.style.borderBottom = '1px solid var(--rand)'; r.style.padding = '.4rem 0';
+    const status = u.goedgekeurd ? `goedgekeurd · ${u.verzonden} verzonden` : 'wacht op goedkeuring';
+    r.appendChild(el('span', {}, `${u.datum} · ${u.titel} — ${status}`));
+    lijst.appendChild(r);
+  });
+}
+
+async function laadInschrijvers() {
+  const lijst = document.getElementById('subs');
+  if (!lijst) return;
+  const rijen = await fetch('/api/admin/inschrijvers').then(r => r.json()).catch(() => []);
+  if (!rijen.length) { lijst.innerHTML = '<p class="sub">Nog geen inschrijvers.</p>'; return; }
+  lijst.innerHTML = '';
+  rijen.forEach(s => {
+    const r = el('div', {className: 'rij'}); r.style.justifyContent = 'space-between';
+    r.style.borderBottom = '1px solid var(--rand)'; r.style.padding = '.4rem 0';
+    const tekst = `${s.naam || '(geen naam)'} · ${s.email} · ${s.frequentie}` +
+      (s.bevestigd ? '' : ' · nog niet bevestigd');
+    r.appendChild(el('span', {}, tekst));
+    const del = el('button', {className: 'link'}, 'verwijderen');
+    del.style.color = '#b0201a'; del.style.margin = '0';
+    del.onclick = async () => {
+      if (!confirm('Deze inschrijver verwijderen?')) return;
+      await fetch('/api/admin/inschrijvers/' + s.id, {method: 'DELETE'});
+      laadInschrijvers();
+    };
+    r.appendChild(del);
+    lijst.appendChild(r);
+  });
 }
 
 const val = id => document.getElementById(id).value.trim();

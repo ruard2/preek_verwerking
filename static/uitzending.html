@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Overdenking bekijken en goedkeuren</title>
+<style>
+  :root { --groen:#2c5f2d; --rand:#e2e2dd; --tekst:#23231f; --grijs:#6b6b64; --bg:#faf9f5; --kaart:#fff; }
+  @media (prefers-color-scheme: dark) {
+    :root { --groen:#7bb87c; --rand:#33332e; --tekst:#ecebe4; --grijs:#a5a59b; --bg:#17171a; --kaart:#1f1f22; }
+  }
+  * { box-sizing: border-box; }
+  body { font-family: Georgia, serif; max-width: 44rem; margin: 0 auto; padding: 2rem 1.25rem 4rem;
+    background: var(--bg); color: var(--tekst); line-height: 1.55; }
+  h1 { font-size: 1.5rem; color: var(--groen); margin: 0 0 .2rem; }
+  .sub { color: var(--grijs); margin-top: 0; }
+  .label { font-size: .72rem; text-transform: uppercase; letter-spacing: .07em; color: var(--grijs);
+    margin: .8rem 0 .15rem; font-family: system-ui, sans-serif; }
+  input, textarea { width: 100%; box-sizing: border-box; font-family: inherit; font-size: 1rem;
+    padding: .5rem .7rem; border: 1px solid var(--rand); border-radius: .45rem;
+    background: var(--kaart); color: var(--tekst); line-height: 1.5; }
+  textarea { resize: vertical; }
+  .kaart { background: var(--kaart); border: 1px solid var(--rand); border-radius: .7rem;
+    padding: 1.1rem 1.3rem; margin-bottom: 1rem; }
+  .balk { position: sticky; top: 0; background: var(--bg); padding: .8rem 0; display: flex; gap: .6rem;
+    flex-wrap: wrap; border-bottom: 1px solid var(--rand); margin-bottom: 1rem; z-index: 5; }
+  button { font-family: inherit; font-size: 1rem; border: none; border-radius: .45rem; cursor: pointer;
+    padding: .55rem 1.2rem; }
+  .primair { background: var(--groen); color: #fff; }
+  .grijs { background: var(--kaart); color: var(--tekst); border: 1px solid var(--rand); }
+  .melding { padding: .7rem .9rem; border-radius: .45rem; margin-bottom: 1rem; }
+  .ok { background: #e9f5ea; color: #1f6b25; } .fout { background: #fdecea; color: #b0201a; }
+  @media (prefers-color-scheme: dark) { .ok { background:#1c2a1c; color:#9fd6a3; } .fout { background:#3a1c1a; color:#f0a9a3; } }
+</style>
+</head>
+<body>
+  <div id="melding"></div>
+  <div id="inhoud"></div>
+<script>
+const token = new URLSearchParams(location.search).get('token');
+const params = new URLSearchParams(location.search);
+const meldingEl = document.getElementById('melding');
+const inhoud = document.getElementById('inhoud');
+function toon(soort, tekst) { meldingEl.innerHTML = tekst ? `<div class="melding ${soort}">${tekst}</div>` : ''; }
+function el(tag, cls, tekst) { const e = document.createElement(tag); if (cls) e.className = cls; if (tekst != null) e.textContent = tekst; return e; }
+async function fout(r) { const d = await r.json().catch(()=>({})); return (typeof d.detail==='string'?d.detail:null) || 'Er ging iets mis.'; }
+
+if (params.get('goedgekeurd')) toon('ok', 'Goedgekeurd. De overdenkingen worden op de ingestelde tijden verstuurd.');
+if (params.get('fout')) toon('fout', 'Deze link is ongeldig of verlopen.');
+
+let refs = {};
+if (!token) toon('fout', 'Geen geldige link.');
+else fetch('/api/uitzending/' + token).then(r => r.ok ? r.json() : Promise.reject(r)).then(bouw)
+  .catch(() => toon('fout', 'Deze link is ongeldig of verlopen.'));
+
+function veld(label, waarde, multiline, rows) {
+  const w = el('div'); w.appendChild(el('div', 'label', label));
+  const i = document.createElement(multiline ? 'textarea' : 'input');
+  i.value = waarde || ''; if (multiline) i.rows = rows || 3;
+  w.appendChild(i); return {w, i};
+}
+
+function bouw(u) {
+  const d = u.data || {}; const L = d._labels || {};
+  inhoud.innerHTML = '';
+
+  const balk = el('div', 'balk');
+  const opslaan = el('button', 'grijs', 'Wijzigingen opslaan');
+  const keur = el('button', 'primair', u.goedgekeurd ? 'Opnieuw versturen goedkeuren' : 'Goedkeuren & versturen');
+  balk.append(opslaan, keur);
+  inhoud.appendChild(balk);
+
+  inhoud.appendChild(el('h1', null, u.titel));
+  inhoud.appendChild(el('p', 'sub', 'Dienst van ' + u.datum + (u.goedgekeurd ? ' · al goedgekeurd' : ' · nog niet goedgekeurd')));
+
+  const kop = el('div', 'kaart');
+  const fTitel = veld('Titel', d.titel); kop.appendChild(fTitel.w);
+  const fBg = veld(L.bijbelgedeelte || 'Bijbelgedeelte', d.bijbelgedeelte); kop.appendChild(fBg.w);
+  const fVg = veld(L.voorganger || 'Voorganger', d.voorganger); kop.appendChild(fVg.w);
+  const fSam = veld(L.samenvatting || 'Samenvatting', d.samenvatting, true, 5); kop.appendChild(fSam.w);
+  inhoud.appendChild(kop);
+  refs = {titel: fTitel.i, bijbelgedeelte: fBg.i, voorganger: fVg.i, samenvatting: fSam.i, dagen: []};
+
+  (d.dagen || []).forEach((dag, idx) => {
+    const k = el('div', 'kaart');
+    k.appendChild(el('div', 'label', (L.dag || 'Dag') + ' ' + (idx + 1)));
+    const t = veld('Titel', dag.titel);
+    const bt = veld(L.bijbeltekst || 'Bijbeltekst', dag.bijbeltekst);
+    const g = veld(L.gedachte || 'Gedachte', dag.gedachte, true, 4);
+    const vv = veld(L.vraag || 'Vraag', dag.vraag_volwassenen, true, 2);
+    const vk = veld(L.vraag_kinderen || 'Vraag voor kinderen', dag.vraag_kinderen, true, 2);
+    [t, bt, g, vv, vk].forEach(x => k.appendChild(x.w));
+    inhoud.appendChild(k);
+    refs.dagen.push({titel: t.i, bijbeltekst: bt.i, gedachte: g.i, vraag_volwassenen: vv.i, vraag_kinderen: vk.i});
+  });
+
+  if (d.liturgie) {
+    const k = el('div', 'kaart');
+    const lit = veld(L.liturgie || 'Liturgie', d.liturgie, true, 8);
+    k.appendChild(lit.w); inhoud.appendChild(k); refs.liturgie = lit.i;
+  }
+
+  opslaan.onclick = async () => {
+    opslaan.disabled = true; opslaan.textContent = 'Opslaan…';
+    try {
+      const velden = {titel: refs.titel.value, bijbelgedeelte: refs.bijbelgedeelte.value,
+        voorganger: refs.voorganger.value, samenvatting: refs.samenvatting.value,
+        dagen: refs.dagen.map(r => ({titel: r.titel.value, bijbeltekst: r.bijbeltekst.value,
+          gedachte: r.gedachte.value, vraag_volwassenen: r.vraag_volwassenen.value,
+          vraag_kinderen: r.vraag_kinderen.value}))};
+      if (refs.liturgie) velden.liturgie = refs.liturgie.value;
+      const r = await fetch('/api/uitzending/bewerk', {method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({token, velden})});
+      if (!r.ok) throw new Error(await fout(r));
+      toon('ok', 'Wijzigingen opgeslagen.');
+    } catch (f) { toon('fout', f.message); }
+    opslaan.disabled = false; opslaan.textContent = 'Wijzigingen opslaan';
+  };
+  keur.onclick = async () => {
+    if (!confirm('Goedkeuren? De overdenkingen worden dan op de ingestelde tijden naar de inschrijvers verstuurd.')) return;
+    keur.disabled = true; keur.textContent = 'Bezig…';
+    try {
+      const r = await fetch('/api/uitzending/goedkeuren', {method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({token})});
+      if (!r.ok) throw new Error(await fout(r));
+      toon('ok', 'Goedgekeurd. De overdenkingen worden op de ingestelde tijden verstuurd.');
+      window.scrollTo(0, 0);
+    } catch (f) { toon('fout', f.message); keur.disabled = false; keur.textContent = 'Goedkeuren & versturen'; }
+  };
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Voorkeuren</title>
+<style>
+  :root { --groen:#2c5f2d; --rand:#e2e2dd; --tekst:#23231f; --grijs:#6b6b64; --bg:#faf9f5; --kaart:#fff; }
+  @media (prefers-color-scheme: dark) {
+    :root { --groen:#7bb87c; --rand:#33332e; --tekst:#ecebe4; --grijs:#a5a59b; --bg:#17171a; --kaart:#1f1f22; }
+  }
+  * { box-sizing: border-box; }
+  body { font-family: Georgia, serif; max-width: 32rem; margin: 0 auto; padding: 2.5rem 1.25rem;
+    background: var(--bg); color: var(--tekst); line-height: 1.6; }
+  h1 { font-size: 1.5rem; color: var(--groen); margin: 0 0 1rem; }
+  label { display: block; font-size: .8rem; color: var(--grijs); margin: .8rem 0 .15rem;
+    text-transform: uppercase; letter-spacing: .05em; font-family: system-ui, sans-serif; }
+  input, select { width: 100%; padding: .55rem .7rem; font-size: 1rem; font-family: inherit;
+    border: 1px solid var(--rand); border-radius: .45rem; background: var(--kaart); color: var(--tekst); }
+  button { margin-top: 1.2rem; padding: .6rem 1.3rem; font-size: 1rem; font-family: inherit;
+    border: none; border-radius: .45rem; background: var(--groen); color: #fff; cursor: pointer; }
+  button.afmeld { background: none; color: #b0201a; text-decoration: underline; padding: 0; margin-left: 1rem; }
+  .kaart { background: var(--kaart); border: 1px solid var(--rand); border-radius: .7rem; padding: 1.4rem; }
+  .melding { padding: .7rem .9rem; border-radius: .45rem; margin-bottom: 1rem; }
+  .ok { background: #e9f5ea; color: #1f6b25; } .fout { background: #fdecea; color: #b0201a; }
+  @media (prefers-color-scheme: dark) { .ok { background:#1c2a1c; color:#9fd6a3; } .fout { background:#3a1c1a; color:#f0a9a3; } }
+</style>
+</head>
+<body>
+  <h1>Je voorkeuren</h1>
+  <div id="melding"></div>
+  <div id="inhoud"></div>
+<script>
+const token = new URLSearchParams(location.search).get('token');
+const afmeldModus = location.pathname.includes('afmelden');
+const meldingEl = document.getElementById('melding');
+const inhoud = document.getElementById('inhoud');
+const val = id => document.getElementById(id).value.trim();
+function toon(soort, tekst) { meldingEl.innerHTML = `<div class="melding ${soort}">${tekst}</div>`; }
+async function fouttekst(r) { const d = await r.json().catch(()=>({})); return (typeof d.detail==='string'?d.detail:null) || 'Er ging iets mis.'; }
+
+const DAGEN = ['maandag','dinsdag','woensdag','donderdag','vrijdag','zaterdag','zondag'];
+
+if (!token) { toon('fout', 'Geen geldige link.'); }
+else {
+  fetch('/api/voorkeuren/' + token).then(r => r.ok ? r.json() : Promise.reject())
+    .then(bouw).catch(() => toon('fout', 'Deze link is ongeldig of verlopen.'));
+}
+
+function bouw(s) {
+  if (afmeldModus) toon('', '');
+  inhoud.innerHTML = `
+    <div class="kaart">
+      <label>Naam</label><input id="naam" value="${s.naam || ''}">
+      <label>Telefoonnummer (optioneel)</label><input id="tel" value="${s.telefoon || ''}">
+      <label>Frequentie</label>
+      <select id="freq">
+        <option value="wekelijks">Eén keer per week</option>
+        <option value="dagelijks">Dagelijks</option>
+      </select>
+      <label>Ontvangstdag (bij wekelijks)</label>
+      <select id="dag">${DAGEN.map((d,i)=>`<option value="${i}">${d.charAt(0).toUpperCase()+d.slice(1)}</option>`).join('')}</select>
+      <label>Ontvangsttijd</label><input id="tijd" type="time" value="${s.ontvang_tijd || '07:00'}">
+      <div>
+        <button id="opslaan">Opslaan</button>
+        <button class="afmeld" id="afmeld">Afmelden</button>
+      </div>
+    </div>`;
+  document.getElementById('freq').value = s.frequentie || 'wekelijks';
+  document.getElementById('dag').value = s.ontvang_dag || 0;
+
+  document.getElementById('opslaan').onclick = async () => {
+    try {
+      const r = await fetch('/api/voorkeuren', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({token, naam: val('naam'), telefoon: val('tel'),
+          frequentie: val('freq'), ontvang_dag: +val('dag'), ontvang_tijd: val('tijd')})
+      });
+      if (!r.ok) throw new Error(await fouttekst(r));
+      toon('ok', 'Je voorkeuren zijn opgeslagen.');
+    } catch (f) { toon('fout', f.message); }
+  };
+  document.getElementById('afmeld').onclick = async () => {
+    if (!confirm('Weet je zeker dat je je wilt afmelden? Je ontvangt dan geen overdenkingen meer.')) return;
+    try {
+      const r = await fetch('/api/afmelden', {
+        method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({token})
+      });
+      if (!r.ok) throw new Error(await fouttekst(r));
+      inhoud.innerHTML = '';
+      toon('ok', 'Je bent afgemeld. Jammer dat je gaat — je kunt je altijd opnieuw aanmelden.');
+    } catch (f) { toon('fout', f.message); }
+  };
+}
+</script>
+</body>
+</html>

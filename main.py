@@ -52,9 +52,26 @@ app.add_middleware(
 app.include_router(admin.router)
 
 
+def _base_url_env():
+    if os.environ.get("BASE_URL"):
+        return os.environ["BASE_URL"].rstrip("/")
+    domein = os.environ.get("RAILWAY_PUBLIC_DOMAIN")
+    return f"https://{domein}" if domein else "http://127.0.0.1:8123"
+
+
 @app.on_event("startup")
 def _startup():
     database.init_db()
+    # Automatisering (scan → goedkeuring → gepland versturen). Lokaal standaard
+    # uit; op Railway aan. Forceer met AUTOMATISERING=aan / =uit.
+    keuze = os.environ.get("AUTOMATISERING", "").lower()
+    aan = keuze == "aan" or (keuze != "uit" and bool(os.environ.get("RAILWAY_PUBLIC_DOMAIN")))
+    if aan:
+        import automatisering
+
+        automatisering.start(_base_url_env())
+        print("[automatisering] achtergrond-lus gestart")
+
 
 KANAAL_URL = os.environ.get(
     "KANAAL_URL", "https://www.youtube.com/@GKvMiddelharnis_HetBaken/streams"
@@ -227,6 +244,49 @@ def _proces_youtube(url, meld):
     return data, tekst, meta, meta.get("titel"), transcript
 
 
+def verwerk_en_bewaar(url, herverwerk=False, meld=None):
+    """Verwerk een dienst (of laad uit cache) en bewaar het resultaat.
+
+    Herbruikbaar vanuit de interactieve taak én de automatisering. Geeft een dict
+    met o.a. video_id, data, tekst, meta, transcript_ruw, preek_schoon, uit_cache.
+    """
+    meld = meld or (lambda _s: None)
+    is_kdg = kerkdienstgemist.is_kerkdienstgemist(url)
+    vid = kerkdienstgemist.video_id(url) if is_kdg else _video_id(url)
+
+    # 1. Al eerder verwerkt? Dan uit de cache (met sleutel-normalisatie).
+    if vid and not herverwerk:
+        bewaard = store.resultaat_ophalen(vid)
+        if bewaard and bewaard.get("data"):
+            data = llm_normaliseer(bewaard["data"])
+            tekst = render.naar_tekst(data)
+            payload = {**bewaard, "data": data, "tekst": tekst}
+            store.resultaat_opslaan(vid, payload)
+            return {"video_id": vid, "uit_cache": True, **payload}
+
+    # 2. Verwerken via de juiste bron.
+    if is_kdg:
+        data, tekst, meta, ondertitel, transcript_ruw = _proces_kerkdienstgemist(url, meld)
+    else:
+        data, tekst, meta, ondertitel, transcript_ruw = _proces_youtube(url, meld)
+
+    # 2b. Opgeschoonde, volledige preektekst (aparte AI-stap; niet fataal).
+    preek_schoon = ""
+    try:
+        meld("Volledige preektekst opschonen...")
+        preek_schoon = llm_schoon_transcript(transcript_ruw, data.get("taal"))
+    except Exception:  # noqa: BLE001 — zonder schone preek gaan we gewoon door
+        preek_schoon = ""
+
+    payload = {
+        "data": data, "tekst": tekst, "meta": meta, "ondertitel": ondertitel,
+        "transcript_ruw": transcript_ruw, "preek_schoon": preek_schoon,
+    }
+    if vid:
+        store.resultaat_opslaan(vid, payload)
+    return {"video_id": vid, "uit_cache": False, **payload}
+
+
 def _voer_taak_uit(taak_id, url):
     taak = taken[taak_id]
 
@@ -234,69 +294,18 @@ def _voer_taak_uit(taak_id, url):
         taak["stap"] = stap
 
     try:
-        is_kdg = kerkdienstgemist.is_kerkdienstgemist(url)
-        vid = kerkdienstgemist.video_id(url) if is_kdg else _video_id(url)
-
-        # 1. Al eerder verwerkt? Dan meteen uit de cache.
-        if vid and not taken[taak_id].get("_herverwerk"):
-            bewaard = store.resultaat_ophalen(vid)
-            if bewaard and bewaard.get("data"):
-                # Oudere caches kunnen vertaalde sleutels bevatten (leeg veld);
-                # normaliseren herstelt dat en we bewaren de gerepareerde versie.
-                data = llm_normaliseer(bewaard["data"])
-                tekst = render.naar_tekst(data)
-                store.resultaat_opslaan(vid, {**bewaard, "data": data, "tekst": tekst})
-                taak["meta"] = bewaard.get("meta")
-                taak["resultaat"] = {
-                    "data": _met_labels(data),
-                    "tekst": tekst,
-                    "video_id": vid,
-                    "heeft_preek": bool(bewaard.get("preek_schoon")),
-                    "heeft_ruw": bool(bewaard.get("transcript_ruw")),
-                }
-                taak["stap"] = "Uit opslag geladen."
-                taak["status"] = "klaar"
-                return
-
-        # 2. Verwerken via de juiste bron.
-        if is_kdg:
-            data, tekst, meta, ondertitel, transcript_ruw = _proces_kerkdienstgemist(
-                url, meld
-            )
-        else:
-            data, tekst, meta, ondertitel, transcript_ruw = _proces_youtube(url, meld)
-
-        # 2b. Opgeschoonde, volledige preektekst (aparte AI-stap; niet fataal).
-        preek_schoon = ""
-        try:
-            meld("Volledige preektekst opschonen...")
-            preek_schoon = llm_schoon_transcript(transcript_ruw, data.get("taal"))
-        except Exception:  # noqa: BLE001 — zonder schone preek gaan we gewoon door
-            preek_schoon = ""
-
-        taak["meta"] = meta
+        r = verwerk_en_bewaar(url, herverwerk=taak.get("_herverwerk"), meld=meld)
+        taak["meta"] = r["meta"]
         taak["resultaat"] = {
-            "data": _met_labels(data),
-            "tekst": tekst,
-            "video_id": vid,
-            "heeft_preek": bool(preek_schoon),
-            "heeft_ruw": bool((transcript_ruw or "").strip()),
+            "data": _met_labels(r["data"]),
+            "tekst": r["tekst"],
+            "video_id": r["video_id"],
+            "heeft_preek": bool(r.get("preek_schoon")),
+            "heeft_ruw": bool((r.get("transcript_ruw") or "").strip()),
         }
+        if r["uit_cache"]:
+            taak["stap"] = "Uit opslag geladen."
         taak["status"] = "klaar"
-
-        # 3. Permanent bewaren zodat deze dienst nooit opnieuw verwerkt hoeft.
-        if vid:
-            store.resultaat_opslaan(
-                vid,
-                {
-                    "data": data,
-                    "tekst": tekst,
-                    "meta": meta,
-                    "ondertitel": ondertitel,
-                    "transcript_ruw": transcript_ruw,
-                    "preek_schoon": preek_schoon,
-                },
-            )
     except Exception as fout:  # noqa: BLE001 — alles netjes aan de gebruiker melden
         melding = str(fout)
         if "not a bot" in melding or "Sign in to confirm" in melding:

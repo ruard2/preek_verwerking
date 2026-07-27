@@ -69,6 +69,23 @@ def labels(taal):
     return LABELS.get((taal or "nl").split("-")[0].lower(), LABELS["en"])
 
 
+def pas_bewerking_toe(data, velden):
+    """Werk de bewerkbare velden bij vanuit een {veld: waarde, dagen:[...]}-dict."""
+    for k in ("titel", "bijbelgedeelte", "voorganger", "samenvatting", "liturgie"):
+        if velden.get(k) is not None:
+            data[k] = velden[k]
+    if isinstance(velden.get("dagen"), list):
+        dagen = data.get("dagen") or []
+        for i, d in enumerate(velden["dagen"]):
+            if i < len(dagen) and isinstance(d, dict):
+                for kk in ("titel", "bijbeltekst", "gedachte",
+                           "vraag_volwassenen", "vraag_kinderen"):
+                    if d.get(kk) is not None:
+                        dagen[i][kk] = d[kk]
+        data["dagen"] = dagen
+    return data
+
+
 def naar_tekst(data):
     """Platte, kopieerbare tekstversie (voor de kopieerknop / terugval)."""
     L = labels(data.get("taal"))

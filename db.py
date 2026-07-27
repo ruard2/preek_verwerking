@@ -7,7 +7,8 @@ de DATABASE_URL die Railway aanlevert. Dezelfde modellen werken op allebei.
 import os
 
 from sqlalchemy import (
-    Boolean, DateTime, ForeignKey, Integer, String, Text, create_engine, func,
+    Boolean, Date, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint,
+    create_engine, func, inspect as sa_inspect, text,
 )
 from sqlalchemy.orm import (
     DeclarativeBase, Mapped, mapped_column, relationship, sessionmaker,
@@ -57,7 +58,11 @@ class Church(Base):
     # Instellingen
     kanaal_url: Mapped[str] = mapped_column(String(500), default="")
     auto_versturen: Mapped[bool] = mapped_column(Boolean, default=False)
-    frequentie: Mapped[str] = mapped_column(String(20), default="wekelijks")  # of "dagelijks"
+    auto_scan: Mapped[bool] = mapped_column(Boolean, default=True)  # automatisch nieuwe diensten oppikken
+    tijdzone: Mapped[str] = mapped_column(String(50), default="Europe/Amsterdam")
+    # Bij "kerk moet goedkeuren": toch versturen als er op het verzendmoment nog
+    # geen goedkeuring is?
+    versturen_zonder_goedkeuring: Mapped[bool] = mapped_column(Boolean, default=False)
 
     aangemaakt: Mapped[DateTime] = mapped_column(DateTime, server_default=func.now())
 
@@ -96,16 +101,87 @@ class Subscriber(Base):
     telefoon: Mapped[str] = mapped_column(String(40), default="")
 
     kanaal: Mapped[str] = mapped_column(String(20), default="email")  # email/whatsapp/app
-    frequentie: Mapped[str] = mapped_column(String(20), default="wekelijks")
-    per_dag: Mapped[int] = mapped_column(Integer, default=1)  # 1 of 2 diensten
-    taal: Mapped[str] = mapped_column(String(10), default="")
+    frequentie: Mapped[str] = mapped_column(String(20), default="wekelijks")  # of "dagelijks"
+    ontvang_dag: Mapped[int] = mapped_column(Integer, default=0)  # wekelijks: 0=ma..6=zo
+    ontvang_tijd: Mapped[str] = mapped_column(String(5), default="07:00")  # "HH:MM" (kerktijdzone)
 
     bevestigd: Mapped[bool] = mapped_column(Boolean, default=False)  # double opt-in
+    bevestig_token: Mapped[str] = mapped_column(String(64), default="", index=True)
     voorkeur_token: Mapped[str] = mapped_column(String(64), default="", index=True)
     aangemaakt: Mapped[DateTime] = mapped_column(DateTime, server_default=func.now())
 
     kerk: Mapped["Church"] = relationship(back_populates="inschrijvers")
 
 
+class Uitzending(Base):
+    """Een door de kerk uitgezonden (en verwerkte) dienst; stuurt de bezorging aan."""
+
+    __tablename__ = "uitzendingen"
+    __table_args__ = (UniqueConstraint("kerk_id", "video_id", name="uq_kerk_video"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    kerk_id: Mapped[int] = mapped_column(ForeignKey("churches.id", ondelete="CASCADE"), index=True)
+    video_id: Mapped[str] = mapped_column(String(200), index=True)
+    url: Mapped[str] = mapped_column(String(500), default="")
+    titel: Mapped[str] = mapped_column(String(300), default="")
+    datum: Mapped[Date] = mapped_column(Date)          # datum van de dienst
+    week_start: Mapped[Date] = mapped_column(Date)     # maandag van de overdenkingsweek
+    verwerkt_op: Mapped[DateTime] = mapped_column(DateTime, server_default=func.now())
+    goedgekeurd: Mapped[bool] = mapped_column(Boolean, default=False)
+    goedkeur_token: Mapped[str] = mapped_column(String(64), default="", index=True)
+
+
+class Verzending(Base):
+    """Logregel: welk dagdeel van welke uitzending naar welke inschrijver is gestuurd.
+
+    Voorkomt dubbele verzending (idempotentie). dag: 0 = wekelijks (heel boekje),
+    1..7 = dagelijkse dagdelen.
+    """
+
+    __tablename__ = "verzendingen"
+    __table_args__ = (
+        UniqueConstraint("uitzending_id", "subscriber_id", "dag", name="uq_verzending"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    uitzending_id: Mapped[int] = mapped_column(ForeignKey("uitzendingen.id", ondelete="CASCADE"), index=True)
+    subscriber_id: Mapped[int] = mapped_column(ForeignKey("subscribers.id", ondelete="CASCADE"), index=True)
+    dag: Mapped[int] = mapped_column(Integer, default=0)
+    verzonden_op: Mapped[DateTime] = mapped_column(DateTime, server_default=func.now())
+
+
+def _voeg_ontbrekende_kolommen_toe():
+    """Lichte auto-migratie: voeg nieuwe modelkolommen toe aan bestaande tabellen.
+
+    create_all() maakt alleen ontbrekende tabellen, geen ontbrekende kolommen.
+    Tijdens deze snelle ontwikkelfase voorkomt dit dat een schema-uitbreiding de
+    bestaande (Railway-)database breekt. Voor complexere migraties later: Alembic.
+    """
+    insp = sa_inspect(engine)
+    for table in Base.metadata.sorted_tables:
+        if not insp.has_table(table.name):
+            continue
+        bestaand = {c["name"] for c in insp.get_columns(table.name)}
+        for kol in table.columns:
+            if kol.name in bestaand:
+                continue
+            coltype = kol.type.compile(dialect=engine.dialect)
+            standaard = ""
+            arg = getattr(kol.default, "arg", None)
+            if arg is not None and not callable(arg):
+                if isinstance(arg, bool):
+                    waarde = ("1" if arg else "0") if _is_sqlite else ("true" if arg else "false")
+                elif isinstance(arg, (int, float)):
+                    waarde = str(arg)
+                else:
+                    waarde = "'" + str(arg).replace("'", "''") + "'"
+                standaard = f" DEFAULT {waarde}"
+            with engine.begin() as conn:
+                conn.execute(text(
+                    f'ALTER TABLE {table.name} ADD COLUMN {kol.name} {coltype}{standaard}'
+                ))
+
+
 def init_db():
     Base.metadata.create_all(engine)
+    _voeg_ontbrekende_kolommen_toe()

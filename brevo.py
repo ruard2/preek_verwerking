@@ -11,31 +11,42 @@ import urllib.request
 API = "https://api.brevo.com/v3/smtp/email"
 
 
-def _afzender():
+def _afzender(van_naam=None):
+    # Eén geverifieerd afzenderadres (van jouw domein) voor alle kerken; de
+    # weergavenaam is per kerk anders. BREVO_SENDER_NAAM is alleen een fallback
+    # voor systeemmails (verificatie/reset).
     return {
-        "name": os.environ.get("BREVO_SENDER_NAAM", "Preekverwerker"),
+        "name": van_naam or os.environ.get("BREVO_SENDER_NAAM", "Preekverwerker"),
         "email": os.environ.get("BREVO_SENDER_EMAIL", "no-reply@example.com"),
     }
 
 
-def verzend(naar_email, onderwerp, html, tekst=None):
-    """Verstuur één e-mail. Geeft True bij verzonden, False bij (dev-)fallback."""
+def verzend(naar_email, onderwerp, html, tekst=None, van_naam=None, antwoord_naar=None):
+    """Verstuur één e-mail. Geeft True bij verzonden, False bij (dev-)fallback.
+
+    van_naam: weergavenaam van de afzender (meestal de kerknaam).
+    antwoord_naar: Reply-To-adres (meestal het e-mailadres van de kerk).
+    """
     sleutel = os.environ.get("BREVO_API_KEY")
     if not sleutel:
         print(
             f"\n[BREVO dev-fallback] Geen BREVO_API_KEY.\n"
+            f"  Van:        {van_naam or '(standaard)'}\n"
             f"  Aan:        {naar_email}\n"
+            f"  Antwoord:   {antwoord_naar or '-'}\n"
             f"  Onderwerp:  {onderwerp}\n"
             f"  Tekst:      {tekst or _plat(html)}\n"
         )
         return False
 
     payload = {
-        "sender": _afzender(),
+        "sender": _afzender(van_naam),
         "to": [{"email": naar_email}],
         "subject": onderwerp,
         "htmlContent": html,
     }
+    if antwoord_naar:
+        payload["replyTo"] = {"email": antwoord_naar}
     if tekst:
         payload["textContent"] = tekst
     req = urllib.request.Request(

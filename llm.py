@@ -85,9 +85,9 @@ Algemene eisen
 * Gebruik per dag één hoofdgedachte. Probeer niet de hele preek in ieder daggedeelte te herhalen.
 * Zorg dat de zeven dagen samen de belangrijkste lijn van de preek volgen.
 * Gebruik alleen Bijbelteksten die in de preek worden genoemd of duidelijk rechtstreeks aansluiten bij de boodschap.
-* Citeer Bijbelteksten in natuurlijk Nederlands.
-* Wanneer geen Bijbelvertaling is opgegeven, gebruik dan bij voorkeur de NBV21.
-* Vermijd lange citaten. Kies per dag één of enkele verzen die echt bij de hoofdgedachte passen.
+* Citeer Bijbelteksten NIET volledig. Zet in het veld "bijbeltekst" uitsluitend de VERWIJZING (bijbelboek hoofdstuk:vers, bijvoorbeeld "Zacharia 4:6"). Neem géén heel vers of meerdere verzen letterlijk over.
+* Een heel kort fragment van hooguit enkele woorden mag, maar alleen tussen aanhalingstekens en met de verwijzing erbij; nooit een volledige zin of vers uit de Bijbel.
+* Verwoord de inhoud van de tekst verder in je eigen woorden in de overdenking.
 
 Lengte
 
@@ -118,7 +118,7 @@ eromheen, met exact deze velden:
   "dagen": [
     {
       "titel": "<korte titel>",
-      "bijbeltekst": "<passend Bijbelexcerpt>",
+      "bijbeltekst": "<alleen de Bijbelverwijzing, bijv. 'Zacharia 4:6'; geen volledig vers>",
       "gedachte": "<overdenking van ongeveer 100 tot 160 woorden>",
       "vraag_volwassenen": "<één reflectievraag voor volwassenen>",
       "vraag_kinderen": "<één eenvoudige gespreksvraag voor kinderen>"
@@ -174,9 +174,9 @@ Taal van de uitvoer
 vragen — in de taal van de preek zelf. Is de preek in het Afrikaans, schrijf \
 dan in het Afrikaans; is hij in het Engels, in het Engels; enzovoort. Vertaal \
 de inhoud niet naar het Nederlands.
-* Citeer Bijbelteksten in diezelfde taal, uit een gangbare vertaling in die \
-taal (Nederlands: NBV21; Engels: bijvoorbeeld de NIV; Afrikaans: de Afrikaanse \
-Bybel), tenzij in de preek een andere vertaling wordt gebruikt.
+* Schrijf de Bijbelverwijzingen met de bijbelboeknaam in diezelfde taal \
+(bijvoorbeeld Engels "Zechariah 4:6", Afrikaans "Sagaria 4:6"). Neem geen \
+volledige verzen letterlijk over, in geen enkele taal.
 * Zet in het veld "taal" de ISO-code van die taal (nl, af, en, ...).
 """
 

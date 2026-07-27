@@ -381,6 +381,19 @@ function toonResultaat(taak) {
     }
     if (res.heeft_ruw)
       dl('Ruw transcript', '/api/transcript/' + res.video_id + '.txt');
+    const verstuur = el('button', 'klein primair', 'Verstuur naar inschrijvers');
+    verstuur.addEventListener('click', async () => {
+      if (!confirm('Het weekboekje naar alle bevestigde inschrijvers versturen?')) return;
+      verstuur.disabled = true; verstuur.textContent = 'Versturen…';
+      try {
+        const r = await fetch('/api/admin/verstuur/' + res.video_id, {method: 'POST'});
+        if (r.status === 401) throw new Error('Log eerst in als kerkbeheerder (/admin).');
+        if (!r.ok) throw new Error(await fouttekst(r, 'Versturen mislukt.'));
+        const d = await r.json();
+        verstuur.textContent = `Verzonden naar ${d.verzonden} ✓`;
+      } catch (f) { verstuur.textContent = 'Verstuur naar inschrijvers'; verstuur.disabled = false; alert(f.message); }
+    });
+    rechts.appendChild(verstuur);
   }
   if (huidigeUrl) {
     const opnieuw = el('button', 'klein', 'Opnieuw verwerken');

@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Aanmelden voor de overdenkingen</title>
+<style>
+  :root { --groen:#2c5f2d; --rand:#e2e2dd; --tekst:#23231f; --grijs:#6b6b64; --bg:#faf9f5; --kaart:#fff; }
+  @media (prefers-color-scheme: dark) {
+    :root { --groen:#7bb87c; --rand:#33332e; --tekst:#ecebe4; --grijs:#a5a59b; --bg:#17171a; --kaart:#1f1f22; }
+  }
+  * { box-sizing: border-box; }
+  body { font-family: Georgia, serif; max-width: 32rem; margin: 0 auto; padding: 2.5rem 1.25rem;
+    background: var(--bg); color: var(--tekst); line-height: 1.6; }
+  h1 { font-size: 1.5rem; color: var(--groen); margin: 0 0 .3rem; }
+  .sub { color: var(--grijs); margin-top: 0; }
+  label { display: block; font-size: .8rem; color: var(--grijs); margin: .8rem 0 .15rem;
+    text-transform: uppercase; letter-spacing: .05em; font-family: system-ui, sans-serif; }
+  input, select { width: 100%; padding: .55rem .7rem; font-size: 1rem; font-family: inherit;
+    border: 1px solid var(--rand); border-radius: .45rem; background: var(--kaart); color: var(--tekst); }
+  button { margin-top: 1.2rem; padding: .65rem 1.4rem; font-size: 1rem; font-family: inherit;
+    border: none; border-radius: .45rem; background: var(--groen); color: #fff; cursor: pointer; }
+  .kaart { background: var(--kaart); border: 1px solid var(--rand); border-radius: .7rem; padding: 1.4rem; margin-top: 1.2rem; }
+  .melding { padding: .7rem .9rem; border-radius: .45rem; margin-top: 1rem; }
+  .ok { background: #e9f5ea; color: #1f6b25; } .fout { background: #fdecea; color: #b0201a; }
+  @media (prefers-color-scheme: dark) { .ok { background:#1c2a1c; color:#9fd6a3; } .fout { background:#3a1c1a; color:#f0a9a3; } }
+</style>
+</head>
+<body>
+  <h1 id="titel">Aanmelden</h1>
+  <p class="sub" id="onder">Ontvang de wekelijkse overdenkingen bij de preek.</p>
+  <div id="melding"></div>
+  <div id="inhoud"></div>
+<script>
+const params = new URLSearchParams(location.search);
+const kerkId = params.get('kerk');
+const meldingEl = document.getElementById('melding');
+const inhoud = document.getElementById('inhoud');
+function toon(soort, tekst) { meldingEl.innerHTML = `<div class="melding ${soort}">${tekst}</div>`; }
+const val = id => document.getElementById(id).value.trim();
+
+async function fouttekst(r) { const d = await r.json().catch(()=>({})); return (typeof d.detail==='string'?d.detail:null) || 'Er ging iets mis.'; }
+
+if (params.get('bevestigd')) toon('ok', 'Je aanmelding is bevestigd. Je ontvangt vanaf nu de overdenkingen.');
+if (params.get('bevestig_mislukt')) toon('fout', 'Deze bevestigingslink is ongeldig of verlopen.');
+
+if (!kerkId) {
+  toon('fout', 'Geen kerk opgegeven in de link.');
+} else {
+  fetch('/api/kerk/' + kerkId).then(r => r.ok ? r.json() : Promise.reject())
+    .then(k => {
+      document.getElementById('titel').textContent = 'Aanmelden — ' + k.naam;
+      bouwFormulier();
+    })
+    .catch(() => toon('fout', 'Deze kerk bestaat niet (controleer de link).'));
+}
+
+function bouwFormulier() {
+  inhoud.innerHTML = `
+    <div class="kaart">
+      <label for="naam">Naam</label><input id="naam">
+      <label for="email">E-mailadres *</label><input id="email" type="email" required>
+      <label for="tel">Telefoonnummer (optioneel)</label><input id="tel">
+      <label for="freq">Hoe vaak wil je ontvangen?</label>
+      <select id="freq">
+        <option value="wekelijks">Eén keer per week (hele weekboekje ineens)</option>
+        <option value="dagelijks">Dagelijks (één overdenking per dag)</option>
+      </select>
+      <button id="knop">Aanmelden</button>
+    </div>`;
+  document.getElementById('knop').onclick = async () => {
+    if (!val('email')) { toon('fout', 'Vul je e-mailadres in.'); return; }
+    try {
+      const r = await fetch('/api/inschrijven', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({kerk_id: +kerkId, naam: val('naam'), email: val('email'),
+          telefoon: val('tel'), frequentie: val('freq')})
+      });
+      if (!r.ok) throw new Error(await fouttekst(r));
+      inhoud.innerHTML = '';
+      toon('ok', 'Bijna klaar! We hebben je een bevestigingsmail gestuurd. Klik op de link daarin om je aanmelding af te ronden.');
+    } catch (f) { toon('fout', f.message); }
+  };
+}
+</script>
+</body>
+</html>
