@@ -363,6 +363,72 @@ def uitzendingen(request: Request, db=Depends(get_db)):
     return uit
 
 
+@router.get("/api/admin/scan-diagnose")
+def scan_diagnose(request: Request, db=Depends(get_db)):
+    """Leg uit waarom de scan wel/geen diensten vindt (zonder te verwerken)."""
+    import main
+    from datetime import timedelta
+
+    kerk = _vereis_kerk(request, db)
+    url = (kerk.kanaal_url or "").strip()
+    uit = {"kanaal_url": url}
+    if not url:
+        uit["probleem"] = "Er is nog geen kanaal-URL ingesteld bij Basisinstellingen."
+        return uit
+
+    typ, soort = main._classificeer(url)
+    uit["type"] = typ
+    uit["soort"] = soort
+    if not typ:
+        uit["probleem"] = "De kanaal-URL wordt niet herkend als YouTube of Kerkdienstgemist."
+        return uit
+    if soort != "kanaal":
+        uit["probleem"] = (
+            "Dit is een link naar één preek, geen kanaal/station. Zet bij "
+            "Basisinstellingen de kanaal- of station-URL (de lijst met diensten)."
+        )
+        return uit
+
+    try:
+        diensten = main._laad_diensten(typ, url)
+    except Exception as fout:  # noqa: BLE001
+        uit["probleem"] = f"De kanaallijst kon niet worden opgehaald: {fout}"
+        return uit
+
+    nu = automatisering._nu_lokaal(kerk)
+    grens = nu.date() - timedelta(days=automatisering.SCAN_TERUG_DAGEN)
+    uit["nu"] = nu.date().isoformat()
+    uit["ondergrens_datum"] = grens.isoformat()
+    uit["aantal_in_lijst"] = len(diensten)
+    uit["aantal_gepland"] = sum(1 for d in diensten if d.get("gepland"))
+
+    binnen, te_oud, in_toekomst = [], 0, 0
+    for d in diensten:
+        if d.get("gepland"):
+            continue
+        datum = automatisering._naar_datum(d.get("datum"))
+        if not datum:
+            continue
+        if datum < grens:
+            te_oud += 1
+        elif datum > nu.date():
+            in_toekomst += 1
+        else:
+            binnen.append(d.get("datum"))
+    uit["binnen_venster"] = binnen
+    uit["te_oud"] = te_oud
+    uit["in_toekomst"] = in_toekomst
+    if not binnen:
+        uit["probleem"] = (
+            "Er staan geen gestreamde diensten in het venster van de laatste "
+            f"{automatisering.SCAN_TERUG_DAGEN} dagen. Voorbeelden uit de lijst: "
+            + ", ".join(str(d.get("datum")) for d in diensten[:5])
+        )
+    else:
+        uit["ok"] = f"{len(binnen)} dienst(en) zouden verwerkt worden."
+    return uit
+
+
 @router.post("/api/admin/scan-nu")
 def scan_nu(request: Request, db=Depends(get_db)):
     kerk = _vereis_kerk(request, db)
