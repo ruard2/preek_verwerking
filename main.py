@@ -55,6 +55,10 @@ class VerwerkVerzoek(BaseModel):
     herverwerk: bool = False
 
 
+class BewerkVerzoek(BaseModel):
+    velden: dict
+
+
 def _video_id(url):
     m = VIDEO_ID_RE.search(url or "")
     return m.group(1) if m else None
@@ -379,6 +383,34 @@ def _ophalen_of_404(video_id):
     if not bewaard or not bewaard.get("data"):
         raise HTTPException(404, "Voor deze dienst is nog geen verwerking beschikbaar.")
     return bewaard
+
+
+DAG_VELDEN = ("titel", "bijbeltekst", "gedachte", "vraag_volwassenen",
+              "vraag_kinderen")
+
+
+@app.post("/api/bewerk/{video_id}")
+def bewerk(video_id: str, verzoek: BewerkVerzoek):
+    """Handmatige bewerkingen opslaan; PDF/tekst gebruiken daarna deze versie."""
+    bewaard = _ophalen_of_404(video_id)
+    data = dict(bewaard["data"])
+    v = verzoek.velden or {}
+    for veld in ("titel", "bijbelgedeelte", "samenvatting", "liturgie"):
+        if isinstance(v.get(veld), str):
+            data[veld] = v[veld]
+    if "voorganger" in v:
+        data["voorganger"] = (v["voorganger"] or "").strip() or None
+    if isinstance(v.get("dagen"), list):
+        dagen = [dict(d) for d in (data.get("dagen") or [])]
+        for i, nieuw in enumerate(v["dagen"]):
+            if i < len(dagen) and isinstance(nieuw, dict):
+                for veld in DAG_VELDEN:
+                    if isinstance(nieuw.get(veld), str):
+                        dagen[i][veld] = nieuw[veld]
+        data["dagen"] = dagen
+    tekst = render.naar_tekst(data)
+    store.resultaat_opslaan(video_id, {**bewaard, "data": data, "tekst": tekst})
+    return {"data": _met_labels(data), "tekst": tekst, "video_id": video_id}
 
 
 @app.get("/api/pdf/{video_id}")

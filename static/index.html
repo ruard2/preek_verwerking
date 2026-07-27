@@ -105,6 +105,13 @@
   .kaart p { margin: .1rem 0; }
   .vraag { background: var(--groen-licht); border-radius: .4rem; padding: .5rem .7rem; }
   .samenvatting { font-size: 1.02rem; }
+  .bewerkveld {
+    width: 100%; box-sizing: border-box; font-family: inherit; font-size: 1rem;
+    padding: .5rem .7rem; border: 1px solid var(--rand); border-radius: .4rem;
+    background: var(--kaart); color: var(--tekst); line-height: 1.5; margin-top: .1rem;
+  }
+  textarea.bewerkveld { resize: vertical; }
+  .klein.primair { background: var(--groen); color: #fff; border-color: var(--groen); }
 </style>
 </head>
 <body>
@@ -138,6 +145,7 @@ const resultaatEl = document.getElementById('resultaat');
 let bezig = false;
 let huidigKanaal = null;
 let huidigeUrl = null;
+let huidigResultaat = null;
 const WEEKDAG = {weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'};
 
 function bezigStand(aan) { bezig = aan; laadbalk.classList.toggle('aan', aan); }
@@ -335,7 +343,8 @@ function el(tag, cls, tekst) {
 }
 
 function toonResultaat(taak) {
-  const res = taak.resultaat || {};
+  const res = taak.resultaat || (huidigResultaat = huidigResultaat || {});
+  if (taak.resultaat) huidigResultaat = taak.resultaat;
   const data = res.data;
   resultaatEl.innerHTML = '';
 
@@ -347,6 +356,11 @@ function toonResultaat(taak) {
   });
   balk.appendChild(terug);
   const rechts = el('div', 'rechts');
+  if (data) {
+    const bewerk = el('button', 'klein', '✎ Bewerken');
+    bewerk.addEventListener('click', () => toonBewerken());
+    rechts.appendChild(bewerk);
+  }
   const kopieer = el('button', 'klein', 'Kopieer tekst');
   kopieer.addEventListener('click', async () => {
     await navigator.clipboard.writeText(res.tekst || '');
@@ -423,6 +437,97 @@ function toonResultaat(taak) {
     pre.textContent = data.liturgie;
     det.appendChild(pre);
     resultaatEl.appendChild(det);
+  }
+}
+
+function _veld(labelTekst, waarde, multiline) {
+  const wrap = el('div'); wrap.style.marginBottom = '.7rem';
+  wrap.appendChild(el('div', 'label', labelTekst));
+  const inp = document.createElement(multiline ? 'textarea' : 'input');
+  inp.className = 'bewerkveld';
+  inp.value = waarde || '';
+  if (multiline) inp.rows = Math.min(14, Math.max(2, Math.ceil(((waarde || '').length) / 68) + 1));
+  wrap.appendChild(inp);
+  return {wrap, inp};
+}
+
+function toonBewerken() {
+  const res = huidigResultaat || {};
+  const data = res.data; if (!data) return;
+  const L = data._labels || {};
+  resultaatEl.innerHTML = '';
+
+  const balk = el('div', 'balk');
+  const opslaan = el('button', 'klein primair', '✓ Opslaan');
+  const annuleer = el('button', 'klein', 'Annuleren');
+  annuleer.addEventListener('click', () => toonResultaat({resultaat: res}));
+  balk.appendChild(opslaan); balk.appendChild(annuleer);
+  resultaatEl.appendChild(balk);
+
+  const refs = {dagen: []};
+  const kaartT = el('div', 'kaart');
+  let f;
+  f = _veld(L.titel || 'Titel', data.titel, false); refs.titel = f.inp; kaartT.appendChild(f.wrap);
+  f = _veld(L.bijbelgedeelte || 'Bijbelgedeelte', data.bijbelgedeelte, false);
+  refs.bijbelgedeelte = f.inp; kaartT.appendChild(f.wrap);
+  f = _veld(L.voorganger || 'Voorganger', data.voorganger, false);
+  refs.voorganger = f.inp; kaartT.appendChild(f.wrap);
+  f = _veld(L.samenvatting || 'Samenvatting', data.samenvatting, true);
+  refs.samenvatting = f.inp; kaartT.appendChild(f.wrap);
+  resultaatEl.appendChild(kaartT);
+
+  (data.dagen || []).forEach((dag, i) => {
+    const k = el('div', 'kaart');
+    k.appendChild(el('h4', null, `${L.dag || 'Dag'} ${i + 1}`));
+    const r = {};
+    f = _veld(L.titel || 'Titel', dag.titel, false); r.titel = f.inp; k.appendChild(f.wrap);
+    f = _veld(L.bijbeltekst || 'Bijbeltekst', dag.bijbeltekst, true); r.bijbeltekst = f.inp; k.appendChild(f.wrap);
+    f = _veld(L.gedachte || 'Gedachte', dag.gedachte, true); r.gedachte = f.inp; k.appendChild(f.wrap);
+    f = _veld(L.vraag || 'Vraag', dag.vraag_volwassenen, true); r.vraag_volwassenen = f.inp; k.appendChild(f.wrap);
+    f = _veld(L.vraag_kinderen || 'Vraag voor kinderen', dag.vraag_kinderen, true); r.vraag_kinderen = f.inp; k.appendChild(f.wrap);
+    refs.dagen[i] = r;
+    resultaatEl.appendChild(k);
+  });
+
+  if (data.liturgie != null) {
+    const k = el('div', 'kaart');
+    f = _veld(L.liturgie || 'Liturgie', data.liturgie, true); refs.liturgie = f.inp; k.appendChild(f.wrap);
+    resultaatEl.appendChild(k);
+  }
+
+  opslaan.addEventListener('click', () => slaBewerkingOp(res, refs, opslaan));
+  window.scrollTo({top: 0, behavior: 'smooth'});
+}
+
+async function slaBewerkingOp(res, refs, knop) {
+  const velden = {
+    titel: refs.titel.value.trim(),
+    bijbelgedeelte: refs.bijbelgedeelte.value.trim(),
+    voorganger: refs.voorganger.value.trim(),
+    samenvatting: refs.samenvatting.value.trim(),
+    dagen: refs.dagen.map(r => ({
+      titel: r.titel.value.trim(),
+      bijbeltekst: r.bijbeltekst.value.trim(),
+      gedachte: r.gedachte.value.trim(),
+      vraag_volwassenen: r.vraag_volwassenen.value.trim(),
+      vraag_kinderen: r.vraag_kinderen.value.trim(),
+    })),
+  };
+  if (refs.liturgie) velden.liturgie = refs.liturgie.value.trim();
+
+  knop.disabled = true; knop.textContent = 'Opslaan…';
+  try {
+    const antwoord = await fetch('/api/bewerk/' + res.video_id, {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({velden})
+    });
+    if (!antwoord.ok) throw new Error(await fouttekst(antwoord, 'Opslaan mislukt.'));
+    const bijgewerkt = await antwoord.json();
+    huidigResultaat = {...res, data: bijgewerkt.data, tekst: bijgewerkt.tekst};
+    toonResultaat({resultaat: huidigResultaat});
+  } catch (fout) {
+    knop.disabled = false; knop.textContent = '✓ Opslaan';
+    alert(fout.message);
   }
 }
 
