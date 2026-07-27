@@ -29,6 +29,7 @@ import transcript as ts
 from audio import transcribeer_preek
 from llm import verwerk_preek
 from llm import normaliseer as llm_normaliseer
+from llm import schoon_transcript as llm_schoon_transcript
 from transcript import (
     haal_preek_segmentatie,
     lijst_diensten,
@@ -158,7 +159,7 @@ def _proces_kerkdienstgemist(url, meld):
         "duur_minuten": preek_min,
         "transcriptie_bron": "Kerkdienstgemist (audio via OpenAI)",
     }
-    return data, tekst, meta, o["titel"]
+    return data, tekst, meta, o["titel"], transcript
 
 
 def _proces_youtube(url, meld):
@@ -202,7 +203,7 @@ def _proces_youtube(url, meld):
          "minuten duren...")
     data = verwerk_preek(transcript, seg["welkom"], taal_hint=taal_hint)
     tekst = render.naar_tekst(data)
-    return data, tekst, meta, meta.get("titel")
+    return data, tekst, meta, meta.get("titel"), transcript
 
 
 def _voer_taak_uit(taak_id, url):
@@ -229,6 +230,8 @@ def _voer_taak_uit(taak_id, url):
                     "data": _met_labels(data),
                     "tekst": tekst,
                     "video_id": vid,
+                    "heeft_preek": bool(bewaard.get("preek_schoon")),
+                    "heeft_ruw": bool(bewaard.get("transcript_ruw")),
                 }
                 taak["stap"] = "Uit opslag geladen."
                 taak["status"] = "klaar"
@@ -236,19 +239,42 @@ def _voer_taak_uit(taak_id, url):
 
         # 2. Verwerken via de juiste bron.
         if is_kdg:
-            data, tekst, meta, ondertitel = _proces_kerkdienstgemist(url, meld)
+            data, tekst, meta, ondertitel, transcript_ruw = _proces_kerkdienstgemist(
+                url, meld
+            )
         else:
-            data, tekst, meta, ondertitel = _proces_youtube(url, meld)
+            data, tekst, meta, ondertitel, transcript_ruw = _proces_youtube(url, meld)
+
+        # 2b. Opgeschoonde, volledige preektekst (aparte AI-stap; niet fataal).
+        preek_schoon = ""
+        try:
+            meld("Volledige preektekst opschonen...")
+            preek_schoon = llm_schoon_transcript(transcript_ruw, data.get("taal"))
+        except Exception:  # noqa: BLE001 — zonder schone preek gaan we gewoon door
+            preek_schoon = ""
 
         taak["meta"] = meta
-        taak["resultaat"] = {"data": _met_labels(data), "tekst": tekst, "video_id": vid}
+        taak["resultaat"] = {
+            "data": _met_labels(data),
+            "tekst": tekst,
+            "video_id": vid,
+            "heeft_preek": bool(preek_schoon),
+            "heeft_ruw": bool((transcript_ruw or "").strip()),
+        }
         taak["status"] = "klaar"
 
         # 3. Permanent bewaren zodat deze dienst nooit opnieuw verwerkt hoeft.
         if vid:
             store.resultaat_opslaan(
                 vid,
-                {"data": data, "tekst": tekst, "meta": meta, "ondertitel": ondertitel},
+                {
+                    "data": data,
+                    "tekst": tekst,
+                    "meta": meta,
+                    "ondertitel": ondertitel,
+                    "transcript_ruw": transcript_ruw,
+                    "preek_schoon": preek_schoon,
+                },
             )
     except Exception as fout:  # noqa: BLE001 — alles netjes aan de gebruiker melden
         melding = str(fout)
@@ -331,26 +357,71 @@ def status(taak_id: str):
     return taak
 
 
-def _pdf_bestandsnaam(data):
-    naam = re.sub(r"[^\w\- ]", "", (data.get("titel") or "preekverwerking")).strip()
-    naam = re.sub(r"\s+", "-", naam) or "preekverwerking"
-    return f"{naam[:80]}.pdf"
+def _bestandsnaam(data, achtervoegsel, ext):
+    naam = re.sub(r"[^\w\- ]", "", (data.get("titel") or "preek")).strip()
+    naam = re.sub(r"\s+", "-", naam) or "preek"
+    return f"{naam[:70]}{achtervoegsel}.{ext}"
+
+
+def _bestand(inhoud, media_type, bestandsnaam):
+    if isinstance(inhoud, str):
+        inhoud = inhoud.encode("utf-8")
+    return Response(
+        content=inhoud,
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{bestandsnaam}"'},
+    )
+
+
+def _ophalen_of_404(video_id):
+    bewaard = store.resultaat_ophalen(video_id)
+    if not bewaard or not bewaard.get("data"):
+        raise HTTPException(404, "Voor deze dienst is nog geen verwerking beschikbaar.")
+    return bewaard
 
 
 @app.get("/api/pdf/{video_id}")
 def pdf(video_id: str):
-    bewaard = store.resultaat_ophalen(video_id)
-    if not bewaard or not bewaard.get("data"):
-        raise HTTPException(404, "Voor deze dienst is nog geen verwerking beschikbaar.")
+    bewaard = _ophalen_of_404(video_id)
     data = bewaard["data"]
     inhoud = render.naar_pdf(data, ondertitel=bewaard.get("ondertitel"))
-    return Response(
-        content=inhoud,
-        media_type="application/pdf",
-        headers={
-            "Content-Disposition": f'attachment; filename="{_pdf_bestandsnaam(data)}"'
-        },
-    )
+    return _bestand(inhoud, "application/pdf", _bestandsnaam(data, "", "pdf"))
+
+
+@app.get("/api/preek/{video_id}.{ext}")
+def preek(video_id: str, ext: str):
+    """Volledige, opgeschoonde preek als PDF of tekst."""
+    bewaard = _ophalen_of_404(video_id)
+    tekst = bewaard.get("preek_schoon")
+    if not tekst:
+        raise HTTPException(
+            404, "Voor deze dienst is nog geen volledige preektekst beschikbaar. "
+            "Verwerk de dienst opnieuw."
+        )
+    data = bewaard["data"]
+    onder = bewaard.get("ondertitel")
+    if ext == "pdf":
+        inhoud = render.naar_preek_pdf(data, tekst, ondertitel=onder)
+        return _bestand(inhoud, "application/pdf", _bestandsnaam(data, "-preek", "pdf"))
+    if ext == "txt":
+        inhoud = render.preek_naar_tekst(data, tekst, ondertitel=onder)
+        return _bestand(inhoud, "text/plain; charset=utf-8",
+                        _bestandsnaam(data, "-preek", "txt"))
+    raise HTTPException(400, "Onbekend formaat (gebruik pdf of txt).")
+
+
+@app.get("/api/transcript/{video_id}.txt")
+def transcript_ruw(video_id: str):
+    """Het ruwe, onbewerkte transcript zoals uitgesproken."""
+    bewaard = _ophalen_of_404(video_id)
+    tekst = bewaard.get("transcript_ruw")
+    if not tekst:
+        raise HTTPException(
+            404, "Voor deze dienst is geen ruw transcript bewaard. "
+            "Verwerk de dienst opnieuw."
+        )
+    return _bestand(tekst, "text/plain; charset=utf-8",
+                    _bestandsnaam(bewaard["data"], "-transcript", "txt"))
 
 
 @app.get("/")

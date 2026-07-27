@@ -6,6 +6,30 @@ import os
 from openai import OpenAI
 
 MODEL = os.environ.get("OPENAI_MODEL", "gpt-5")
+SCHOON_MODEL = os.environ.get("OPENAI_SCHOON_MODEL", MODEL)
+
+SCHOON_PROMPT = """\
+Je krijgt een ruw, automatisch gegenereerd transcript van één christelijke preek
+en maakt daarvan een betrouwbare, goed leesbare versie van de VOLLEDIGE preek.
+
+Regels:
+* Behoud alle inhoud, boodschap, argumentatie en voorbeelden van de spreker.
+* Vat NIET samen en kort NIET in — dit is de hele preek, alleen opgeschoond.
+* Verander de theologische strekking niet en voeg niets toe (geen nieuwe ideeën,
+  voorbeelden of conclusies).
+* Verwijder tijdcodes, herhalingen, stopwoorden en versprekingen.
+* Maak kromme of onafgemaakte zinnen grammaticaal correct; zet spreektaal om in
+  natuurlijk, goedlopend geschreven Nederlands (of de taal van de preek).
+* Deel de tekst in logische alinea's in.
+* Herstel duidelijke transcriptiefouten en corrigeer namen van Bijbelboeken en
+  Bijbelse personen. Maak onzekere details niet stilzwijgend zeker.
+* Als de preek uit meerdere delen bestaat (gemarkeerd met [VOLGEND PREEKDEEL]),
+  voeg die samen tot één doorlopende tekst; laat de markering zelf weg.
+
+Uitvoer: ALLEEN de opgeschoonde preektekst als lopende alinea's. Geen titel,
+geen kopjes, geen samenvatting, geen commentaar, geen opsomming — puur de preek.
+Schrijf in dezelfde taal als de preek.
+"""
 
 SYSTEEM_PROMPT = """\
 API-opdracht: preektranscript verwerken
@@ -259,6 +283,31 @@ def normaliseer(data):
     for dag in data.get("dagen") or []:
         _vul_synoniemen(dag, _DAG_SYNONIEMEN)
     return data
+
+
+def schoon_transcript(transcript, taal_hint=None):
+    """Herschrijf het ruwe transcript tot een opgeschoonde, leesbare volledige
+    preek (lopende tekst). Aparte AI-stap; geen samenvatting."""
+    if not os.environ.get("OPENAI_API_KEY"):
+        raise RuntimeError("OPENAI_API_KEY is niet ingesteld.")
+    if not (transcript or "").strip():
+        return ""
+    client = OpenAI()
+    inhoud = ""
+    if taal_hint:
+        inhoud += (
+            f"De preek is in de taal met code '{taal_hint}'. Schrijf de "
+            "opgeschoonde preek in díé taal.\n\n"
+        )
+    inhoud += "--- RUW TRANSCRIPT ---\n" + transcript
+    antwoord = client.chat.completions.create(
+        model=SCHOON_MODEL,
+        messages=[
+            {"role": "system", "content": SCHOON_PROMPT},
+            {"role": "user", "content": inhoud},
+        ],
+    )
+    return (antwoord.choices[0].message.content or "").strip()
 
 
 def _valideer(data, taal_hint):

@@ -354,11 +354,19 @@ function toonResultaat(taak) {
     setTimeout(() => kopieer.textContent = 'Kopieer tekst', 2000);
   });
   rechts.appendChild(kopieer);
+  const dl = (tekst, href) => {
+    const a = el('a', 'klein', tekst);
+    a.href = href; a.style.textDecoration = 'none';
+    rechts.appendChild(a);
+  };
   if (res.video_id) {
-    const pdf = el('a', 'klein', 'Download PDF');
-    pdf.href = '/api/pdf/' + res.video_id;
-    pdf.style.textDecoration = 'none';
-    rechts.appendChild(pdf);
+    dl('Weekboekje (PDF)', '/api/pdf/' + res.video_id);
+    if (res.heeft_preek) {
+      dl('Preek (PDF)', '/api/preek/' + res.video_id + '.pdf');
+      dl('Preek (tekst)', '/api/preek/' + res.video_id + '.txt');
+    }
+    if (res.heeft_ruw)
+      dl('Ruw transcript', '/api/transcript/' + res.video_id + '.txt');
   }
   if (huidigeUrl) {
     const opnieuw = el('button', 'klein', 'Opnieuw verwerken');

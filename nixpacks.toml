@@ -1,0 +1,5 @@
+# Railway/Nixpacks: installeer een volwaardige ffmpeg als systeempakket.
+# De gebundelde imageio-ffmpeg-binary crasht op Railway bij het lezen van
+# HLS-streams (SIGSEGV); audio.py gebruikt daarom bij voorkeur deze systeem-ffmpeg.
+[phases.setup]
+aptPkgs = ["ffmpeg"]

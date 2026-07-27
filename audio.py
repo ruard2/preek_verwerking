@@ -29,7 +29,16 @@ DEEL_MARKERING = "\n\n[VOLGEND PREEKDEEL — hiervoor werd gezongen]\n\n"
 
 
 def _ffmpeg():
-    """Pad naar een ffmpeg-binary die 'ffmpeg(.exe)' heet (yt-dlp/ffmpeg-vriendelijk)."""
+    """Pad naar een ffmpeg-binary die 'ffmpeg(.exe)' heet (yt-dlp/ffmpeg-vriendelijk).
+
+    Voorkeur: een echte, door het systeem geïnstalleerde ffmpeg (op Railway via
+    nixpacks.toml). De gebundelde imageio-ffmpeg-binary crasht op Railway bij het
+    lezen van HLS-streams (SIGSEGV), dus die gebruiken we alleen als terugval
+    (typisch lokaal op Windows).
+    """
+    systeem = shutil.which("ffmpeg")
+    if systeem:
+        return systeem
     src = imageio_ffmpeg.get_ffmpeg_exe()
     naam = "ffmpeg.exe" if os.name == "nt" else "ffmpeg"
     doelmap = os.path.join(tempfile.gettempdir(), "preek_ffmpeg")

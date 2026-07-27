@@ -6,6 +6,7 @@ we hier in dezelfde taal, met Engels als terugval voor onbekende talen.
 """
 
 import io
+import re
 
 from reportlab.lib.enums import TA_CENTER
 from reportlab.lib.pagesizes import A4
@@ -33,6 +34,7 @@ LABELS = {
         "vraag_kinderen": "Vraag voor kinderen",
         "week": "Weekboekje bij de preek",
         "liturgie": "Liturgie",
+        "preek": "Preek",
     },
     "en": {
         "bijbelgedeelte": "Scripture",
@@ -45,6 +47,7 @@ LABELS = {
         "vraag_kinderen": "Question for children",
         "week": "Weekly devotional",
         "liturgie": "Order of service",
+        "preek": "Sermon",
     },
     "af": {
         "bijbelgedeelte": "Skrifgedeelte",
@@ -57,6 +60,7 @@ LABELS = {
         "vraag_kinderen": "Vraag vir kinders",
         "week": "Weeklikse oordenking",
         "liturgie": "Liturgie",
+        "preek": "Preek",
     },
 }
 
@@ -176,5 +180,52 @@ def naar_pdf(data, ondertitel=None):
         flow.append(_p(L["liturgie"], s["kop"]))
         flow.append(_p(data["liturgie"], s["tekst"]))
 
+    doc.build(flow)
+    return buf.getvalue()
+
+
+def preek_naar_tekst(data, preek_tekst, ondertitel=None):
+    """Platte tekstversie van de volledige (opgeschoonde) preek."""
+    L = labels(data.get("taal"))
+    r = [data.get("titel", ""), ""]
+    if data.get("bijbelgedeelte"):
+        r.append(f"{L['bijbelgedeelte']}: {data['bijbelgedeelte']}")
+    if data.get("voorganger"):
+        r.append(f"{L['voorganger']}: {data['voorganger']}")
+    if ondertitel:
+        r.append(ondertitel)
+    r += ["", (preek_tekst or "").strip()]
+    return "\n".join(r).strip()
+
+
+def naar_preek_pdf(data, preek_tekst, ondertitel=None):
+    """PDF van de volledige (opgeschoonde) preek: kop + lopende alinea's."""
+    L = labels(data.get("taal"))
+    s = _stijlen()
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buf, pagesize=A4,
+        leftMargin=2.2 * cm, rightMargin=2.2 * cm,
+        topMargin=2 * cm, bottomMargin=2 * cm,
+        title=f"{data.get('titel', L['preek'])} – {L['preek']}",
+    )
+    flow = [_p(data.get("titel", ""), s["titel"])]
+    onder = []
+    if data.get("bijbelgedeelte"):
+        onder.append(f"{L['bijbelgedeelte']}: {data['bijbelgedeelte']}")
+    if data.get("voorganger"):
+        onder.append(f"{L['voorganger']}: {data['voorganger']}")
+    if ondertitel:
+        onder.append(ondertitel)
+    for regel in onder:
+        flow.append(_p(regel, s["onder"]))
+    flow.append(Spacer(1, 6))
+    flow.append(HRFlowable(width="100%", thickness=1.2,
+                           color=colors.HexColor("#2c5f2d")))
+    flow.append(Spacer(1, 6))
+    # Elke alinea (gescheiden door lege regels) als eigen paragraaf.
+    alineas = [a.strip() for a in re.split(r"\n\s*\n", preek_tekst or "") if a.strip()]
+    for a in alineas:
+        flow.append(_p(a, s["tekst"]))
     doc.build(flow)
     return buf.getvalue()
