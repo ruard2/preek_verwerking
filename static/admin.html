@@ -203,12 +203,21 @@ function toonDashboard(mij) {
   document.getElementById('onderschrift').textContent =
     `Ingelogd als ${mij.email}${mij.naam ? ' · ' + mij.naam : ''}`;
 
-  const stappen = el('div', {className: 'steps'});
-  [['1','Bron instellen','YouTube of Kerkdienstgemist'],['2','Communicatie instellen','Taal, timing en goedkeuring'],
-   ['3','Inschrijvers uitnodigen','Deel link of QR-code'],['4','Klaar voor automatische verwerking','AfterSermon doet de rest']]
-    .forEach(s => { const x=el('div',{className:'step'}); x.innerHTML=`<div class="step-number">${s[0]}</div><div><b>${s[1]}</b><span>${s[2]}</span></div>`; stappen.appendChild(x); });
-  inhoud.appendChild(stappen);
-  const grid = el('div', {className:'dashboard-grid'}); inhoud.appendChild(grid);
+  const tabNav = el('nav', {className:'beheer-tabs', ariaLabel:'Beheeronderdelen'});
+  const basisPane = el('section', {className:'tab-pane actief', id:'tab-basis'});
+  const ledenPane = el('section', {className:'tab-pane', id:'tab-leden'});
+  const berichtenPane = el('section', {className:'tab-pane', id:'tab-berichten'});
+  [['tab-basis','Basisinstellingen'],['tab-leden','Verzendlijst'],['tab-berichten','Berichten']]
+    .forEach(([id,label],i) => {
+      const b=el('button',{className:i===0?'actief':'',type:'button'},label);
+      b.onclick=()=>{
+        [basisPane,ledenPane,berichtenPane].forEach(p=>p.classList.toggle('actief',p.id===id));
+        [...tabNav.children].forEach(x=>x.classList.toggle('actief',x===b));
+        if(id==='tab-berichten' && mij.kanaal_url) laadKanaalDiensten(mij.kanaal_url);
+      };
+      tabNav.appendChild(b);
+    });
+  inhoud.append(tabNav,basisPane,ledenPane,berichtenPane);
 
   const kaart = el('div', {className: 'kaart wide'});
   kaart.appendChild(el('div',{className:'eyebrow'},'Overzicht'));
@@ -247,6 +256,7 @@ function toonDashboard(mij) {
         admin_taal: val('admin_taal'), inschrijf_taal: val('inschrijf_taal'),
         communicatie_taal: val('communicatie_taal')
       });
+      mij.kanaal_url = kanaalUrl;
       toon('ok', kanaalUrl
         ? 'Instellingen opgeslagen. Het kanaal wordt nu direct gescand.'
         : 'Instellingen opgeslagen.');
@@ -271,21 +281,30 @@ function toonDashboard(mij) {
   taalSelect('Taal inschrijfpagina','inschrijf_taal',mij.inschrijf_taal);
   taalSelect('Taal communicatie','communicatie_taal',mij.communicatie_taal,false);
   kaart.insertBefore(talen, knop);
-  grid.appendChild(kaart);
+  basisPane.appendChild(kaart);
+  document.getElementById('kanaal').addEventListener('change', () => knop.click());
 
   // --- Diensten & verzending ---
-  const auto = el('div', {className: 'kaart'});
-  auto.appendChild(el('h2', {}, 'Diensten & verzending'));
+  const auto = el('div', {className: 'kaart berichten-kaart'});
+  auto.appendChild(el('div',{className:'eyebrow'},'Berichten'));
+  auto.appendChild(el('h2', {}, 'Overdenkingen beheren'));
   auto.appendChild(el('p', {className: 'sub'},
-    'Nieuwe diensten worden automatisch opgepikt en verwerkt. Staat "automatisch versturen" uit, dan krijg je een mail om goed te keuren.'));
-  const scanKnop = el('button', {className: 'klein'}, 'Scan nu op nieuwe diensten');
+    'De laatste vier weken worden automatisch uit je opgeslagen kanaal geladen. Open een dienst om de overdenking te verwerken of te bewerken.'));
+  const berichtTabs = el('div',{className:'subtabs'});
+  const wachtTab=el('button',{type:'button',className:'actief'},'Te versturen');
+  const klaarTab=el('button',{type:'button'},'Reeds verstuurd');
+  berichtTabs.append(wachtTab,klaarTab); auto.appendChild(berichtTabs);
+  const wachtLijst=el('div',{id:'uitz-wacht'});
+  const klaarLijst=el('div',{id:'uitz-klaar',className:'weg'});
+  wachtTab.onclick=()=>{wachtTab.className='actief';klaarTab.className='';wachtLijst.classList.remove('weg');klaarLijst.classList.add('weg');};
+  klaarTab.onclick=()=>{klaarTab.className='actief';wachtTab.className='';klaarLijst.classList.remove('weg');wachtLijst.classList.add('weg');};
+  const scanKnop = el('button', {className: 'secundair', type:'button'}, 'Kanaal nu vernieuwen');
   scanKnop.id = 'scanKnop';
   scanKnop.onclick = () => startScan();
   auto.appendChild(scanKnop);
   auto.appendChild(el('p', {id: 'scanStatus', className: 'sub'}, ''));
-  const ulijst = el('div', {id: 'uitz'}); ulijst.style.marginTop = '.8rem';
-  auto.appendChild(ulijst);
-  grid.appendChild(auto);
+  auto.append(wachtLijst,klaarLijst);
+  berichtenPane.appendChild(auto);
   laadUitzendingen();
   if (mij.kanaal_url) {
     laadKanaalDiensten(mij.kanaal_url).then(() => startScan(true));
@@ -312,7 +331,7 @@ function toonDashboard(mij) {
     } catch (f) { toon('fout', f.message); }
   };
   subs.appendChild(stoe);
-  grid.appendChild(subs);
+  ledenPane.appendChild(subs);
   laadInschrijvers();
 
   // --- Delen ---
@@ -324,7 +343,7 @@ function toonDashboard(mij) {
   const img = el('img', {id: 'qr'}); img.style.marginTop = '1rem'; img.style.width = '180px';
   img.src = '/api/admin/qr';
   deel.appendChild(img);
-  grid.appendChild(deel);
+  ledenPane.appendChild(deel);
   fetch('/api/admin/inschrijflink').then(r => r.json()).then(d => linkveld.value = d.url);
 
   const uit = el('button', {className: 'link'}, 'Uitloggen');
@@ -337,34 +356,41 @@ let verwerkteDiensten = [];
 let scanTimer = null;
 
 function renderDiensten() {
-  const lijst = document.getElementById('uitz');
-  if (!lijst) return;
-  lijst.innerHTML = '';
-  if (kanaalDiensten.length) {
-    lijst.appendChild(el('h3', {}, `Gevonden op het kanaal (${kanaalDiensten.length})`));
-    kanaalDiensten.slice(0, 12).forEach(d => {
-      const verwerkt = verwerkteDiensten.find(u => u.video_id === d.id);
-      const r = el('div', {className: 'rij dienstregel'});
-      r.style.borderBottom = '1px solid var(--rand)'; r.style.padding = '.55rem 0';
-      r.appendChild(el('span', {}, `${d.datum || ''} · ${d.titel || d.label || 'Dienst'}`));
-      r.appendChild(el('small', {className: verwerkt ? 'status-klaar' : 'sub'},
-        verwerkt ? 'Verwerkt' : 'Wordt gecontroleerd'));
-      lijst.appendChild(r);
-    });
+  const wacht = document.getElementById('uitz-wacht');
+  const klaar = document.getElementById('uitz-klaar');
+  if (!wacht || !klaar) return;
+  wacht.innerHTML = ''; klaar.innerHTML = '';
+  const verstuurdIds = new Set(
+    verwerkteDiensten.filter(u => u.verzonden > 0).map(u => u.video_id)
+  );
+  const teVersturen = kanaalDiensten.filter(d => !verstuurdIds.has(d.id));
+  if (!teVersturen.length) {
+    wacht.innerHTML = '<div class="lege-staat"><b>Geen openstaande diensten</b><span>Nieuwe diensten uit de laatste vier weken verschijnen hier automatisch.</span></div>';
   }
-  if (verwerkteDiensten.length) {
-    lijst.appendChild(el('h3', {}, 'Verwerking & verzending'));
-  }
-  verwerkteDiensten.forEach(u => {
-    const r = el('div', {className: 'rij'}); r.style.justifyContent = 'space-between';
-    r.style.borderBottom = '1px solid var(--rand)'; r.style.padding = '.4rem 0';
-    const status = u.goedgekeurd ? `goedgekeurd · ${u.verzonden} verzonden` : 'wacht op goedkeuring';
-    r.appendChild(el('span', {}, `${u.datum} · ${u.titel} — ${status}`));
-    lijst.appendChild(r);
+  teVersturen.forEach(d => {
+    const verwerkt = verwerkteDiensten.find(u => u.video_id === d.id);
+    const r = el('article',{className:'dienst-card'});
+    const info=el('div');
+    info.append(el('span',{className:'datum'},d.datum || ''),
+      el('h3',{},d.titel || d.label || 'Dienst'),
+      el('span',{className:verwerkt?'status-klaar':'sub'},
+        verwerkt ? (verwerkt.goedgekeurd ? 'Klaar voor verzending' : 'Klaar om te beoordelen') : 'Nog te verwerken'));
+    const open=el('a',{className:'actie-link',href:verwerkt?.bewerk_url || ('/demo?url='+encodeURIComponent(d.url))},
+      verwerkt ? 'Openen & bewerken' : 'Verwerken & bewerken');
+    r.append(info,open); wacht.appendChild(r);
   });
-  if (!kanaalDiensten.length && !verwerkteDiensten.length) {
-    lijst.innerHTML = '<p class="sub">Vul hierboven een kanaallink in. De diensten verschijnen hier automatisch.</p>';
+  const historie = verwerkteDiensten.filter(u => u.verzonden > 0);
+  if (!historie.length) {
+    klaar.innerHTML = '<div class="lege-staat"><b>Nog niets verstuurd</b><span>Na de eerste verzending verschijnt hier de geschiedenis.</span></div>';
   }
+  historie.forEach(u => {
+    const r=el('article',{className:'dienst-card'});
+    const info=el('div');
+    info.append(el('span',{className:'datum'},u.datum),
+      el('h3',{},u.titel),el('span',{className:'status-klaar'},`${u.verzonden} verzendingen`));
+    r.append(info,el('a',{className:'actie-link',href:u.bewerk_url},'Bekijken'));
+    klaar.appendChild(r);
+  });
 }
 
 async function laadKanaalDiensten(url) {
@@ -377,7 +403,12 @@ async function laadKanaalDiensten(url) {
         if (!r.ok) throw new Error(await fouttekst(r, 'Kanaal kon niet worden geladen.'));
         return r.json();
       });
-    kanaalDiensten = data.diensten || [];
+    const grens = new Date(); grens.setDate(grens.getDate() - 28);
+    kanaalDiensten = (data.diensten || []).filter(d => {
+      if (!d.datum) return false;
+      const datum = new Date(d.datum + 'T12:00:00');
+      return datum >= grens && datum <= new Date();
+    });
     if (status) status.textContent =
       `${kanaalDiensten.length} diensten gevonden. Nieuwe diensten worden verwerkt.`;
     renderDiensten();

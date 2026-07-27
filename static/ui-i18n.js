@@ -44,6 +44,14 @@ window.AfterSermonI18n = (() => {
     ,"Bedankt voor je aanmelding!":"Thank you for subscribing!"
     ,"Je e-mailadres is bevestigd. Vanaf nu ontvang je de overdenkingen van deze kerk volgens de gekozen frequentie.":"Your email address has been confirmed. From now on, you will receive this church’s devotionals at your chosen frequency."
     ,"We hopen dat ze je helpen om de boodschap van zondag mee te nemen in de week.":"We hope they help you carry Sunday’s message into the week."
+    ,"Basisinstellingen":"Basic settings","Verzendlijst":"Subscribers","Berichten":"Messages"
+    ,"Overdenkingen beheren":"Manage devotionals","Te versturen":"To send","Reeds verstuurd":"Sent"
+    ,"Kanaal nu vernieuwen":"Refresh channel","Geen openstaande diensten":"No pending services"
+    ,"Nieuwe diensten uit de laatste vier weken verschijnen hier automatisch.":"New services from the past four weeks appear here automatically."
+    ,"Nog niets verstuurd":"Nothing sent yet","Na de eerste verzending verschijnt hier de geschiedenis.":"Your delivery history will appear here after the first send."
+    ,"Klaar voor verzending":"Ready to send","Klaar om te beoordelen":"Ready for review"
+    ,"Nog te verwerken":"Not processed yet","Openen & bewerken":"Open & edit"
+    ,"Verwerken & bewerken":"Process & edit","Bekijken":"View"
   };
   const af = {
     "Van zondagse preek naar een week vol verdieping.":"Van Sondag se preek na ’n week vol verdieping.",
@@ -84,6 +92,14 @@ window.AfterSermonI18n = (() => {
     ,"Bedankt voor je aanmelding!":"Dankie vir jou inskrywing!"
     ,"Je e-mailadres is bevestigd. Vanaf nu ontvang je de overdenkingen van deze kerk volgens de gekozen frequentie.":"Jou e-posadres is bevestig. Van nou af ontvang jy hierdie kerk se oordenkings volgens jou gekose frekwensie."
     ,"We hopen dat ze je helpen om de boodschap van zondag mee te nemen in de week.":"Ons hoop dit help jou om Sondag se boodskap deur die week saam te dra."
+    ,"Basisinstellingen":"Basiese instellings","Verzendlijst":"Inskrywers","Berichten":"Boodskappe"
+    ,"Overdenkingen beheren":"Bestuur oordenkings","Te versturen":"Om te stuur","Reeds verstuurd":"Reeds gestuur"
+    ,"Kanaal nu vernieuwen":"Verfris kanaal","Geen openstaande diensten":"Geen uitstaande dienste"
+    ,"Nieuwe diensten uit de laatste vier weken verschijnen hier automatisch.":"Nuwe dienste van die afgelope vier weke verskyn outomaties hier."
+    ,"Nog niets verstuurd":"Nog niks gestuur nie","Na de eerste verzending verschijnt hier de geschiedenis.":"Jou versendingsgeskiedenis verskyn hier ná die eerste versending."
+    ,"Klaar voor verzending":"Gereed om te stuur","Klaar om te beoordelen":"Gereed vir beoordeling"
+    ,"Nog te verwerken":"Nog nie verwerk nie","Openen & bewerken":"Maak oop en wysig"
+    ,"Verwerken & bewerken":"Verwerk en wysig","Bekijken":"Bekyk"
   };
   let current = "nl";
   const base = new WeakMap();

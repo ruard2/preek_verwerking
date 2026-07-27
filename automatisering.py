@@ -29,9 +29,9 @@ from db import Church, SessionLocal, Subscriber, Uitzending, Verzending
 
 # Alleen diensten van de afgelopen zoveel dagen automatisch oppikken (voorkomt
 # dat bij de eerste scan de hele back-catalogus verwerkt wordt).
-SCAN_TERUG_DAGEN = 8
+SCAN_TERUG_DAGEN = 28
 # Hoeveel nieuwe diensten per tick maximaal verwerken (kosten/tijd spreiden).
-MAX_PER_TICK = 3
+MAX_PER_TICK = 12
 # Niet eindeloos catch-uppen: alleen momenten van de afgelopen zoveel dagen.
 GRACE_DAGEN = 8
 INTERVAL_SECONDEN = 300
@@ -140,7 +140,9 @@ def scan_kerk(db, kerk, base_url, nu_lokaal=None):
             titel=d.get("titel") or d.get("label") or "Dienst",
             datum=datum, week_start=komende_maandag(datum),
             goedgekeurd=bool(kerk.auto_versturen),
-            goedkeur_token="" if kerk.auto_versturen else secrets.token_urlsafe(24),
+            # Ook automatisch goedgekeurde diensten krijgen een token, zodat
+            # de beheerder ze vanuit het dashboard kan openen en bewerken.
+            goedkeur_token=secrets.token_urlsafe(24),
         )
         db.add(uit)
         db.commit()

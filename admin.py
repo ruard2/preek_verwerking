@@ -317,6 +317,23 @@ def verstuur(video_id: str, request: Request, db=Depends(get_db)):
     if not bewaard or not bewaard.get("data"):
         raise HTTPException(404, "Voor deze dienst is nog geen verwerking beschikbaar.")
     aantal = levering.verstuur_weekboekje(db, kerk, bewaard["data"], _basis_url(request))
+    uitzending = db.scalar(select(Uitzending).where(
+        Uitzending.kerk_id == kerk.id, Uitzending.video_id == video_id
+    ))
+    if uitzending:
+        for sub in subscribers.lijst(db, kerk.id):
+            if not sub.bevestigd:
+                continue
+            bestaat = db.scalar(select(Verzending).where(
+                Verzending.uitzending_id == uitzending.id,
+                Verzending.subscriber_id == sub.id,
+                Verzending.dag == 0,
+            ))
+            if not bestaat:
+                db.add(Verzending(
+                    uitzending_id=uitzending.id, subscriber_id=sub.id, dag=0
+                ))
+        db.commit()
     return {"ok": True, "verzonden": aantal}
 
 
@@ -337,6 +354,11 @@ def uitzendingen(request: Request, db=Depends(get_db)):
         uit.append({
             "video_id": u.video_id, "titel": u.titel, "datum": str(u.datum),
             "goedgekeurd": u.goedgekeurd, "verzonden": aantal or 0,
+            "bron_url": u.url,
+            "bewerk_url": (
+                f"/uitzending?token={u.goedkeur_token}"
+                if u.goedkeur_token else f"/demo?url={u.url}"
+            ),
         })
     return uit
 

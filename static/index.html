@@ -557,6 +557,11 @@ fetch('/api/diagnose').then(r => r.json()).then(d => {
 // Startup: toon eerdere kanalen alleen als snelkeuze. De gebruiker kiest
 // altijd zelf wat er wordt opgehaald; de demo laadt nooit automatisch.
 toonRecent();
+const directeUrl = new URLSearchParams(location.search).get('url');
+if (directeUrl) {
+  kanaalInput.value = directeUrl;
+  laadKanaal(directeUrl);
+}
 </script>
 </body>
 </html>
