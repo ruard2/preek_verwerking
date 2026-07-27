@@ -90,7 +90,6 @@ audio-transcriptie (model `gpt-4o-mini-transcribe`).
   (lost YouTube's IP-blokkade op). Lokaal leeg laten.
 - `OPENAI_MODEL` — verwerkingsmodel, standaard `gpt-5`.
 - `OPENAI_TRANSCRIBE_MODEL` — transcriptiemodel, standaard `gpt-4o-mini-transcribe`.
-- `KANAAL_URL` — standaard de streams-pagina van NGK Middelharnis.
 - `DATA_DIR` — opslagmap voor de cache, standaard `./data`. Op Railway: koppel
   hier een volume aan zodat de cache een redeploy overleeft (zie hosten).
 - `DIENSTEN_WEEKGRENS_UUR` — uur op zondag waarna de dienstenlijst als

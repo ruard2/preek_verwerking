@@ -73,10 +73,6 @@ def _startup():
         print("[automatisering] achtergrond-lus gestart")
 
 
-KANAAL_URL = os.environ.get(
-    "KANAAL_URL", "https://www.youtube.com/@GKvMiddelharnis_HetBaken/streams"
-)
-
 VIDEO_ID_RE = re.compile(r"(?:v=|youtu\.be/|/live/|/embed/|/shorts/)([A-Za-z0-9_-]{11})")
 
 # Takenlijst in het geheugen (kortlevend, alleen voor de voortgang tijdens één
@@ -339,10 +335,10 @@ def diagnose():
 
 @app.get("/api/kanaal")
 def kanaal(url: str = "", vernieuw: bool = False):
-    """Herken een geplakte link: kanaal → dienstenlijst; enkele preek → verwerken.
-
-    Zonder url: het standaardkanaal (KANAAL_URL)."""
-    url = (url or "").strip() or KANAAL_URL
+    """Herken een geplakte link: kanaal → dienstenlijst; enkele preek → verwerken."""
+    url = (url or "").strip()
+    if not url:
+        raise HTTPException(400, "Plak eerst een kanaal- of preeklink.")
     typ, soort = _classificeer(url)
     if typ is None:
         raise HTTPException(400, "Geef een YouTube- of Kerkdienstgemist-link op.")

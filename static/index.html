@@ -116,8 +116,10 @@
 </head>
 <body>
   <h1>Preekverwerker</h1>
-  <p class="sub">Plak een <b>kanaal</b> (YouTube-kanaal of Kerkdienstgemist-kerk)
-  om alle diensten te zien, of een <b>directe link</b> naar één preek.</p>
+  <p class="sub">Vul hieronder zelf een link in. Plak de link van een
+  <b>YouTube-kanaal</b> of <b>Kerkdienstgemist-kanaal</b> om alle diensten
+  van dat kanaal op te halen. Wil je maar één preek verwerken? Plak dan de
+  <b>directe link naar die preek</b>.</p>
 
   <form class="kanaal" id="kanaalform">
     <input type="url" id="kanaal" placeholder="https://youtube.com/@…  ·  https://kerkdienstgemist.nl/stations/…  ·  of een preek-link">
@@ -550,11 +552,9 @@ fetch('/api/diagnose').then(r => r.json()).then(d => {
     'versie ' + (d.versie || '?') + (d.transcript_bron ? ' · ' + d.transcript_bron : '');
 }).catch(() => {});
 
-// Startup: prefill met het laatst gebruikte kanaal en laad het automatisch.
+// Startup: toon eerdere kanalen alleen als snelkeuze. De gebruiker kiest
+// altijd zelf wat er wordt opgehaald; de demo laadt nooit automatisch.
 toonRecent();
-const laatste = recenteKanalen()[0];
-if (laatste) { kanaalInput.value = laatste; laadKanaal(laatste); }
-else { laadKanaal(''); }  // standaardkanaal (server-side KANAAL_URL)
 </script>
 </body>
 </html>
