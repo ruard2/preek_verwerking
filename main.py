@@ -205,7 +205,15 @@ def _verrijk_datums_via_supadata(diensten, maximum=10):
             break
         if d.get("datum"):
             continue
-        datum = supadata.video_datum(d.get("id"))
+        try:
+            datum = supadata.video_datum(d.get("id"))
+        except Exception as fout:  # noqa: BLE001
+            # Supadata-fout (bv. 429 quota op) mag de yt-dlp-lijst NOOIT weggooien.
+            # Stop het aanvullen; diensten met een datum in de titel blijven werken.
+            logging.getLogger("aftersermon").warning(
+                "Supadata datum-verrijking gestopt: %s", str(fout)[:120]
+            )
+            break
         gedaan += 1
         time.sleep(1.2)  # gratis tier heeft een strakke rate limit
         if datum:
