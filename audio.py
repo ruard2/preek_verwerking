@@ -12,6 +12,7 @@ Werkwijze:
 
 import glob
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -112,6 +113,50 @@ def _knip_stream(ffmpeg, url, start, lengte, doel):
         ],
         capture_output=True,
         check=True,
+    )
+
+
+def _duur_van(ffmpeg, bron):
+    """Duur (seconden) van een audiobron via ffmpeg, of 0 als onbekend."""
+    uit = subprocess.run([ffmpeg, "-i", bron], capture_output=True, text=True)
+    m = re.search(r"Duration:\s*(\d+):(\d+):(\d+)", uit.stderr or "")
+    if not m:
+        return 0
+    u, mi, s = (int(x) for x in m.groups())
+    return u * 3600 + mi * 60 + s
+
+
+def transcribeer_audio(bron, duur=None, voortgang=None):
+    """Transcribeer een volledige audiobron (mp3-URL of lokaal pad).
+
+    Voor Kerkomroep/uploads: er is geen preek-markering, dus de hele opname wordt
+    getranscribeerd en het model haalt de preek eruit.
+    """
+    if not duur or duur <= 0:
+        duur = _duur_van(_ffmpeg(), bron)
+    if duur <= 0:
+        raise RuntimeError("Kon de duur van de audio niet bepalen.")
+    return transcribeer_hls(bron, 0, duur, voortgang)
+
+
+def transcribeer_upload(inhoud: bytes, bestandsnaam, voortgang=None):
+    """Transcribeer een geüpload audiobestand (mp3/m4a/wav/ogg)."""
+    achtervoegsel = os.path.splitext(bestandsnaam or "audio.mp3")[1] or ".mp3"
+    with tempfile.NamedTemporaryFile(suffix=achtervoegsel, delete=False) as f:
+        f.write(inhoud)
+        pad = f.name
+    try:
+        return transcribeer_audio(pad, voortgang=voortgang)
+    finally:
+        try:
+            os.remove(pad)
+        except OSError:
+            pass
+
+
+def is_audio(bestandsnaam):
+    return (bestandsnaam or "").lower().endswith(
+        (".mp3", ".m4a", ".wav", ".ogg", ".aac", ".flac", ".mp4", ".webm")
     )
 
 

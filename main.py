@@ -26,7 +26,9 @@ import admin
 import audio
 import db as database
 import kerkdienstgemist
+import kerkomroep
 import render
+import sermonaudio
 import store
 import supadata
 import transcript as ts
@@ -115,6 +117,10 @@ def _classificeer(url):
     u = (url or "").lower()
     if kerkdienstgemist.is_kerkdienstgemist(url):
         return ("kdg", "enkel" if "/recording/" in u else "kanaal")
+    if kerkomroep.is_kerkomroep(url):
+        return ("kerkomroep", "enkel" if "/audio/" in u else "kanaal")
+    if sermonaudio.is_sermonaudio(url):
+        return ("sermonaudio", "kanaal" if sermonaudio.is_kanaal(url) else "enkel")
     if "youtube.com" in u or "youtu.be" in u:
         enkel = _video_id(url) and any(
             m in u for m in ("watch", "v=", "youtu.be/", "/live/", "/shorts/")
@@ -136,6 +142,10 @@ def _laad_diensten(typ, kanaal_url, vernieuw=False):
         try:
             if typ == "kdg":
                 nieuw = kerkdienstgemist.lijst_diensten(kanaal_url)
+            elif typ == "kerkomroep":
+                nieuw = kerkomroep.lijst_diensten(kanaal_url)
+            elif typ == "sermonaudio":
+                nieuw = sermonaudio.lijst_diensten(kanaal_url)
             else:
                 nieuw = _lijst_youtube(kanaal_url)
             store.diensten_opslaan(kanaal_url, nieuw)
@@ -232,6 +242,44 @@ def _proces_kerkdienstgemist(url, meld):
     return data, tekst, meta, o["titel"], transcript
 
 
+def _proces_audio_bron(o, bronnaam, meld):
+    """Generiek: een hele preek-mp3 transcriberen en verwerken.
+
+    `o` bevat mp3_url, duur, titel en optioneel voorganger/bijbelgedeelte/liturgie.
+    Gebruikt voor Kerkomroep en SermonAudio (geen preek-markering in de audio).
+    """
+    meld(
+        f"Audio ophalen en transcriberen met OpenAI (±{round((o.get('duur') or 0)/60)} "
+        "min) — dit kan enkele minuten duren..."
+    )
+    transcript = audio.transcribeer_audio(o["mp3_url"], o.get("duur"), voortgang=meld)
+
+    context = []
+    if o.get("bijbelgedeelte"):
+        context.append(f"Bijbelgedeelte (preektekst): {o['bijbelgedeelte']}")
+    if o.get("voorganger"):
+        context.append(f"Voorganger: {o['voorganger']}")
+
+    meld("Verwerken met AI — dit kan enkele minuten duren...")
+    data = verwerk_preek(transcript, extra_context="\n".join(context) or None)
+    if o.get("liturgie"):
+        data["liturgie"] = o["liturgie"]
+    tekst = render.naar_tekst(data)
+    meta = {
+        "titel": o["titel"],
+        "voorganger": o.get("voorganger"),
+        "duur_minuten": round((o.get("duur") or 0) / 60),
+        "transcriptie_bron": f"{bronnaam} (audio via OpenAI)",
+    }
+    return data, tekst, meta, o["titel"], transcript
+
+
+def _proces_kerkomroep(url, meld):
+    """Kerkomroep: de hele dienst-mp3 transcriberen (geen preek-markering)."""
+    meld("Uitzending ophalen (Kerkomroep)...")
+    return _proces_audio_bron(kerkomroep.haal_opname(url), "Kerkomroep", meld)
+
+
 def _proces_youtube(url, meld):
     """YouTube: transcriptbron kiezen (Supadata gehost / yt-dlp lokaal).
 
@@ -284,7 +332,16 @@ def verwerk_en_bewaar(url, herverwerk=False, meld=None):
     """
     meld = meld or (lambda _s: None)
     is_kdg = kerkdienstgemist.is_kerkdienstgemist(url)
-    vid = kerkdienstgemist.video_id(url) if is_kdg else _video_id(url)
+    is_ko = kerkomroep.is_kerkomroep(url)
+    is_sa = sermonaudio.is_sermonaudio(url)
+    if is_kdg:
+        vid = kerkdienstgemist.video_id(url)
+    elif is_ko:
+        vid = kerkomroep.video_id(url)
+    elif is_sa:
+        vid = sermonaudio.video_id(url)
+    else:
+        vid = _video_id(url)
 
     # 1. Al eerder verwerkt? Dan uit de cache (met sleutel-normalisatie).
     if vid and not herverwerk:
@@ -299,6 +356,12 @@ def verwerk_en_bewaar(url, herverwerk=False, meld=None):
     # 2. Verwerken via de juiste bron.
     if is_kdg:
         data, tekst, meta, ondertitel, transcript_ruw = _proces_kerkdienstgemist(url, meld)
+    elif is_ko:
+        data, tekst, meta, ondertitel, transcript_ruw = _proces_kerkomroep(url, meld)
+    elif is_sa:
+        data, tekst, meta, ondertitel, transcript_ruw = _proces_audio_bron(
+            sermonaudio.haal_opname(url), "SermonAudio", meld
+        )
     else:
         data, tekst, meta, ondertitel, transcript_ruw = _proces_youtube(url, meld)
 
@@ -413,10 +476,13 @@ def start_verwerking(verzoek: VerwerkVerzoek):
         "youtube.com/" in url
         or "youtu.be/" in url
         or kerkdienstgemist.is_kerkdienstgemist(url)
+        or kerkomroep.is_kerkomroep(url)
+        or sermonaudio.is_sermonaudio(url)
     )
     if not geldig:
         raise HTTPException(
-            400, "Geef een geldige YouTube- of Kerkdienstgemist-link op."
+            400, "Geef een geldige YouTube-, Kerkdienstgemist-, Kerkomroep- of "
+            "SermonAudio-link op."
         )
     taak_id = uuid.uuid4().hex
     taken[taak_id] = {

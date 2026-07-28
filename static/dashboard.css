@@ -14,3 +14,24 @@ button:hover{background:var(--brand2)!important}.link{background:transparent!imp
 .rij input[type=checkbox]{appearance:none;width:44px!important;height:24px;border-radius:99px!important;background:#cdd8d2!important;border:0!important;position:relative;transition:.2s;flex:none}.rij input[type=checkbox]:before{content:"";position:absolute;width:18px;height:18px;left:3px;top:3px;border-radius:50%;background:#fff;box-shadow:0 1px 4px #0003;transition:.2s}.rij input[type=checkbox]:checked{background:var(--brand)!important}.rij input[type=checkbox]:checked:before{transform:translateX(20px)}
 .dienst-card{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:18px 0;border-bottom:1px solid var(--line)}.dienst-card:last-child{border-bottom:0}.dienst-card h3{margin:3px 0;font-size:1rem}.dienst-card .datum{font-size:.72rem;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)}.actie-link{display:inline-flex;padding:9px 13px;border-radius:8px;background:var(--soft);color:var(--brand);font-weight:750;text-decoration:none;white-space:nowrap}.lege-staat{padding:42px 20px;text-align:center;border:1px dashed var(--line);border-radius:12px;background:#fbfcfb}.lege-staat b,.lege-staat span{display:block}.lege-staat span{color:var(--muted);font-size:.9rem;margin-top:6px}.secundair{background:transparent!important;color:var(--brand)!important;border:1px solid var(--line)!important}
 @media(max-width:760px){body{padding:0 16px 40px!important}.steps,.dashboard-grid{grid-template-columns:1fr}.dashboard-grid>.wide{grid-column:auto}.language-switch{right:16px}h1{margin-top:94px!important}.beheer-tabs{overflow-x:auto}.beheer-tabs button{white-space:nowrap}.dienst-card{align-items:flex-start;flex-direction:column}.actie-link{width:100%;justify-content:center}}
+
+/* --- Professionele verfijning --- */
+body:before{display:flex;align-items:center;padding:0 28px;content:"AfterSermon";font-weight:800;letter-spacing:-.02em;color:var(--brand);font-size:1.02rem;z-index:10}
+@media(max-width:760px){body:before{padding:0 16px}}
+input:focus,select:focus,textarea:focus{outline:none!important;border-color:var(--brand)!important;box-shadow:0 0 0 3px rgba(22,116,85,.16)!important}
+button{transition:background .15s ease,transform .05s ease,box-shadow .15s ease!important;box-shadow:0 1px 2px rgba(16,42,42,.12)}
+button:active{transform:translateY(1px)}
+button:disabled{opacity:.55!important;cursor:default!important;box-shadow:none!important}
+.link,.language-switch button,.secundair,.subtabs button,.beheer-tabs button{box-shadow:none!important}
+.secundair:hover{background:var(--soft)!important}
+.actie-link{transition:background .15s ease,color .15s ease}.actie-link:hover{background:var(--brand)!important;color:#fff!important}
+.kaart{transition:box-shadow .2s ease}
+a{color:var(--brand)}
+.melding{border-radius:10px!important;border:1px solid transparent}
+.kaart h2{font-size:1.16rem!important;margin:0 0 .35rem!important;letter-spacing:-.01em}
+label{font-family:Inter,system-ui,sans-serif!important;font-weight:600}
+h1+.sub{font-size:1rem!important;margin-bottom:6px}
+.status-pill{display:inline-block;padding:3px 10px;border-radius:99px;font-size:.72rem;font-weight:700;letter-spacing:.02em}
+.status-pill.wacht{background:#fff4e5;color:#8a5a00}.status-pill.klaar{background:var(--soft);color:var(--brand)}.status-pill.concept{background:#eef1f0;color:var(--muted)}
+.as-footer{margin-top:44px;padding-top:20px;border-top:1px solid var(--line);color:var(--muted);font-size:.8rem;text-align:center}
+.as-footer a{color:var(--muted);margin:0 8px;text-decoration:none}.as-footer a:hover{color:var(--brand)}

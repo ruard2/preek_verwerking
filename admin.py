@@ -469,7 +469,8 @@ async def upload_preek(
     request: Request, file: UploadFile = File(...), datum: str = Form(""),
     db=Depends(get_db),
 ):
-    """Eigen preek als document (PDF/DOCX/TXT) → weekboekje."""
+    """Eigen preek als document (PDF/DOCX/TXT) of audio (MP3) → weekboekje."""
+    import audio as audio_mod
     import documenten
     import main
     from datetime import date, datetime
@@ -477,11 +478,16 @@ async def upload_preek(
     kerk = _vereis_kerk(request, db)
     inhoud = await file.read()
     try:
-        tekst = documenten.haal_tekst(file.filename, inhoud)
+        if audio_mod.is_audio(file.filename):
+            tekst = audio_mod.transcribeer_upload(inhoud, file.filename)
+        else:
+            tekst = documenten.haal_tekst(file.filename, inhoud)
     except ValueError as fout:
         raise HTTPException(400, str(fout))
+    except Exception as fout:  # noqa: BLE001 — transcriptiefouten netjes tonen
+        raise HTTPException(502, f"Verwerken van het bestand lukte niet: {fout}")
     if len(tekst) < 200:
-        raise HTTPException(400, "Het document bevat te weinig tekst voor een preek.")
+        raise HTTPException(400, "Het bestand bevat te weinig tekst voor een preek.")
 
     video_id = "upload_" + secrets.token_hex(8)
     try:
@@ -702,7 +708,8 @@ def uitzending_verwerk(body: dict, db=Depends(get_db)):
 async def uitzending_upload(
     token: str = Form(...), file: UploadFile = File(...), db=Depends(get_db),
 ):
-    """Eigen preektekst aanleveren voor deze dienst i.p.v. via het kanaal."""
+    """Eigen preektekst of audio aanleveren voor deze dienst i.p.v. via het kanaal."""
+    import audio as audio_mod
     import documenten
     import main
 
@@ -711,11 +718,16 @@ async def uitzending_upload(
         raise HTTPException(404, "Onbekende of verlopen link.")
     inhoud = await file.read()
     try:
-        tekst = documenten.haal_tekst(file.filename, inhoud)
+        if audio_mod.is_audio(file.filename):
+            tekst = audio_mod.transcribeer_upload(inhoud, file.filename)
+        else:
+            tekst = documenten.haal_tekst(file.filename, inhoud)
     except ValueError as fout:
         raise HTTPException(400, str(fout))
+    except Exception as fout:  # noqa: BLE001
+        raise HTTPException(502, f"Verwerken van het bestand lukte niet: {fout}")
     if len(tekst) < 200:
-        raise HTTPException(400, "Het document bevat te weinig tekst voor een preek.")
+        raise HTTPException(400, "Het bestand bevat te weinig tekst voor een preek.")
     try:
         data = main.verwerk_tekst_en_bewaar(uit.video_id, tekst, titel_hint=uit.titel)
     except Exception as fout:  # noqa: BLE001

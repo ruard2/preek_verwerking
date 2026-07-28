@@ -321,7 +321,7 @@ function toonDashboard(mij) {
     'Staat een dienst niet in de lijst, of wil je liever je eigen preektekst gebruiken? ' +
     'Upload hem als PDF, DOCX of TXT — dan wordt daar direct een weekboekje van gemaakt, ' +
     'zonder dat er audio of een kanaal aan te pas komt. (Per dienst hierboven kan het ook.)'));
-  const fileIn = el('input', {id: 'upfile', type: 'file', accept: '.pdf,.docx,.txt'});
+  const fileIn = el('input', {id: 'upfile', type: 'file', accept: '.pdf,.docx,.txt,.mp3,.m4a,.wav,.ogg'});
   up.appendChild(fileIn);
   up.appendChild(el('label', {}, 'Datum van de dienst (optioneel)'));
   up.appendChild(el('input', {id: 'updatum', type: 'date'}));
