@@ -28,7 +28,6 @@ import db as database
 import kerkdienstgemist
 import kerkomroep
 import render
-import sermonaudio
 import store
 import supadata
 import transcript as ts
@@ -119,8 +118,6 @@ def _classificeer(url):
         return ("kdg", "enkel" if "/recording/" in u else "kanaal")
     if kerkomroep.is_kerkomroep(url):
         return ("kerkomroep", "enkel" if "/audio/" in u else "kanaal")
-    if sermonaudio.is_sermonaudio(url):
-        return ("sermonaudio", "kanaal" if sermonaudio.is_kanaal(url) else "enkel")
     if "youtube.com" in u or "youtu.be" in u:
         enkel = _video_id(url) and any(
             m in u for m in ("watch", "v=", "youtu.be/", "/live/", "/shorts/")
@@ -144,8 +141,6 @@ def _laad_diensten(typ, kanaal_url, vernieuw=False):
                 nieuw = kerkdienstgemist.lijst_diensten(kanaal_url)
             elif typ == "kerkomroep":
                 nieuw = kerkomroep.lijst_diensten(kanaal_url)
-            elif typ == "sermonaudio":
-                nieuw = sermonaudio.lijst_diensten(kanaal_url)
             else:
                 nieuw = _lijst_youtube(kanaal_url)
             store.diensten_opslaan(kanaal_url, nieuw)
@@ -333,13 +328,10 @@ def verwerk_en_bewaar(url, herverwerk=False, meld=None):
     meld = meld or (lambda _s: None)
     is_kdg = kerkdienstgemist.is_kerkdienstgemist(url)
     is_ko = kerkomroep.is_kerkomroep(url)
-    is_sa = sermonaudio.is_sermonaudio(url)
     if is_kdg:
         vid = kerkdienstgemist.video_id(url)
     elif is_ko:
         vid = kerkomroep.video_id(url)
-    elif is_sa:
-        vid = sermonaudio.video_id(url)
     else:
         vid = _video_id(url)
 
@@ -358,10 +350,6 @@ def verwerk_en_bewaar(url, herverwerk=False, meld=None):
         data, tekst, meta, ondertitel, transcript_ruw = _proces_kerkdienstgemist(url, meld)
     elif is_ko:
         data, tekst, meta, ondertitel, transcript_ruw = _proces_kerkomroep(url, meld)
-    elif is_sa:
-        data, tekst, meta, ondertitel, transcript_ruw = _proces_audio_bron(
-            sermonaudio.haal_opname(url), "SermonAudio", meld
-        )
     else:
         data, tekst, meta, ondertitel, transcript_ruw = _proces_youtube(url, meld)
 
@@ -477,12 +465,10 @@ def start_verwerking(verzoek: VerwerkVerzoek):
         or "youtu.be/" in url
         or kerkdienstgemist.is_kerkdienstgemist(url)
         or kerkomroep.is_kerkomroep(url)
-        or sermonaudio.is_sermonaudio(url)
     )
     if not geldig:
         raise HTTPException(
-            400, "Geef een geldige YouTube-, Kerkdienstgemist-, Kerkomroep- of "
-            "SermonAudio-link op."
+            400, "Geef een geldige YouTube-, Kerkdienstgemist- of Kerkomroep-link op."
         )
     taak_id = uuid.uuid4().hex
     taken[taak_id] = {

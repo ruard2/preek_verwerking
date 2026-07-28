@@ -318,9 +318,13 @@ function toonDashboard(mij) {
   const up = el('div', {className: 'kaart'});
   up.appendChild(el('h2', {}, 'Eigen preek uploaden'));
   up.appendChild(el('p', {className: 'sub'},
-    'Staat een dienst niet in de lijst, of wil je liever je eigen preektekst gebruiken? ' +
-    'Upload hem als PDF, DOCX of TXT — dan wordt daar direct een weekboekje van gemaakt, ' +
-    'zonder dat er audio of een kanaal aan te pas komt. (Per dienst hierboven kan het ook.)'));
+    'Staat een dienst niet in de lijst, of wil je liever je eigen preek gebruiken? ' +
+    'Upload hem als document (PDF, DOCX, TXT) of als audio (MP3) — dan wordt daar direct ' +
+    'een weekboekje van gemaakt. (Per dienst hierboven kan het ook.)'));
+  up.appendChild(el('p', {className: 'sub'},
+    'Let op: sommige platforms (zoals SermonAudio) staan automatisch ophalen niet toe ' +
+    'volgens hun voorwaarden. Download je preek daar dan zelf en upload hem hier als ' +
+    'document of audio — dat mag wél.'));
   const fileIn = el('input', {id: 'upfile', type: 'file', accept: '.pdf,.docx,.txt,.mp3,.m4a,.wav,.ogg'});
   up.appendChild(fileIn);
   up.appendChild(el('label', {}, 'Datum van de dienst (optioneel)'));
