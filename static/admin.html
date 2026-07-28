@@ -229,7 +229,7 @@ function toonDashboard(mij) {
   const panes = [basisPane,ledenPane,berichtenPane,analysePane];
   [['tab-basis','Basisinstellingen'],['tab-leden','Verzendlijst'],['tab-berichten','Berichten'],['tab-analyse','Analyse']]
     .forEach(([id,label],i) => {
-      const b=el('button',{className:i===0?'actief':'',type:'button'},label);
+      const b=el('button',{className:i===0?'actief':'',type:'button'},AfterSermonI18n.text(label));
       b.onclick=()=>{
         panes.forEach(p=>p.classList.toggle('actief',p.id===id));
         [...tabNav.children].forEach(x=>x.classList.toggle('actief',x===b));
@@ -240,7 +240,8 @@ function toonDashboard(mij) {
     });
   inhoud.append(tabNav,...panes);
 
-  analysePane.appendChild(el('div',{className:'kaart',id:'analyse-kaart'},'Laden…'));
+  const T = s => AfterSermonI18n.text(s);
+  analysePane.appendChild(el('div',{className:'kaart',id:'analyse-kaart'},T('Laden…')));
   window._analysePane = analysePane;
 
   // Onboarding-checklist (verdwijnt zodra alles is ingesteld).
@@ -248,15 +249,15 @@ function toonDashboard(mij) {
     const subs = await fetch('/api/admin/inschrijvers').then(r => r.json()).catch(() => []);
     const bevestigd = Array.isArray(subs) ? subs.filter(s => s.bevestigd).length : 0;
     const stappen = [
-      [!!mij.kanaal_url, 'Kanaal ingesteld',
-        'Zet je YouTube-, Kerkdienstgemist- of Kerkomroep-kanaal bij Basisinstellingen (of upload je preek bij Berichten).'],
-      [bevestigd > 0, bevestigd + ' bevestigde inschrijver(s)',
-        'Deel je inschrijflink of QR-code (tab Verzendlijst) zodat gemeenteleden zich aanmelden.'],
+      [!!mij.kanaal_url, T('Kanaal ingesteld'),
+        T('Zet je YouTube-, Kerkdienstgemist- of Kerkomroep-kanaal bij Basisinstellingen (of upload je preek bij Berichten).')],
+      [bevestigd > 0, bevestigd + ' ' + T('bevestigde inschrijver(s)'),
+        T('Deel je inschrijflink of QR-code (tab Verzendlijst) zodat gemeenteleden zich aanmelden.')],
     ];
     if (stappen.every(s => s[0])) return;
     const c = el('div', {className: 'kaart'});
-    c.appendChild(el('h2', {}, 'Aan de slag'));
-    c.appendChild(el('p', {className: 'sub'}, 'Nog een paar stappen tot je eerste overdenkingen uitgaan:'));
+    c.appendChild(el('h2', {}, T('Aan de slag')));
+    c.appendChild(el('p', {className: 'sub'}, T('Nog een paar stappen tot je eerste overdenkingen uitgaan:')));
     stappen.forEach(([ok, titel, uitleg]) => {
       const r = el('div'); r.style.margin = '.6rem 0';
       const b = el('b', {}, (ok ? '✓ ' : '○ ') + titel);
@@ -602,16 +603,17 @@ async function startScan(stil = false) {
 async function laadAnalyse() {
   const kaart = document.getElementById('analyse-kaart');
   if (!kaart) return;
-  kaart.textContent = 'Laden…';
+  const T = s => AfterSermonI18n.text(s);
+  kaart.textContent = T('Laden…');
   let a;
   try { a = await fetch('/api/admin/analytics').then(r => r.json()); }
-  catch { kaart.textContent = 'Kon de cijfers niet laden.'; return; }
+  catch { kaart.textContent = T('Kon de cijfers niet laden.'); return; }
   const tegel = (getal, label) =>
     `<div style="flex:1 1 8rem;min-width:8rem;background:var(--soft);border-radius:.6rem;padding:.9rem 1rem">
        <div style="font-size:1.6rem;font-weight:800;color:var(--groen)">${getal}</div>
-       <div class="sub" style="margin:0">${label}</div></div>`;
+       <div class="sub" style="margin:0">${T(label)}</div></div>`;
   kaart.innerHTML =
-    '<h2>Analyse</h2>' +
+    '<h2>' + T('Analyse') + '</h2>' +
     '<div style="display:flex;flex-wrap:wrap;gap:.7rem;margin:.6rem 0 1.2rem">' +
       tegel(a.inschrijvers_totaal, 'Inschrijvers') +
       tegel(a.inschrijvers_bevestigd, 'Bevestigd') +
@@ -621,8 +623,8 @@ async function laadAnalyse() {
       tegel(a.verzonden_totaal, 'Verzonden e-mails') +
       tegel(a.diensten_verwerkt, 'Verwerkte diensten') +
     '</div>' +
-    '<p class="sub">Laatste verzending: ' + (a.laatste_verzending || '—') +
-      ' · Nog niet bevestigd: ' + a.inschrijvers_onbevestigd + '</p>';
+    '<p class="sub">' + T('Laatste verzending:') + ' ' + (a.laatste_verzending || '—') +
+      ' · ' + T('Nog niet bevestigd:') + ' ' + a.inschrijvers_onbevestigd + '</p>';
 }
 
 async function laadInschrijvers() {

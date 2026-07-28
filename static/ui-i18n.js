@@ -6,6 +6,16 @@ window.AfterSermonI18n = (() => {
     af: {flag:"🇿🇦", name:"Afrikaans"}
   };
   const en = {
+    "Basisinstellingen":"Settings","Verzendlijst":"Recipients","Berichten":"Messages","Analyse":"Analytics",
+    "Aan de slag":"Getting started",
+    "Nog een paar stappen tot je eerste overdenkingen uitgaan:":"A few steps before your first devotionals go out:",
+    "Kanaal ingesteld":"Channel set",
+    "Zet je YouTube-, Kerkdienstgemist- of Kerkomroep-kanaal bij Basisinstellingen (of upload je preek bij Berichten).":"Set your YouTube, Kerkdienstgemist or Kerkomroep channel under Settings (or upload your sermon under Messages).",
+    "bevestigde inschrijver(s)":"confirmed subscriber(s)",
+    "Deel je inschrijflink of QR-code (tab Verzendlijst) zodat gemeenteleden zich aanmelden.":"Share your signup link or QR code (Recipients tab) so members can subscribe.",
+    "Laden…":"Loading…","Kon de cijfers niet laden.":"Could not load the figures.",
+    "Bevestigd":"Confirmed","Nieuw (30 dagen)":"New (30 days)","Verzonden e-mails":"Emails sent",
+    "Verwerkte diensten":"Processed services","Laatste verzending:":"Last send:","Nog niet bevestigd:":"Not yet confirmed:",
     "Van zondagse preek naar een week vol verdieping.":"Turn Sunday’s sermon into a week of reflection.",
     "Inloggen":"Sign in","Account aanmaken":"Create account","E-mailadres":"Email address",
     "Wachtwoord":"Password","Wachtwoord vergeten?":"Forgot password?","Naam van de kerk":"Church name",
@@ -54,6 +64,16 @@ window.AfterSermonI18n = (() => {
     ,"Verwerken & bewerken":"Process & edit","Bekijken":"View"
   };
   const af = {
+    "Basisinstellingen":"Basiese instellings","Verzendlijst":"Ontvangers","Berichten":"Boodskappe","Analyse":"Analise",
+    "Aan de slag":"Kom aan die gang",
+    "Nog een paar stappen tot je eerste overdenkingen uitgaan:":"Nog ’n paar stappe voor jou eerste oordenkings uitgaan:",
+    "Kanaal ingesteld":"Kanaal opgestel",
+    "Zet je YouTube-, Kerkdienstgemist- of Kerkomroep-kanaal bij Basisinstellingen (of upload je preek bij Berichten).":"Stel jou YouTube-, Kerkdienstgemist- of Kerkomroep-kanaal op onder Basiese instellings (of laai jou preek op onder Boodskappe).",
+    "bevestigde inschrijver(s)":"bevestigde intekenaar(s)",
+    "Deel je inschrijflink of QR-code (tab Verzendlijst) zodat gemeenteleden zich aanmelden.":"Deel jou inteken-skakel of QR-kode (Ontvangers-oortjie) sodat lidmate kan inteken.",
+    "Laden…":"Laai…","Kon de cijfers niet laden.":"Kon die syfers nie laai nie.",
+    "Bevestigd":"Bevestig","Nieuw (30 dagen)":"Nuut (30 dae)","Verzonden e-mails":"E-posse gestuur",
+    "Verwerkte diensten":"Verwerkte dienste","Laatste verzending:":"Laaste versending:","Nog niet bevestigd:":"Nog nie bevestig nie:",
     "Van zondagse preek naar een week vol verdieping.":"Van Sondag se preek na ’n week vol verdieping.",
     "Inloggen":"Meld aan","Account aanmaken":"Skep rekening","E-mailadres":"E-posadres",
     "Wachtwoord":"Wagwoord","Wachtwoord vergeten?":"Wagwoord vergeet?","Naam van de kerk":"Naam van die kerk",
