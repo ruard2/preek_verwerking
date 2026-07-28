@@ -843,6 +843,27 @@ def uitzending_data(token: str, db=Depends(get_db)):
     }
 
 
+@router.post("/api/uitzending/test")
+def uitzending_test(body: dict, request: Request, db=Depends(get_db)):
+    """Stuur deze (verwerkte) overdenking als test naar het e-mailadres van de kerk."""
+    uit = _uit_op_token(db, (body or {}).get("token", ""))
+    if not uit:
+        raise HTTPException(404, "Onbekende of verlopen link.")
+    bewaard = store.resultaat_ophalen(uit.video_id)
+    if not bewaard or not bewaard.get("data"):
+        raise HTTPException(400, "Verwerk de dienst eerst voordat je een test stuurt.")
+    kerk = db.get(Church, uit.kerk_id)
+    onderwerp, html = levering.bouw_email(
+        bewaard["data"], kerk.naam or "AfterSermon", _basis_url(request), "test",
+        None, kerk.communicatie_taal, getattr(kerk, "ai_disclaimer", True),
+    )
+    brevo.verzend(
+        kerk.email, "[TEST] " + onderwerp, html,
+        van_naam=kerk.naam or None, antwoord_naar=kerk.email or None,
+    )
+    return {"ok": True, "naar": kerk.email}
+
+
 @router.post("/api/uitzending/verwerk")
 def uitzending_verwerk(body: dict, db=Depends(get_db)):
     """Verwerk deze dienst op verzoek (transcript + AI). Kan even duren."""

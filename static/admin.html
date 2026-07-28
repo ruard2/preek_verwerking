@@ -437,7 +437,7 @@ function toonDashboard(mij) {
   berichtenPane.appendChild(auto);
   // (De losse 'Eigen preek uploaden'-kaart is bewust weggelaten: upload zit per
   // dienst onder 'Openen & bewerken'.)
-  berichtenPane.appendChild(testk);
+  // (Testverzending zit nu op de beoordeel-pagina, vlak vóór goedkeuren/versturen.)
   laadUitzendingen();
   if (mij.kanaal_url) {
     laadKanaalDiensten(mij.kanaal_url).then(() => startScan(true));

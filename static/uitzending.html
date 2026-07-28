@@ -116,8 +116,20 @@ function bouw(u) {
 
   const balk = el('div', 'balk');
   const opslaan = el('button', 'grijs', 'Wijzigingen opslaan');
+  const test = el('button', 'grijs', 'Stuur test naar mezelf');
   const keur = el('button', 'primair', u.goedgekeurd ? 'Opnieuw versturen goedkeuren' : 'Goedkeuren & versturen');
-  balk.append(opslaan, keur);
+  test.onclick = async () => {
+    test.disabled = true; test.textContent = 'Versturen…';
+    try {
+      const r = await fetch('/api/uitzending/test', {method: 'POST',
+        headers: {'Content-Type':'application/json'}, body: JSON.stringify({token})});
+      if (!r.ok) throw new Error(await fout(r));
+      const d = await r.json();
+      toon('ok', 'Testmail verstuurd naar ' + d.naar + '.');
+    } catch (f) { toon('fout', f.message); }
+    test.disabled = false; test.textContent = 'Stuur test naar mezelf';
+  };
+  balk.append(opslaan, test, keur);
   if (u.goedgekeurd) {
     const concept = el('button', 'grijs', 'Terug naar concept');
     concept.onclick = async () => {
