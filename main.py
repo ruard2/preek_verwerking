@@ -5,6 +5,7 @@ pollt de frontend op /api/status/<id>. Resultaten worden per video op schijf
 bewaard (store.py): een dienst wordt maar één keer verwerkt.
 """
 
+import logging
 import os
 import re
 import threading
@@ -13,6 +14,13 @@ import uuid
 from dotenv import load_dotenv
 
 load_dotenv()  # leest een .env-bestand in de projectmap (lokaal gebruik)
+
+# Centrale logging zodat fouten (auto-migratie, scan, bezorging) zichtbaar zijn
+# in de Railway-logs. Niveau instelbaar via LOG_LEVEL.
+logging.basicConfig(
+    level=os.environ.get("LOG_LEVEL", "INFO").upper(),
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+)
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, Response

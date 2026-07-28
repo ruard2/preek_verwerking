@@ -4,6 +4,7 @@ Lokaal draait dit op SQLite (bestand in DATA_DIR); op Railway op Postgres via
 de DATABASE_URL die Railway aanlevert. Dezelfde modellen werken op allebei.
 """
 
+import logging
 import os
 
 from sqlalchemy import (
@@ -15,6 +16,8 @@ from sqlalchemy.orm import (
 )
 
 import store
+
+_log = logging.getLogger("aftersermon.db")
 
 
 def _database_url():
@@ -189,14 +192,24 @@ def _voeg_ontbrekende_kolommen_toe():
     """Lichte auto-migratie: voeg nieuwe modelkolommen toe aan bestaande tabellen.
 
     create_all() maakt alleen ontbrekende tabellen, geen ontbrekende kolommen.
-    Tijdens deze snelle ontwikkelfase voorkomt dit dat een schema-uitbreiding de
-    bestaande (Railway-)database breekt. Voor complexere migraties later: Alembic.
+    Deze stap voegt nieuwe ADD-COLUMN-uitbreidingen veilig toe. Kan alléén
+    kolommen TOEVOEGEN — voor renames, type-wijzigingen of datamigraties is
+    Alembic nodig (zie ALEMBIC.md). Elke kolom staat in een eigen transactie én
+    try/except, zodat één mislukte kolom nooit de app-start op Railway breekt.
     """
-    insp = sa_inspect(engine)
+    try:
+        insp = sa_inspect(engine)
+    except Exception:  # noqa: BLE001
+        _log.exception("Auto-migratie: kon de database niet inspecteren; overslaan")
+        return
     for table in Base.metadata.sorted_tables:
-        if not insp.has_table(table.name):
+        try:
+            if not insp.has_table(table.name):
+                continue
+            bestaand = {c["name"] for c in insp.get_columns(table.name)}
+        except Exception:  # noqa: BLE001
+            _log.exception("Auto-migratie: tabel %s niet leesbaar; overslaan", table.name)
             continue
-        bestaand = {c["name"] for c in insp.get_columns(table.name)}
         for kol in table.columns:
             if kol.name in bestaand:
                 continue
@@ -211,10 +224,25 @@ def _voeg_ontbrekende_kolommen_toe():
                 else:
                     waarde = "'" + str(arg).replace("'", "''") + "'"
                 standaard = f" DEFAULT {waarde}"
-            with engine.begin() as conn:
-                conn.execute(text(
-                    f'ALTER TABLE {table.name} ADD COLUMN {kol.name} {coltype}{standaard}'
-                ))
+            try:
+                with engine.begin() as conn:
+                    conn.execute(text(
+                        f'ALTER TABLE {table.name} ADD COLUMN {kol.name} {coltype}{standaard}'
+                    ))
+                _log.info("Auto-migratie: kolom %s.%s toegevoegd", table.name, kol.name)
+            except Exception:  # noqa: BLE001 — nooit de opstart blokkeren
+                _log.exception(
+                    "Auto-migratie: kolom %s.%s toevoegen mislukt", table.name, kol.name
+                )
+
+
+def _maak_index(sql):
+    """Idempotente index-aanmaak die de opstart nooit mag breken."""
+    try:
+        with engine.begin() as conn:
+            conn.execute(text(sql))
+    except Exception:  # noqa: BLE001
+        _log.exception("Index aanmaken mislukt (overgeslagen): %s", sql[:60])
 
 
 def init_db():
@@ -222,19 +250,15 @@ def init_db():
     _voeg_ontbrekende_kolommen_toe()
     # create_all voegt geen indexes toe aan bestaande tabellen. Deze unieke
     # centrale koppelingen moeten ook bij upgrades afgedwongen blijven.
-    with engine.begin() as conn:
-        conn.execute(text(
-            "CREATE UNIQUE INDEX IF NOT EXISTS "
-            "uq_churches_community_tools_organization "
-            "ON churches (community_tools_organization_id)"
-        ))
-        conn.execute(text(
-            "CREATE UNIQUE INDEX IF NOT EXISTS "
-            "uq_churches_community_tools_user "
-            "ON churches (community_tools_user_id)"
-        ))
-        conn.execute(text(
-            "CREATE UNIQUE INDEX IF NOT EXISTS "
-            "uq_medebeheerders_community_tools_user "
-            "ON medebeheerders (community_tools_user_id)"
-        ))
+    _maak_index(
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_churches_community_tools_organization "
+        "ON churches (community_tools_organization_id)"
+    )
+    _maak_index(
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_churches_community_tools_user "
+        "ON churches (community_tools_user_id)"
+    )
+    _maak_index(
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_medebeheerders_community_tools_user "
+        "ON medebeheerders (community_tools_user_id)"
+    )
