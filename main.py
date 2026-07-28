@@ -272,7 +272,9 @@ def _proces_audio_bron(o, bronnaam, meld):
         context.append(f"Voorganger: {o['voorganger']}")
 
     meld("Verwerken met AI — dit kan enkele minuten duren...")
-    data = verwerk_preek(transcript, extra_context="\n".join(context) or None)
+    data = verwerk_preek(
+        transcript, extra_context="\n".join(context) or None, volledige_dienst=True
+    )
     if o.get("liturgie"):
         data["liturgie"] = o["liturgie"]
     tekst = render.naar_tekst(data)
@@ -386,13 +388,14 @@ def verwerk_en_bewaar(url, herverwerk=False, meld=None):
     return {"video_id": vid, "uit_cache": False, **payload}
 
 
-def verwerk_tekst_en_bewaar(video_id, tekst, titel_hint=None):
-    """Verwerk een aangeleverde preektekst (upload) en bewaar het resultaat.
+def verwerk_tekst_en_bewaar(video_id, tekst, titel_hint=None, volledige_dienst=False):
+    """Verwerk een aangeleverde preektekst of dienst-transcript en bewaar het.
 
-    De tekst is de preek zelf (manuscript), dus die geldt meteen als de
-    opgeschoonde volledige preek — geen transcriptie/opschoonstap nodig.
+    Bij een document (preekmanuscript) is de tekst de preek zelf. Bij audio van
+    een volledige dienst (volledige_dienst=True) moet het model zelf het
+    preekgedeelte eruit halen.
     """
-    data = verwerk_preek(tekst)
+    data = verwerk_preek(tekst, volledige_dienst=volledige_dienst)
     if titel_hint and not data.get("titel"):
         data["titel"] = titel_hint
     rendered = render.naar_tekst(data)

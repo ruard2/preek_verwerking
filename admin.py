@@ -602,7 +602,10 @@ async def upload_preek(
 
     video_id = "upload_" + secrets.token_hex(8)
     try:
-        data = main.verwerk_tekst_en_bewaar(video_id, tekst, titel_hint=file.filename)
+        data = main.verwerk_tekst_en_bewaar(
+            video_id, tekst, titel_hint=file.filename,
+            volledige_dienst=audio_mod.is_audio(file.filename),
+        )
     except Exception as fout:  # noqa: BLE001
         raise HTTPException(502, f"Verwerken lukte niet: {fout}")
 
@@ -840,7 +843,10 @@ async def uitzending_upload(
     if len(tekst) < 200:
         raise HTTPException(400, "Het bestand bevat te weinig tekst voor een preek.")
     try:
-        data = main.verwerk_tekst_en_bewaar(uit.video_id, tekst, titel_hint=uit.titel)
+        data = main.verwerk_tekst_en_bewaar(
+            uit.video_id, tekst, titel_hint=uit.titel,
+            volledige_dienst=audio_mod.is_audio(file.filename),
+        )
     except Exception as fout:  # noqa: BLE001
         raise HTTPException(502, f"Verwerken lukte niet: {fout}")
     return {"ok": True, "data": _met_labels(data), "tekst": ""}

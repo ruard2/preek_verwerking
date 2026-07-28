@@ -189,11 +189,27 @@ Geef alleen het eindresultaat in de voorgeschreven structuur.
 """
 
 
-def verwerk_preek(transcript, welkom=None, taal_hint=None, extra_context=None):
+VOLLEDIGE_DIENST_INSTRUCTIE = """\
+
+LET OP: de onderstaande transcriptie is van een VOLLEDIGE kerkdienst, niet alleen
+de preek. Bepaal zelf welk deel de preek is: dat is het lange, aaneengesloten
+onderwijs van de voorganger waarin één Bijbelgedeelte wordt uitgelegd en toegepast
+(vrijwel altijd het langste ononderbroken stuk spreken van één persoon). Baseer de
+preekverwerking UITSLUITEND op dat preekgedeelte. Negeer al het overige volledig:
+liederen en gezang, votum en groet, wetslezing, Schriftlezingen, gebeden,
+mededelingen, collecte, geloofsbelijdenis, welkom en afsluiting. Neem geen inhoud
+uit die onderdelen over in de samenvatting, de dagen of de vragen.
+"""
+
+
+def verwerk_preek(transcript, welkom=None, taal_hint=None, extra_context=None,
+                  volledige_dienst=False):
     """Verwerk het transcript tot een gestructureerd resultaat (dict).
 
     Geeft een dict met de velden: taal, titel, bijbelgedeelte, voorganger,
-    samenvatting, dagen[7]. Werpt een fout bij een ongeldig antwoord.
+    samenvatting, dagen[7]. Werpt een fout bij een ongeldig antwoord. Met
+    volledige_dienst=True bevat de transcriptie de hele dienst en moet het model
+    zelf het preekgedeelte eruit halen.
     """
     if not os.environ.get("OPENAI_API_KEY"):
         raise RuntimeError(
@@ -202,6 +218,8 @@ def verwerk_preek(transcript, welkom=None, taal_hint=None, extra_context=None):
         )
     client = OpenAI()
     inhoud = GEBRUIKER_INLEIDING
+    if volledige_dienst:
+        inhoud += VOLLEDIGE_DIENST_INSTRUCTIE
     if extra_context:
         inhoud += (
             "\nBekende gegevens uit de liturgie (betrouwbaar; neem deze over in "
@@ -217,7 +235,8 @@ def verwerk_preek(transcript, welkom=None, taal_hint=None, extra_context=None):
             "\n--- FRAGMENT WELKOMSTWOORD (alleen voor de naam van de "
             "voorganger) ---\n" + welkom + "\n"
         )
-    inhoud += "\n--- TRANSCRIPTIE VAN DE PREEK ---\n" + transcript
+    kop = "VOLLEDIGE DIENST" if volledige_dienst else "PREEK"
+    inhoud += f"\n--- TRANSCRIPTIE VAN DE {kop} ---\n" + transcript
     antwoord = client.chat.completions.create(
         model=MODEL,
         response_format={"type": "json_object"},
