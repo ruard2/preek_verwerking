@@ -558,6 +558,23 @@ def scan_nu(request: Request, db=Depends(get_db)):
     return {"ok": True, "gestart": True}
 
 
+@router.api_route("/api/cron/tick", methods=["GET", "POST"])
+def cron_tick(request: Request, token: str = ""):
+    """Externe trigger voor één scan+bezorg-ronde.
+
+    Laat een externe cron (Railway-cron of bijv. cron-job.org) dit elke ~10 min
+    aanroepen. Zo draait de planning betrouwbaar door, ook als het interne
+    achtergrond-draadje door een containerherstart of -slaap stilvalt: een
+    inkomend verzoek wekt de container. De bezorging is idempotent (verzendlog),
+    dus dubbel aanroepen is veilig.
+    """
+    verwacht = os.environ.get("CRON_TOKEN")
+    if verwacht and token != verwacht:
+        raise HTTPException(403, "Ongeldige cron-token.")
+    automatisering.tick(_basis_url(request))
+    return {"ok": True}
+
+
 @router.post("/api/admin/upload")
 async def upload_preek(
     request: Request, file: UploadFile = File(...), datum: str = Form(""),
