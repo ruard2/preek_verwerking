@@ -237,6 +237,31 @@ function toonDashboard(mij) {
     });
   inhoud.append(tabNav,basisPane,ledenPane,berichtenPane);
 
+  // Onboarding-checklist (verdwijnt zodra alles is ingesteld).
+  (async () => {
+    const subs = await fetch('/api/admin/inschrijvers').then(r => r.json()).catch(() => []);
+    const bevestigd = Array.isArray(subs) ? subs.filter(s => s.bevestigd).length : 0;
+    const stappen = [
+      [!!mij.kanaal_url, 'Kanaal ingesteld',
+        'Zet je YouTube-, Kerkdienstgemist- of Kerkomroep-kanaal bij Basisinstellingen (of upload je preek bij Berichten).'],
+      [bevestigd > 0, bevestigd + ' bevestigde inschrijver(s)',
+        'Deel je inschrijflink of QR-code (tab Verzendlijst) zodat gemeenteleden zich aanmelden.'],
+    ];
+    if (stappen.every(s => s[0])) return;
+    const c = el('div', {className: 'kaart'});
+    c.appendChild(el('h2', {}, 'Aan de slag'));
+    c.appendChild(el('p', {className: 'sub'}, 'Nog een paar stappen tot je eerste overdenkingen uitgaan:'));
+    stappen.forEach(([ok, titel, uitleg]) => {
+      const r = el('div'); r.style.margin = '.6rem 0';
+      const b = el('b', {}, (ok ? '✓ ' : '○ ') + titel);
+      b.style.color = ok ? 'var(--groen)' : 'var(--grijs)';
+      r.appendChild(b);
+      r.appendChild(el('div', {className: 'sub'}, uitleg));
+      c.appendChild(r);
+    });
+    basisPane.insertBefore(c, basisPane.firstChild);
+  })();
+
   const kaart = el('div', {className: 'kaart wide'});
   kaart.appendChild(el('div',{className:'eyebrow'},'Overzicht'));
   kaart.appendChild(el('h2', {}, 'Kanaal'));

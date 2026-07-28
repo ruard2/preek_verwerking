@@ -66,8 +66,15 @@ function bouw(s) {
         <button id="opslaan">Opslaan</button>
         <button class="afmeld" id="afmeld">Afmelden</button>
       </div>
+      <p style="margin-top:1.1rem;font-size:.85rem"><a id="downloaddata" href="#">Download mijn gegevens</a></p>
     </div>`;
   document.getElementById('freq').value = s.frequentie || 'wekelijks';
+
+  const dl = document.getElementById('downloaddata');
+  const mijn = {naam: s.naam || '', email: s.email || '', telefoon: s.telefoon || '',
+    frequentie: s.frequentie || 'wekelijks'};
+  dl.href = 'data:application/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(mijn, null, 2));
+  dl.setAttribute('download', 'mijn-gegevens.json');
 
   document.getElementById('opslaan').onclick = async () => {
     try {
