@@ -52,24 +52,24 @@ def parse_tijd(s):
         return dtime(7, 0)
 
 
-def geplande_momenten(week_start, sub):
+def geplande_momenten(week_start, kerk, sub):
     """(dag, lokaal-naïef datetime) waarop deze inschrijver iets moet ontvangen.
 
-    dag 0 = het hele weekboekje (wekelijks); 1..7 = losse dagdelen (dagelijks).
+    De KERK bepaalt het verzendmoment (verzend_dag + verzend_tijd, kerk-tijdzone);
+    de inschrijver kiest alleen de frequentie. dag 0 = het hele weekboekje
+    (wekelijks); 1..7 = losse dagdelen (dagelijks, vanaf verzend_dag).
     """
-    t = parse_tijd(sub.ontvang_tijd)
+    t = parse_tijd(getattr(kerk, "verzend_tijd", None) or "07:00")
+    basis = week_start + timedelta(days=(getattr(kerk, "verzend_dag", 0) or 0) % 7)
     if sub.frequentie == "dagelijks":
-        return [
-            (k, datetime.combine(week_start + timedelta(days=k - 1), t))
-            for k in range(1, 8)
-        ]
-    return [(0, datetime.combine(week_start + timedelta(days=(sub.ontvang_dag or 0) % 7), t))]
+        return [(k, datetime.combine(basis + timedelta(days=k - 1), t)) for k in range(1, 8)]
+    return [(0, datetime.combine(basis, t))]
 
 
-def due_momenten(week_start, sub, nu_lokaal, grace_dagen=GRACE_DAGEN):
+def due_momenten(week_start, kerk, sub, nu_lokaal, grace_dagen=GRACE_DAGEN):
     """Welke (dag, moment) zijn nu verschuldigd: gepland <= nu en niet te oud."""
     due = []
-    for dag, moment in geplande_momenten(week_start, sub):
+    for dag, moment in geplande_momenten(week_start, kerk, sub):
         if moment <= nu_lokaal and (nu_lokaal - moment) <= timedelta(days=grace_dagen):
             due.append((dag, moment))
     return due
@@ -90,26 +90,27 @@ def _nu_lokaal(kerk):
     return datetime.now(tz).replace(tzinfo=None) if tz else datetime.utcnow()
 
 
-def _kanaal_diensten(kerk):
+def _kanaal_diensten(kerk, vernieuw=False):
     url = kerk.kanaal_url or ""
     import main  # laat-import om circulaire import te vermijden
 
     typ, soort = main._classificeer(url)
     if not typ or soort != "kanaal":
         return []
-    # Gebruik exact dezelfde gecachete kanaallijst als de demo.
-    return main._laad_diensten(typ, url)
+    # Gebruik exact dezelfde gecachete kanaallijst als de demo. Een handmatige
+    # scan (vernieuw=True) haalt een verse lijst op i.p.v. de cache.
+    return main._laad_diensten(typ, url, vernieuw=vernieuw)
 
 
 # ---------- Scannen + verwerken ----------
-def scan_kerk(db, kerk, base_url, nu_lokaal=None):
+def scan_kerk(db, kerk, base_url, nu_lokaal=None, vernieuw=False):
     """Zoek nieuwe recente diensten, verwerk ze en maak een Uitzending aan."""
     if not (kerk.kanaal_url or "").strip():
         return 0
     nu_lokaal = nu_lokaal or _nu_lokaal(kerk)
     grens = nu_lokaal.date() - timedelta(days=SCAN_TERUG_DAGEN)
 
-    diensten = _kanaal_diensten(kerk)
+    diensten = _kanaal_diensten(kerk, vernieuw=vernieuw)
     verwerkt = 0
     for d in diensten:
         if verwerkt >= MAX_PER_TICK:
@@ -127,21 +128,14 @@ def scan_kerk(db, kerk, base_url, nu_lokaal=None):
         )
         if bestaat:
             continue
-        # Verwerk (of laad uit cache) via de hoofdpijplijn.
-        import main
-
-        try:
-            main.verwerk_en_bewaar(d["url"])
-        except Exception:  # noqa: BLE001 — deze dienst overslaan, rest doorgaan
-            traceback.print_exc()
-            continue
+        # Alleen vastleggen en aanklikbaar maken — NIET automatisch verwerken.
+        # De (dure) transcript/AI-verwerking gebeurt pas op verzoek: als de
+        # beheerder de dienst opent, of lui op het moment van bezorging.
         uit = Uitzending(
             kerk_id=kerk.id, video_id=video_id, url=d["url"],
             titel=d.get("titel") or d.get("label") or "Dienst",
             datum=datum, week_start=komende_maandag(datum),
             goedgekeurd=bool(kerk.auto_versturen),
-            # Ook automatisch goedgekeurde diensten krijgen een token, zodat
-            # de beheerder ze vanuit het dashboard kan openen en bewerken.
             goedkeur_token=secrets.token_urlsafe(24),
         )
         db.add(uit)
@@ -188,12 +182,28 @@ def bezorg_kerk(db, kerk, base_url, nu_lokaal=None):
         mag = uit.goedgekeurd or kerk.versturen_zonder_goedkeuring
         if not mag:
             continue
+        # Is er nú iets verschuldigd voor iemand? Zo niet: niets doen en zeker
+        # niet verwerken (bespaart kosten tot bezorging echt aan de orde is).
+        iets_due = any(
+            due_momenten(uit.week_start, kerk, s, nu_lokaal) for s in inschrijvers
+        )
+        if not iets_due:
+            continue
         bewaard = store.resultaat_ophalen(uit.video_id)
+        if not bewaard or not bewaard.get("data"):
+            import main  # lui verwerken: nu pas transcript + AI
+
+            try:
+                main.verwerk_en_bewaar(uit.url)
+            except Exception:  # noqa: BLE001
+                traceback.print_exc()
+                continue
+            bewaard = store.resultaat_ophalen(uit.video_id)
         if not bewaard or not bewaard.get("data"):
             continue
         data = bewaard["data"]
         for sub in inschrijvers:
-            for dag, _moment in due_momenten(uit.week_start, sub, nu_lokaal):
+            for dag, _moment in due_momenten(uit.week_start, kerk, sub, nu_lokaal):
                 al = db.scalar(select(Verzending).where(
                     Verzending.uitzending_id == uit.id,
                     Verzending.subscriber_id == sub.id, Verzending.dag == dag,

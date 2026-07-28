@@ -63,6 +63,10 @@ class Church(Base):
     admin_taal: Mapped[str] = mapped_column(String(5), default="auto")
     inschrijf_taal: Mapped[str] = mapped_column(String(5), default="auto")
     communicatie_taal: Mapped[str] = mapped_column(String(5), default="nl")
+    # De kerk bepaalt het verzendmoment (in de kerk-tijdzone). Wekelijks: de hele
+    # bundel op verzend_dag; dagelijks: dag 1 op verzend_dag, dan elke dag verder.
+    verzend_dag: Mapped[int] = mapped_column(Integer, default=0)  # 0=ma .. 6=zo
+    verzend_tijd: Mapped[str] = mapped_column(String(5), default="07:00")  # "HH:MM"
     # Bij "kerk moet goedkeuren": toch versturen als er op het verzendmoment nog
     # geen goedkeuring is?
     versturen_zonder_goedkeuring: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -75,6 +79,21 @@ class Church(Base):
     inschrijvers: Mapped[list["Subscriber"]] = relationship(
         back_populates="kerk", cascade="all, delete-orphan"
     )
+
+
+class Medebeheerder(Base):
+    """Extra login-account dat dezelfde kerk beheert (zonder aparte rollen)."""
+
+    __tablename__ = "medebeheerders"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    kerk_id: Mapped[int] = mapped_column(ForeignKey("churches.id", ondelete="CASCADE"))
+    naam: Mapped[str] = mapped_column(String(200), default="")
+    email: Mapped[str] = mapped_column(String(320), unique=True, index=True)
+    wachtwoord_hash: Mapped[str] = mapped_column(String(200), default="")
+    email_geverifieerd: Mapped[bool] = mapped_column(Boolean, default=False)
+    token: Mapped[str] = mapped_column(String(64), default="", index=True)  # uitnodiging/reset
+    aangemaakt: Mapped[DateTime] = mapped_column(DateTime, server_default=func.now())
 
 
 class EmailToken(Base):
@@ -131,6 +150,8 @@ class Uitzending(Base):
     week_start: Mapped[Date] = mapped_column(Date)     # maandag van de overdenkingsweek
     verwerkt_op: Mapped[DateTime] = mapped_column(DateTime, server_default=func.now())
     goedgekeurd: Mapped[bool] = mapped_column(Boolean, default=False)
+    goedgekeurd_op: Mapped[DateTime] = mapped_column(DateTime, nullable=True)
+    goedgekeurd_door: Mapped[str] = mapped_column(String(320), default="")
     goedkeur_token: Mapped[str] = mapped_column(String(64), default="", index=True)
 
 

@@ -31,6 +31,7 @@
   <h1>Je voorkeuren</h1>
   <div id="melding"></div>
   <div id="inhoud"></div>
+  <p style="margin-top:2.5rem;font-size:.8rem"><a href="/privacy" style="color:var(--grijs)">Privacyverklaring</a></p>
 <script src="/static/ui-i18n.js"></script>
 <script>
 const token = new URLSearchParams(location.search).get('token');
@@ -56,28 +57,24 @@ function bouw(s) {
     <div class="kaart">
       <label>Naam</label><input id="naam" value="${s.naam || ''}">
       <label>Telefoonnummer (optioneel)</label><input id="tel" value="${s.telefoon || ''}">
-      <label>Frequentie</label>
+      <label>Hoe vaak wil je ontvangen?</label>
       <select id="freq">
-        <option value="wekelijks">Eén keer per week</option>
-        <option value="dagelijks">Dagelijks</option>
+        <option value="wekelijks">Eén keer per week (hele boekje ineens)</option>
+        <option value="dagelijks">Dagelijks (één overdenking per dag)</option>
       </select>
-      <label>Ontvangstdag (bij wekelijks)</label>
-      <select id="dag">${DAGEN.map((d,i)=>`<option value="${i}">${d.charAt(0).toUpperCase()+d.slice(1)}</option>`).join('')}</select>
-      <label>Ontvangsttijd</label><input id="tijd" type="time" value="${s.ontvang_tijd || '07:00'}">
       <div>
         <button id="opslaan">Opslaan</button>
         <button class="afmeld" id="afmeld">Afmelden</button>
       </div>
     </div>`;
   document.getElementById('freq').value = s.frequentie || 'wekelijks';
-  document.getElementById('dag').value = s.ontvang_dag || 0;
 
   document.getElementById('opslaan').onclick = async () => {
     try {
       const r = await fetch('/api/voorkeuren', {
         method: 'POST', headers: {'Content-Type':'application/json'},
         body: JSON.stringify({token, naam: val('naam'), telefoon: val('tel'),
-          frequentie: val('freq'), ontvang_dag: +val('dag'), ontvang_tijd: val('tijd')})
+          frequentie: val('freq')})
       });
       if (!r.ok) throw new Error(await fouttekst(r));
       toon('ok', 'Je voorkeuren zijn opgeslagen.');

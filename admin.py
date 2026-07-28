@@ -4,10 +4,12 @@ Server-rendered pagina is static/admin.html; hier zitten de JSON-endpoints en
 de sessie-afhandeling (ondertekende cookie via Starlette SessionMiddleware).
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, RedirectResponse, Response
 from pydantic import BaseModel
 
+import os
+import secrets
 import threading
 
 from sqlalchemy import func, select
@@ -20,7 +22,7 @@ import render
 import store
 import subscribers
 import ui_i18n
-from db import Church, SessionLocal, Subscriber, Uitzending, Verzending
+from db import Church, Medebeheerder, SessionLocal, Subscriber, Uitzending, Verzending
 
 router = APIRouter()
 
@@ -100,6 +102,8 @@ class KanaalBody(BaseModel):
     kanaal_url: str = ""
     auto_versturen: bool = False
     tijdzone: str = "Europe/Amsterdam"
+    verzend_dag: int = 0
+    verzend_tijd: str = "07:00"
     versturen_zonder_goedkeuring: bool = False
     admin_taal: str = "auto"
     inschrijf_taal: str = "auto"
@@ -231,6 +235,8 @@ def mij(request: Request, db=Depends(get_db)):
         "kanaal_url": kerk.kanaal_url,
         "auto_versturen": kerk.auto_versturen,
         "tijdzone": kerk.tijdzone,
+        "verzend_dag": kerk.verzend_dag,
+        "verzend_tijd": kerk.verzend_tijd,
         "versturen_zonder_goedkeuring": kerk.versturen_zonder_goedkeuring,
         "admin_taal": kerk.admin_taal,
         "inschrijf_taal": kerk.inschrijf_taal,
@@ -244,6 +250,8 @@ def kanaal(body: KanaalBody, request: Request, db=Depends(get_db)):
     kerk.kanaal_url = (body.kanaal_url or "").strip()
     kerk.auto_versturen = bool(body.auto_versturen)
     kerk.tijdzone = (body.tijdzone or "Europe/Amsterdam").strip()
+    kerk.verzend_dag = int(body.verzend_dag) % 7
+    kerk.verzend_tijd = (body.verzend_tijd or "07:00").strip()
     kerk.versturen_zonder_goedkeuring = bool(body.versturen_zonder_goedkeuring)
     kerk.admin_taal = ui_i18n.valid(body.admin_taal, "auto")
     kerk.inschrijf_taal = ui_i18n.valid(body.inschrijf_taal, "auto")
@@ -303,11 +311,14 @@ def inschrijflink(request: Request, db=Depends(get_db)):
 
 
 @router.get("/api/admin/qr")
-def qr(request: Request, db=Depends(get_db)):
+def qr(request: Request, download: bool = False, db=Depends(get_db)):
     kerk = _vereis_kerk(request, db)
     url = f"{_basis_url(request)}/inschrijven?kerk={kerk.id}"
     svg = _qr_svg(url)
-    return Response(content=svg, media_type="image/svg+xml")
+    headers = {}
+    if download:
+        headers["Content-Disposition"] = 'attachment; filename="aftersermon-qr.svg"'
+    return Response(content=svg, media_type="image/svg+xml", headers=headers)
 
 
 @router.post("/api/admin/verstuur/{video_id}")
@@ -351,9 +362,11 @@ def uitzendingen(request: Request, db=Depends(get_db)):
             select(func.count()).select_from(Verzending)
             .where(Verzending.uitzending_id == u.id)
         )
+        bewaard = store.resultaat_ophalen(u.video_id) or {}
         uit.append({
             "video_id": u.video_id, "titel": u.titel, "datum": str(u.datum),
             "goedgekeurd": u.goedgekeurd, "verzonden": aantal or 0,
+            "verwerkt": bool(bewaard.get("data")),
             "bron_url": u.url,
             "bewerk_url": (
                 f"/uitzending?token={u.goedkeur_token}"
@@ -390,7 +403,7 @@ def scan_diagnose(request: Request, db=Depends(get_db)):
         return uit
 
     try:
-        diensten = main._laad_diensten(typ, url)
+        diensten = main._laad_diensten(typ, url, vernieuw=True)
     except Exception as fout:  # noqa: BLE001
         uit["probleem"] = f"De kanaallijst kon niet worden opgehaald: {fout}"
         return uit
@@ -437,7 +450,9 @@ def scan_nu(request: Request, db=Depends(get_db)):
     def werk():
         s = SessionLocal()
         try:
-            automatisering.scan_kerk(s, s.get(Church, kerk_id), base)
+            # Handmatige scan: verse kanaallijst ophalen (niet de cache), zodat
+            # net-toegevoegde of net-gedateerde diensten meteen meekomen.
+            automatisering.scan_kerk(s, s.get(Church, kerk_id), base, vernieuw=True)
         except Exception:  # noqa: BLE001
             import traceback
 
@@ -449,23 +464,200 @@ def scan_nu(request: Request, db=Depends(get_db)):
     return {"ok": True, "gestart": True}
 
 
+@router.post("/api/admin/upload")
+async def upload_preek(
+    request: Request, file: UploadFile = File(...), datum: str = Form(""),
+    db=Depends(get_db),
+):
+    """Eigen preek als document (PDF/DOCX/TXT) → weekboekje."""
+    import documenten
+    import main
+    from datetime import date, datetime
+
+    kerk = _vereis_kerk(request, db)
+    inhoud = await file.read()
+    try:
+        tekst = documenten.haal_tekst(file.filename, inhoud)
+    except ValueError as fout:
+        raise HTTPException(400, str(fout))
+    if len(tekst) < 200:
+        raise HTTPException(400, "Het document bevat te weinig tekst voor een preek.")
+
+    video_id = "upload_" + secrets.token_hex(8)
+    try:
+        data = main.verwerk_tekst_en_bewaar(video_id, tekst, titel_hint=file.filename)
+    except Exception as fout:  # noqa: BLE001
+        raise HTTPException(502, f"Verwerken lukte niet: {fout}")
+
+    try:
+        d = datetime.strptime(datum[:10], "%Y-%m-%d").date() if datum else date.today()
+    except ValueError:
+        d = date.today()
+    uit = Uitzending(
+        kerk_id=kerk.id, video_id=video_id, url="",
+        titel=data.get("titel") or file.filename, datum=d,
+        week_start=automatisering.komende_maandag(d),
+        goedgekeurd=bool(kerk.auto_versturen),
+        goedkeur_token=secrets.token_urlsafe(24),
+    )
+    db.add(uit)
+    db.commit()
+    return {"ok": True, "video_id": video_id, "bewerk_url": f"/uitzending?token={uit.goedkeur_token}"}
+
+
+@router.put("/api/admin/inschrijvers/{sub_id}")
+def inschrijver_wijzig(sub_id: int, body: InschrijverBody, request: Request, db=Depends(get_db)):
+    kerk = _vereis_kerk(request, db)
+    sub = db.get(Subscriber, sub_id)
+    if not sub or sub.kerk_id != kerk.id:
+        raise HTTPException(404, "Inschrijver niet gevonden.")
+    sub.naam = (body.naam or "").strip()
+    if body.email and "@" in body.email:
+        sub.email = body.email.strip().lower()
+    sub.telefoon = (body.telefoon or "").strip()
+    if body.frequentie in subscribers.FREQUENTIES:
+        sub.frequentie = body.frequentie
+    db.commit()
+    return _sub_json(sub)
+
+
+@router.post("/api/admin/test-verzenden")
+def test_verzenden(request: Request, db=Depends(get_db)):
+    """Stuur de nieuwste verwerkte overdenking als test naar het eigen adres."""
+    kerk = _vereis_kerk(request, db)
+    rijen = db.scalars(
+        select(Uitzending).where(Uitzending.kerk_id == kerk.id)
+        .order_by(Uitzending.datum.desc())
+    )
+    for u in rijen:
+        bewaard = store.resultaat_ophalen(u.video_id)
+        if bewaard and bewaard.get("data"):
+            onderwerp, html = levering.bouw_email(
+                bewaard["data"], kerk.naam or "AfterSermon", _basis_url(request),
+                "test", None, kerk.communicatie_taal,
+            )
+            brevo.verzend(
+                kerk.email, "[TEST] " + onderwerp, html,
+                van_naam=kerk.naam or None, antwoord_naar=kerk.email or None,
+            )
+            return {"ok": True, "naar": kerk.email}
+    raise HTTPException(400, "Er is nog geen verwerkte dienst om te testen.")
+
+
+@router.get("/api/admin/medebeheerders")
+def medebeheerders_lijst(request: Request, db=Depends(get_db)):
+    kerk = _vereis_kerk(request, db)
+    rijen = db.scalars(select(Medebeheerder).where(Medebeheerder.kerk_id == kerk.id))
+    return [
+        {"id": m.id, "email": m.email, "naam": m.naam,
+         "actief": bool(m.wachtwoord_hash and m.email_geverifieerd)}
+        for m in rijen
+    ]
+
+
+@router.post("/api/admin/medebeheerders")
+def medebeheerder_uitnodigen(body: EmailBody, request: Request, db=Depends(get_db)):
+    kerk = _vereis_kerk(request, db)
+    email = (body.email or "").strip().lower()
+    if not email or "@" not in email:
+        raise HTTPException(400, "Geef een geldig e-mailadres op.")
+    if auth._kerk_op_email(db, email) or db.scalar(
+        select(Medebeheerder).where(Medebeheerder.email == email)
+    ):
+        raise HTTPException(400, "Dit e-mailadres is al in gebruik.")
+    token = secrets.token_urlsafe(24)
+    db.add(Medebeheerder(kerk_id=kerk.id, email=email, token=token))
+    db.commit()
+    link = f"{_basis_url(request)}/admin?uitnodiging={token}"
+    brevo.verzend(
+        email, f"Je bent uitgenodigd als beheerder van {kerk.naam or 'een kerk'}",
+        f"<p>Je bent uitgenodigd om mee te beheren in AfterSermon. Stel via deze "
+        f"link je wachtwoord in:</p><p><a href=\"{link}\">{link}</a></p>",
+        tekst=f"Stel je wachtwoord in: {link}",
+    )
+    return {"ok": True}
+
+
+@router.delete("/api/admin/medebeheerders/{mb_id}")
+def medebeheerder_verwijderen(mb_id: int, request: Request, db=Depends(get_db)):
+    kerk = _vereis_kerk(request, db)
+    mb = db.get(Medebeheerder, mb_id)
+    if not mb or mb.kerk_id != kerk.id:
+        raise HTTPException(404, "Beheerder niet gevonden.")
+    db.delete(mb)
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/api/admin/medebeheerder-instellen")
+def medebeheerder_instellen(body: ResetBody, db=Depends(get_db)):
+    """Uitgenodigde beheerder stelt via de token zijn wachtwoord in."""
+    if len(body.wachtwoord or "") < 8:
+        raise HTTPException(400, "Kies een wachtwoord van minstens 8 tekens.")
+    mb = db.scalar(select(Medebeheerder).where(Medebeheerder.token == body.token))
+    if not mb or not body.token:
+        raise HTTPException(400, "Deze uitnodiging is ongeldig of verlopen.")
+    mb.wachtwoord_hash = auth.hash_wachtwoord(body.wachtwoord)
+    mb.email_geverifieerd = True
+    mb.token = ""
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/api/brevo/webhook")
+def brevo_webhook(body: dict, token: str = "", db=Depends(get_db)):
+    """Brevo-events: bij een harde bounce/klacht de inschrijver opschonen."""
+    verwacht = os.environ.get("BREVO_WEBHOOK_TOKEN")
+    if verwacht and token != verwacht:
+        raise HTTPException(403, "Ongeldige webhook-token.")
+    event = (body or {}).get("event", "")
+    email = ((body or {}).get("email") or "").strip().lower()
+    if email and event in ("hard_bounce", "spam", "blocked", "invalid_email", "unsubscribed"):
+        for s in db.scalars(select(Subscriber).where(Subscriber.email == email)):
+            db.delete(s)
+        db.commit()
+    return {"ok": True}
+
+
 # ---- Goedkeuren / bewerken via magische link (geen login) ----
 @router.get("/api/uitzending/goedkeuren")
 def uitzending_goedkeuren_link(token: str, db=Depends(get_db)):
     uit = _uit_op_token(db, token)
     if uit:
-        uit.goedgekeurd = True
-        db.commit()
+        kerk = db.get(Church, uit.kerk_id)
+        _keur_goed(db, uit, kerk.email if kerk else "")
         return RedirectResponse(f"/uitzending?token={token}&goedgekeurd=1", status_code=303)
     return RedirectResponse("/uitzending?fout=1", status_code=303)
 
 
+def _keur_goed(db, uit, door):
+    from datetime import datetime
+
+    uit.goedgekeurd = True
+    uit.goedgekeurd_op = datetime.utcnow()
+    uit.goedgekeurd_door = door or ""
+    db.commit()
+
+
 @router.post("/api/uitzending/goedkeuren")
-def uitzending_goedkeuren(body: dict, db=Depends(get_db)):
+def uitzending_goedkeuren(body: dict, request: Request, db=Depends(get_db)):
     uit = _uit_op_token(db, (body or {}).get("token", ""))
     if not uit:
         raise HTTPException(404, "Onbekende of verlopen link.")
-    uit.goedgekeurd = True
+    kerk = db.get(Church, uit.kerk_id)
+    _keur_goed(db, uit, (kerk.email if kerk else "") )
+    return {"ok": True}
+
+
+@router.post("/api/uitzending/concept")
+def uitzending_concept(body: dict, db=Depends(get_db)):
+    """Terug naar concept: goedkeuring intrekken."""
+    uit = _uit_op_token(db, (body or {}).get("token", ""))
+    if not uit:
+        raise HTTPException(404, "Onbekende of verlopen link.")
+    uit.goedgekeurd = False
+    uit.goedgekeurd_op = None
+    uit.goedgekeurd_door = ""
     db.commit()
     return {"ok": True}
 
@@ -479,9 +671,31 @@ def uitzending_data(token: str, db=Depends(get_db)):
     data = bewaard.get("data") or {}
     return {
         "titel": uit.titel, "datum": str(uit.datum), "goedgekeurd": uit.goedgekeurd,
+        "goedgekeurd_op": uit.goedgekeurd_op.isoformat() if uit.goedgekeurd_op else None,
+        "goedgekeurd_door": uit.goedgekeurd_door or None,
         "video_id": uit.video_id, "data": _met_labels(data),
         "tekst": bewaard.get("tekst", ""),
+        "verwerkt": bool(data),
     }
+
+
+@router.post("/api/uitzending/verwerk")
+def uitzending_verwerk(body: dict, db=Depends(get_db)):
+    """Verwerk deze dienst op verzoek (transcript + AI). Kan even duren."""
+    uit = _uit_op_token(db, (body or {}).get("token", ""))
+    if not uit:
+        raise HTTPException(404, "Onbekende of verlopen link.")
+    bewaard = store.resultaat_ophalen(uit.video_id)
+    if not bewaard or not bewaard.get("data"):
+        import main
+
+        try:
+            main.verwerk_en_bewaar(uit.url)
+        except Exception as fout:  # noqa: BLE001
+            raise HTTPException(502, f"Verwerken lukte niet: {fout}")
+        bewaard = store.resultaat_ophalen(uit.video_id) or {}
+    data = bewaard.get("data") or {}
+    return {"ok": True, "data": _met_labels(data), "tekst": bewaard.get("tekst", "")}
 
 
 @router.post("/api/uitzending/bewerk")
@@ -501,6 +715,11 @@ def uitzending_bewerk(body: dict, db=Depends(get_db)):
 @router.get("/uitzending")
 def uitzending_pagina():
     return FileResponse("static/uitzending.html", headers={"Cache-Control": "no-cache"})
+
+
+@router.get("/privacy")
+def privacy_pagina():
+    return FileResponse("static/privacy.html", headers={"Cache-Control": "no-cache"})
 
 
 # ---- Publieke inschrijving (geen login) ----

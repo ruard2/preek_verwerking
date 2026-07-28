@@ -150,13 +150,47 @@ def _laad_diensten(typ, kanaal_url, vernieuw=False):
 
 
 def _lijst_youtube(kanaal_url):
-    """YouTube-kanaallijst via yt-dlp; bij een blokkade terugvallen op Supadata."""
+    """YouTube-kanaallijst.
+
+    yt-dlp geeft het juiste, nieuwste-eerst overzicht van het streams-tabblad
+    (waar de wekelijkse diensten staan), maar vaak zonder datum in de titel.
+    Supadata's kanaal-endpoint mist juist die livestreams. Daarom: lijst via
+    yt-dlp, en de datums van de nieuwste diensten aanvullen via Supadata (dat
+    werkt gehost en geeft de echte uploaddatum per video)."""
     try:
-        return lijst_diensten(_youtube_kanaal_url(kanaal_url))
-    except Exception as fout:  # noqa: BLE001
+        diensten = lijst_diensten(_youtube_kanaal_url(kanaal_url))
+    except Exception:  # noqa: BLE001 — yt-dlp geblokkeerd: val terug op Supadata-lijst
         if supadata.beschikbaar():
             return supadata.lijst_kanaal(kanaal_url)
-        raise fout
+        raise
+    if supadata.beschikbaar():
+        _verrijk_datums_via_supadata(diensten)
+    return diensten
+
+
+def _verrijk_datums_via_supadata(diensten, maximum=10):
+    """Vul de datum aan van de nieuwste diensten die er nog geen hebben.
+
+    Alleen de nieuwste `maximum` datumloze diensten (yt-dlp levert nieuwste
+    eerst), zodat de scan het recente venster dekt zonder de rate limit te raken.
+    """
+    import time
+    from datetime import date
+
+    vandaag = date.today().isoformat()
+    gedaan = 0
+    for d in diensten:
+        if gedaan >= maximum:
+            break
+        if d.get("datum"):
+            continue
+        datum = supadata.video_datum(d.get("id"))
+        gedaan += 1
+        time.sleep(1.2)  # gratis tier heeft een strakke rate limit
+        if datum:
+            d["datum"] = datum
+            if datum > vandaag:
+                d["gepland"] = True
 
 
 def _proces_kerkdienstgemist(url, meld):
@@ -283,6 +317,25 @@ def verwerk_en_bewaar(url, herverwerk=False, meld=None):
     if vid:
         store.resultaat_opslaan(vid, payload)
     return {"video_id": vid, "uit_cache": False, **payload}
+
+
+def verwerk_tekst_en_bewaar(video_id, tekst, titel_hint=None):
+    """Verwerk een aangeleverde preektekst (upload) en bewaar het resultaat.
+
+    De tekst is de preek zelf (manuscript), dus die geldt meteen als de
+    opgeschoonde volledige preek — geen transcriptie/opschoonstap nodig.
+    """
+    data = verwerk_preek(tekst)
+    if titel_hint and not data.get("titel"):
+        data["titel"] = titel_hint
+    rendered = render.naar_tekst(data)
+    payload = {
+        "data": data, "tekst": rendered,
+        "meta": {"transcriptie_bron": "geüpload document"},
+        "ondertitel": titel_hint, "transcript_ruw": tekst, "preek_schoon": tekst,
+    }
+    store.resultaat_opslaan(video_id, payload)
+    return data
 
 
 def _voer_taak_uit(taak_id, url):

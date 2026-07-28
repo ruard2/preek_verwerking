@@ -55,6 +55,28 @@ if (!token) toon('fout', 'Geen geldige link.');
 else fetch('/api/uitzending/' + token).then(r => r.ok ? r.json() : Promise.reject(r)).then(bouw)
   .catch(() => toon('fout', 'Deze link is ongeldig of verlopen.'));
 
+function bouwVerwerk(u) {
+  inhoud.innerHTML = '';
+  inhoud.appendChild(el('h1', null, u.titel));
+  inhoud.appendChild(el('p', 'sub', 'Dienst van ' + u.datum));
+  const k = el('div', 'kaart');
+  k.appendChild(el('p', null, 'Deze dienst is nog niet verwerkt. Klik hieronder om de preek te transcriberen en er een weekboekje van te maken. Dat kan een paar minuten duren.'));
+  const knop = el('button', 'primair', 'Verwerk deze preek');
+  knop.onclick = async () => {
+    knop.disabled = true; knop.textContent = 'Bezig met verwerken… (enkele minuten)';
+    toon('', '');
+    try {
+      const r = await fetch('/api/uitzending/verwerk', {method: 'POST',
+        headers: {'Content-Type':'application/json'}, body: JSON.stringify({token})});
+      if (!r.ok) throw new Error(await fout(r));
+      const res = await r.json();
+      bouw({...u, verwerkt: true, data: res.data, tekst: res.tekst});
+    } catch (f) { toon('fout', f.message); knop.disabled = false; knop.textContent = 'Verwerk deze preek'; }
+  };
+  k.appendChild(knop);
+  inhoud.appendChild(k);
+}
+
 function veld(label, waarde, multiline, rows) {
   const w = el('div'); w.appendChild(el('div', 'label', label));
   const i = document.createElement(multiline ? 'textarea' : 'input');
@@ -63,6 +85,7 @@ function veld(label, waarde, multiline, rows) {
 }
 
 function bouw(u) {
+  if (!u.verwerkt) { bouwVerwerk(u); return; }
   const d = u.data || {}; const L = d._labels || {};
   inhoud.innerHTML = '';
 
@@ -70,10 +93,22 @@ function bouw(u) {
   const opslaan = el('button', 'grijs', 'Wijzigingen opslaan');
   const keur = el('button', 'primair', u.goedgekeurd ? 'Opnieuw versturen goedkeuren' : 'Goedkeuren & versturen');
   balk.append(opslaan, keur);
+  if (u.goedgekeurd) {
+    const concept = el('button', 'grijs', 'Terug naar concept');
+    concept.onclick = async () => {
+      const r = await fetch('/api/uitzending/concept', {method:'POST',
+        headers:{'Content-Type':'application/json'}, body: JSON.stringify({token})});
+      if (r.ok) { u.goedgekeurd = false; u.goedgekeurd_op = null; bouw(u); toon('ok','Teruggezet naar concept.'); }
+    };
+    balk.appendChild(concept);
+  }
   inhoud.appendChild(balk);
 
+  let status = u.goedgekeurd ? ' · goedgekeurd' : ' · nog niet goedgekeurd';
+  if (u.goedgekeurd && u.goedgekeurd_op) status += ' op ' + u.goedgekeurd_op.slice(0,10)
+    + (u.goedgekeurd_door ? ' door ' + u.goedgekeurd_door : '');
   inhoud.appendChild(el('h1', null, u.titel));
-  inhoud.appendChild(el('p', 'sub', 'Dienst van ' + u.datum + (u.goedgekeurd ? ' · al goedgekeurd' : ' · nog niet goedgekeurd')));
+  inhoud.appendChild(el('p', 'sub', 'Dienst van ' + u.datum + status));
 
   const kop = el('div', 'kaart');
   const fTitel = veld('Titel', d.titel); kop.appendChild(fTitel.w);

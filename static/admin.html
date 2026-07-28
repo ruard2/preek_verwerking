@@ -197,6 +197,24 @@ function toonReset(token) {
   kaart.appendChild(knop);
 }
 
+function toonUitnodiging(token) {
+  inhoud.innerHTML = '';
+  const kaart = el('div', {className: 'kaart'}); inhoud.appendChild(kaart);
+  kaart.appendChild(el('h2', {}, 'Beheerder worden — wachtwoord instellen'));
+  kaart.appendChild(el('p', {className: 'sub'}, 'Stel een wachtwoord in om mee te beheren.'));
+  kaart.appendChild(veld('Wachtwoord (min. 8 tekens)', 'w', 'password'));
+  const knop = el('button', {}, 'Opslaan en inloggen');
+  knop.onclick = async () => {
+    try {
+      await post('/api/admin/medebeheerder-instellen', {token, wachtwoord: val('w')});
+      toon('ok', 'Klaar! Je kunt nu inloggen met je e-mailadres en dit wachtwoord.');
+      history.replaceState({}, '', '/admin');
+      toonLogin();
+    } catch (f) { toon('fout', f.message); }
+  };
+  kaart.appendChild(knop);
+}
+
 function toonDashboard(mij) {
   inhoud.innerHTML = '';
   AfterSermonI18n.set(mij.admin_taal || 'auto');
@@ -233,6 +251,17 @@ function toonDashboard(mij) {
   tz.value = mij.tijdzone || 'Europe/Amsterdam';
   kaart.appendChild(tz);
 
+  kaart.appendChild(el('label', {}, 'Verzenddag (wanneer de overdenkingen uitgaan)'));
+  const vdag = el('select', {id: 'vdag'});
+  ['maandag','dinsdag','woensdag','donderdag','vrijdag','zaterdag','zondag']
+    .forEach((d,i) => vdag.appendChild(el('option', {value: String(i)}, d.charAt(0).toUpperCase()+d.slice(1))));
+  vdag.value = String(mij.verzend_dag || 0);
+  kaart.appendChild(vdag);
+  kaart.appendChild(el('p', {className:'sub'},
+    'Wekelijks = op deze dag het hele boekje; dagelijks = dag 1 op deze dag, daarna elke dag een deel.'));
+  kaart.appendChild(el('label', {}, 'Verzendtijd'));
+  kaart.appendChild(el('input', {id: 'vtijd', type: 'time', value: mij.verzend_tijd || '07:00'}));
+
   const rij = el('div', {className: 'rij'}); rij.style.marginTop = '.9rem';
   const chk = el('input', {id: 'auto', type: 'checkbox', checked: !!mij.auto_versturen});
   rij.append(chk, el('label', {htmlFor: 'auto'},
@@ -251,6 +280,7 @@ function toonDashboard(mij) {
       const kanaalUrl = val('kanaal');
       await post('/api/admin/kanaal', {
         kanaal_url: kanaalUrl, tijdzone: val('tz'),
+        verzend_dag: +val('vdag'), verzend_tijd: val('vtijd'),
         auto_versturen: document.getElementById('auto').checked,
         versturen_zonder_goedkeuring: document.getElementById('zonder').checked,
         admin_taal: val('admin_taal'), inschrijf_taal: val('inschrijf_taal'),
@@ -284,6 +314,63 @@ function toonDashboard(mij) {
   basisPane.appendChild(kaart);
   document.getElementById('kanaal').addEventListener('change', () => knop.click());
 
+  // --- Eigen preek uploaden ---
+  const up = el('div', {className: 'kaart'});
+  up.appendChild(el('h2', {}, 'Eigen preek uploaden'));
+  up.appendChild(el('p', {className: 'sub'},
+    'Upload je preek als PDF, DOCX of TXT. Kies je dit, dan wordt die tekst gebruikt in plaats van het kanaal.'));
+  const fileIn = el('input', {id: 'upfile', type: 'file', accept: '.pdf,.docx,.txt'});
+  up.appendChild(fileIn);
+  up.appendChild(el('label', {}, 'Datum van de dienst (optioneel)'));
+  up.appendChild(el('input', {id: 'updatum', type: 'date'}));
+  const upknop = el('button', {}, 'Verwerk upload');
+  upknop.onclick = async () => {
+    const f = fileIn.files[0];
+    if (!f) { toon('fout', 'Kies eerst een bestand.'); return; }
+    upknop.disabled = true; upknop.textContent = 'Bezig met verwerken… (enkele minuten)';
+    try {
+      const fd = new FormData();
+      fd.append('file', f); fd.append('datum', document.getElementById('updatum').value || '');
+      const r = await fetch('/api/admin/upload', {method: 'POST', body: fd});
+      if (!r.ok) throw new Error(await fouttekst(r, 'Uploaden mislukt.'));
+      const d = await r.json();
+      location.href = d.bewerk_url;
+    } catch (er) { toon('fout', er.message); upknop.disabled = false; upknop.textContent = 'Verwerk upload'; }
+  };
+  up.appendChild(upknop);
+  basisPane.appendChild(up);
+
+  // --- Testverzending ---
+  const testk = el('div', {className: 'kaart'});
+  testk.appendChild(el('h2', {}, 'Testverzending'));
+  testk.appendChild(el('p', {className: 'sub'},
+    'Stuur de nieuwste verwerkte overdenking als test naar je eigen e-mailadres.'));
+  const testknop = el('button', {}, 'Stuur testmail naar mezelf');
+  testknop.onclick = async () => {
+    try { const d = await post('/api/admin/test-verzenden', {}); toon('ok', 'Testmail verstuurd naar ' + d.naar + '.'); }
+    catch (f) { toon('fout', f.message); }
+  };
+  testk.appendChild(testknop);
+  basisPane.appendChild(testk);
+
+  // --- Medebeheerders ---
+  const bh = el('div', {className: 'kaart'});
+  bh.appendChild(el('h2', {}, 'Beheerders'));
+  bh.appendChild(el('p', {className: 'sub'}, 'Nodig extra mensen uit om deze kerk mee te beheren.'));
+  const bhLijst = el('div', {id: 'bhlijst'}); bh.appendChild(bhLijst);
+  bh.appendChild(veld('E-mailadres uitnodigen', 'bh_email', 'email'));
+  const bhknop = el('button', {}, 'Uitnodigen');
+  bhknop.onclick = async () => {
+    try {
+      await post('/api/admin/medebeheerders', {email: val('bh_email')});
+      document.getElementById('bh_email').value = '';
+      toon('ok', 'Uitnodiging verstuurd.'); laadBeheerders();
+    } catch (f) { toon('fout', f.message); }
+  };
+  bh.appendChild(bhknop);
+  basisPane.appendChild(bh);
+  laadBeheerders();
+
   // --- Diensten & verzending ---
   const auto = el('div', {className: 'kaart berichten-kaart'});
   auto.appendChild(el('div',{className:'eyebrow'},'Berichten'));
@@ -310,9 +397,18 @@ function toonDashboard(mij) {
     laadKanaalDiensten(mij.kanaal_url).then(() => startScan(true));
   }
 
-  // --- Inschrijvers ---
-  const subs = el('div', {className: 'kaart'});
-  subs.appendChild(el('h2', {}, 'Inschrijvers'));
+  // --- Analytics ---
+  const stats = el('div', {className: 'kaart'});
+  stats.appendChild(el('h2', {}, 'Inschrijvers'));
+  const statsCijfers = el('div', {id: 'stats'}); stats.appendChild(statsCijfers);
+  const beheerKnop = el('button', {}, 'Beheer lijst');
+  ledenPane.appendChild(stats);
+
+  // --- Beheer lijst (verborgen tot "Beheer lijst") ---
+  const subs = el('div', {className: 'kaart weg'});
+  beheerKnop.onclick = () => subs.classList.toggle('weg');
+  stats.appendChild(beheerKnop);
+  subs.appendChild(el('h2', {}, 'Beheer inschrijvers'));
   const lijst = el('div', {id: 'subs'}); subs.appendChild(lijst);
   subs.appendChild(el('label', {}, 'Handmatig toevoegen'));
   subs.append(veld('Naam', 's_naam'), veld('E-mailadres', 's_email', 'email'),
@@ -343,6 +439,10 @@ function toonDashboard(mij) {
   const img = el('img', {id: 'qr'}); img.style.marginTop = '1rem'; img.style.width = '180px';
   img.src = '/api/admin/qr';
   deel.appendChild(img);
+  deel.appendChild(el('br'));
+  const qrdl = el('a', {href: '/api/admin/qr?download=true'}, 'QR-code downloaden');
+  qrdl.style.cssText = 'display:inline-block;margin-top:.6rem;color:var(--groen)';
+  deel.appendChild(qrdl);
   ledenPane.appendChild(deel);
   fetch('/api/admin/inschrijflink').then(r => r.json()).then(d => linkveld.value = d.url);
 
@@ -457,23 +557,77 @@ async function laadInschrijvers() {
   const lijst = document.getElementById('subs');
   if (!lijst) return;
   const rijen = await fetch('/api/admin/inschrijvers').then(r => r.json()).catch(() => []);
-  if (!rijen.length) { lijst.innerHTML = '<p class="sub">Nog geen inschrijvers.</p>'; return; }
+
+  const stats = document.getElementById('stats');
+  if (stats) {
+    const totaal = rijen.length;
+    const bevestigd = rijen.filter(s => s.bevestigd).length;
+    const wekelijks = rijen.filter(s => s.frequentie === 'wekelijks').length;
+    const dagelijks = totaal - wekelijks;
+    stats.innerHTML =
+      `<p style="font-size:1.6rem;margin:.2rem 0;color:var(--groen)"><b>${bevestigd}</b> ` +
+      `<span style="font-size:1rem;color:var(--grijs)">bevestigde inschrijvers</span></p>` +
+      `<p class="sub">${totaal} totaal · ${totaal - bevestigd} nog te bevestigen · ` +
+      `${wekelijks}× wekelijks · ${dagelijks}× dagelijks</p>`;
+  }
+
   lijst.innerHTML = '';
+  if (!rijen.length) { lijst.innerHTML = '<p class="sub">Nog geen inschrijvers.</p>'; return; }
   rijen.forEach(s => {
-    const r = el('div', {className: 'rij'}); r.style.justifyContent = 'space-between';
-    r.style.borderBottom = '1px solid var(--rand)'; r.style.padding = '.4rem 0';
-    const tekst = `${s.naam || '(geen naam)'} · ${s.email} · ${s.frequentie}` +
-      (s.bevestigd ? '' : ' · nog niet bevestigd');
-    r.appendChild(el('span', {}, tekst));
-    const del = el('button', {className: 'link'}, 'verwijderen');
-    del.style.color = '#b0201a'; del.style.margin = '0';
+    const r = el('div'); r.style.borderBottom = '1px solid var(--rand)'; r.style.padding = '.5rem 0';
+    const kop = el('div', {className: 'rij'}); kop.style.justifyContent = 'space-between';
+    kop.appendChild(el('span', {}, `${s.naam || '(geen naam)'} · ${s.email} · ${s.frequentie}` +
+      (s.bevestigd ? '' : ' · nog niet bevestigd')));
+    const acties = el('span');
+    const wijzig = el('button', {className: 'link'}, 'wijzig'); wijzig.style.margin = '0 .8rem 0 0';
+    const del = el('button', {className: 'link'}, 'verwijderen'); del.style.color = '#b0201a'; del.style.margin = '0';
+    acties.append(wijzig, del); kop.appendChild(acties); r.appendChild(kop);
+
     del.onclick = async () => {
       if (!confirm('Deze inschrijver verwijderen?')) return;
       await fetch('/api/admin/inschrijvers/' + s.id, {method: 'DELETE'});
       laadInschrijvers();
     };
-    r.appendChild(del);
+    wijzig.onclick = () => {
+      const form = el('div'); form.style.margin = '.4rem 0';
+      const n = el('input', {value: s.naam || ''}); const e = el('input', {value: s.email, type: 'email'});
+      const t = el('input', {value: s.telefoon || ''});
+      const f = el('select'); f.append(el('option', {value: 'wekelijks'}, 'Wekelijks'), el('option', {value: 'dagelijks'}, 'Dagelijks')); f.value = s.frequentie;
+      [n, e, t].forEach(x => x.style.marginBottom = '.3rem');
+      const opslaan = el('button', {}, 'Opslaan'); opslaan.style.marginRight = '.5rem';
+      opslaan.onclick = async () => {
+        try {
+          await fetch('/api/admin/inschrijvers/' + s.id, {method: 'PUT', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({naam: n.value, email: e.value, telefoon: t.value, frequentie: f.value})});
+          laadInschrijvers();
+        } catch (er) { toon('fout', 'Wijzigen mislukt.'); }
+      };
+      form.append(el('label', {}, 'Naam'), n, el('label', {}, 'E-mail'), e,
+        el('label', {}, 'Telefoon'), t, el('label', {}, 'Frequentie'), f, opslaan);
+      if (r.querySelector('.bewerkform')) { r.querySelector('.bewerkform').remove(); return; }
+      form.className = 'bewerkform'; r.appendChild(form);
+    };
     lijst.appendChild(r);
+  });
+}
+
+async function laadBeheerders() {
+  const lijst = document.getElementById('bhlijst');
+  if (!lijst) return;
+  const rijen = await fetch('/api/admin/medebeheerders').then(r => r.json()).catch(() => []);
+  lijst.innerHTML = '';
+  rijen.forEach(m => {
+    const r = el('div', {className: 'rij'}); r.style.justifyContent = 'space-between';
+    r.style.borderBottom = '1px solid var(--rand)'; r.style.padding = '.4rem 0';
+    r.appendChild(el('span', {}, m.email + (m.actief ? '' : ' · uitnodiging open')));
+    const del = el('button', {className: 'link'}, 'verwijderen');
+    del.style.color = '#b0201a'; del.style.margin = '0';
+    del.onclick = async () => {
+      if (!confirm('Deze beheerder verwijderen?')) return;
+      await fetch('/api/admin/medebeheerders/' + m.id, {method: 'DELETE'});
+      laadBeheerders();
+    };
+    r.appendChild(del); lijst.appendChild(r);
   });
 }
 
@@ -484,6 +638,7 @@ const val = id => document.getElementById(id).value.trim();
   if (params.get('geverifieerd')) toon('ok', 'E-mailadres bevestigd. Je kunt nu inloggen.');
   if (params.get('verify_mislukt')) toon('fout', 'Bevestigingslink ongeldig of verlopen.');
   if (params.get('reset')) { toonReset(params.get('reset')); return; }
+  if (params.get('uitnodiging')) { toonUitnodiging(params.get('uitnodiging')); return; }
 
   const mij = await fetch('/api/admin/mij').then(r => r.json()).catch(() => ({ingelogd: false}));
   if (mij.ingelogd) toonDashboard(mij); else toonLogin();

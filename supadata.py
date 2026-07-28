@@ -62,6 +62,17 @@ def _get(pad, params, _herkansing=True):
         raise RuntimeError(f"Supadata-API gaf status {e.code}: {body}") from None
 
 
+def video_datum(video_id):
+    """Uploaddatum (YYYY-MM-DD) van één video via Supadata, of None."""
+    if not video_id:
+        return None
+    try:
+        v = _get("youtube/video", {"id": video_id})
+    except RuntimeError:
+        return None
+    return (v.get("uploadDate") or "")[:10] or None
+
+
 def lijst_kanaal(kanaal_url, maximum=None, voortgang=None):
     """Fallback-dienstenlijst via Supadata (als yt-dlp geblokkeerd wordt).
 

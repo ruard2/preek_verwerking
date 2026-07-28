@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 import bcrypt
 from sqlalchemy import select
 
-from db import Church, EmailToken
+from db import Church, EmailToken, Medebeheerder
 
 
 def hash_wachtwoord(wachtwoord):
@@ -77,11 +77,23 @@ def verifieer_email(db, token):
 
 
 def login(db, email, wachtwoord):
-    """Geef de kerk terug bij juiste inlog én geverifieerd e-mailadres, anders None."""
+    """Geef de kerk terug bij juiste inlog én geverifieerd e-mailadres, anders None.
+
+    Werkt voor het hoofdaccount (Church) én voor medebeheerders die dezelfde
+    kerk beheren. False = juist wachtwoord maar e-mailadres nog niet bevestigd.
+    """
     kerk = _kerk_op_email(db, email)
-    if not kerk or not controleer_wachtwoord(wachtwoord, kerk.wachtwoord_hash):
-        return None
-    return kerk if kerk.email_geverifieerd else False  # False = wel juist, niet geverifieerd
+    if kerk and controleer_wachtwoord(wachtwoord, kerk.wachtwoord_hash):
+        return kerk if kerk.email_geverifieerd else False
+
+    mb = db.scalar(
+        select(Medebeheerder).where(Medebeheerder.email == (email or "").strip().lower())
+    )
+    if mb and mb.wachtwoord_hash and controleer_wachtwoord(wachtwoord, mb.wachtwoord_hash):
+        if not mb.email_geverifieerd:
+            return False
+        return db.get(Church, mb.kerk_id)
+    return None
 
 
 def start_reset(db, email):
