@@ -201,10 +201,17 @@ def _verrijk_datums_via_supadata(diensten, maximum=10):
     vandaag = date.today().isoformat()
     gedaan = 0
     for d in diensten:
-        if gedaan >= maximum:
-            break
         if d.get("datum"):
             continue
+        # Al eerder opgehaald? Dan uit de gedeelde cache (geen Supadata-call).
+        gecachet = store.datum_ophalen(d.get("id"))
+        if gecachet:
+            d["datum"] = gecachet
+            if gecachet > vandaag:
+                d["gepland"] = True
+            continue
+        if gedaan >= maximum:
+            break
         try:
             datum = supadata.video_datum(d.get("id"))
         except Exception as fout:  # noqa: BLE001
@@ -217,6 +224,7 @@ def _verrijk_datums_via_supadata(diensten, maximum=10):
         gedaan += 1
         time.sleep(1.2)  # gratis tier heeft een strakke rate limit
         if datum:
+            store.datum_opslaan(d.get("id"), datum)  # gedeeld onthouden
             d["datum"] = datum
             if datum > vandaag:
                 d["gepland"] = True

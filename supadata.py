@@ -39,6 +39,33 @@ def diagnose():
     return f"Supadata ingesteld (API-basis {BASE})."
 
 
+_laatste_quota_alert = [0.0]
+
+
+def _meld_quota_op():
+    """Stuur (hoogstens 1x per 12 uur) een mail dat de Supadata-quota op is."""
+    nu = time.time()
+    if nu - _laatste_quota_alert[0] < 12 * 3600:
+        return
+    _laatste_quota_alert[0] = nu
+    try:
+        import brevo
+
+        naar = os.environ.get("ALERT_EMAIL", "ruard.stolper@gmail.com")
+        brevo.verzend(
+            naar,
+            "AfterSermon: Supadata-quota is op",
+            "<p>De Supadata-quota is bereikt (429, limit-exceeded).</p>"
+            "<p>YouTube-verwerking op de server werkt niet tot de quota reset "
+            "(maandelijks) of je het plan verhoogt. Kerkomroep, Kerkdienstgemist "
+            "en het uploaden van een preek (document of audio) werken gewoon door.</p>",
+            tekst="Supadata-quota is op (429). YouTube-verwerking gehost werkt niet "
+            "tot reset/upgrade; andere bronnen werken door.",
+        )
+    except Exception:  # noqa: BLE001 — melden mag nooit iets breken
+        pass
+
+
 def _get(pad, params, _herkansing=True):
     url = f"{BASE.rstrip('/')}/{pad.lstrip('/')}"
     if params:
@@ -54,11 +81,14 @@ def _get(pad, params, _herkansing=True):
         with urllib.request.urlopen(req, timeout=90) as r:
             return json.loads(r.read().decode())
     except urllib.error.HTTPError as e:
-        # 429 (rate limit): even wachten en één keer opnieuw proberen.
-        if e.code == 429 and _herkansing:
-            time.sleep(5)
-            return _get(pad, params, _herkansing=False)
         body = e.read().decode(errors="replace")[:300]
+        if e.code == 429:
+            if "limit-exceeded" in body or "usage limit" in body.lower():
+                _meld_quota_op()  # maandquota op: melden en direct stoppen
+                raise RuntimeError(f"Supadata-quota op (429): {body}") from None
+            if _herkansing:  # tijdelijke rate limit: even wachten en 1x opnieuw
+                time.sleep(5)
+                return _get(pad, params, _herkansing=False)
         raise RuntimeError(f"Supadata-API gaf status {e.code}: {body}") from None
 
 

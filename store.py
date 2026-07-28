@@ -95,6 +95,23 @@ def zoek_dienst_titel(video_id):
     return None
 
 
+# ---- Video-datums (gedeelde cache) ---------------------------------------
+# Eén keer per video de (Supadata-)uploaddatum onthouden, zodat een herhaalde
+# scan of een andere gebruiker met hetzelfde kanaal Supadata NIET opnieuw
+# raakt. Bespaart quota; gedeeld door iedereen.
+_DATUMS_PAD = os.path.join(DATA_DIR, "video_datums.json")
+
+
+def datum_ophalen(video_id):
+    return (_lees(_DATUMS_PAD) or {}).get(video_id)
+
+
+def datum_opslaan(video_id, datum):
+    d = _lees(_DATUMS_PAD) or {}
+    d[video_id] = datum
+    _schrijf_atomisch(_DATUMS_PAD, d)
+
+
 # ---- Preekresultaten -----------------------------------------------------
 
 def _veilig(video_id):
