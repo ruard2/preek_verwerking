@@ -318,7 +318,9 @@ function toonDashboard(mij) {
   const up = el('div', {className: 'kaart'});
   up.appendChild(el('h2', {}, 'Eigen preek uploaden'));
   up.appendChild(el('p', {className: 'sub'},
-    'Upload je preek als PDF, DOCX of TXT. Kies je dit, dan wordt die tekst gebruikt in plaats van het kanaal.'));
+    'Staat een dienst niet in de lijst, of wil je liever je eigen preektekst gebruiken? ' +
+    'Upload hem als PDF, DOCX of TXT — dan wordt daar direct een weekboekje van gemaakt, ' +
+    'zonder dat er audio of een kanaal aan te pas komt. (Per dienst hierboven kan het ook.)'));
   const fileIn = el('input', {id: 'upfile', type: 'file', accept: '.pdf,.docx,.txt'});
   up.appendChild(fileIn);
   up.appendChild(el('label', {}, 'Datum van de dienst (optioneel)'));
@@ -338,25 +340,24 @@ function toonDashboard(mij) {
     } catch (er) { toon('fout', er.message); upknop.disabled = false; upknop.textContent = 'Verwerk upload'; }
   };
   up.appendChild(upknop);
-  basisPane.appendChild(up);
+  // (staat in de Berichten-tab, zie onder)
 
-  // --- Testverzending ---
+  // --- Testverzending (Berichten-tab) ---
   const testk = el('div', {className: 'kaart'});
   testk.appendChild(el('h2', {}, 'Testverzending'));
   testk.appendChild(el('p', {className: 'sub'},
-    'Stuur de nieuwste verwerkte overdenking als test naar je eigen e-mailadres.'));
+    'Stuur de nieuwste verwerkte overdenking als test naar je eigen e-mailadres — zo zie je precies wat je gemeenteleden ontvangen voordat het echt uitgaat.'));
   const testknop = el('button', {}, 'Stuur testmail naar mezelf');
   testknop.onclick = async () => {
     try { const d = await post('/api/admin/test-verzenden', {}); toon('ok', 'Testmail verstuurd naar ' + d.naar + '.'); }
     catch (f) { toon('fout', f.message); }
   };
   testk.appendChild(testknop);
-  basisPane.appendChild(testk);
 
-  // --- Medebeheerders ---
+  // --- Medebeheerders (Verzendlijst/overzicht) ---
   const bh = el('div', {className: 'kaart'});
   bh.appendChild(el('h2', {}, 'Beheerders'));
-  bh.appendChild(el('p', {className: 'sub'}, 'Nodig extra mensen uit om deze kerk mee te beheren.'));
+  bh.appendChild(el('p', {className: 'sub'}, 'Nodig extra mensen uit om deze kerk mee te beheren. Zij krijgen een e-mail om een eigen wachtwoord in te stellen.'));
   const bhLijst = el('div', {id: 'bhlijst'}); bh.appendChild(bhLijst);
   bh.appendChild(veld('E-mailadres uitnodigen', 'bh_email', 'email'));
   const bhknop = el('button', {}, 'Uitnodigen');
@@ -368,7 +369,7 @@ function toonDashboard(mij) {
     } catch (f) { toon('fout', f.message); }
   };
   bh.appendChild(bhknop);
-  basisPane.appendChild(bh);
+  ledenPane.appendChild(bh);
   laadBeheerders();
 
   // --- Diensten & verzending ---
@@ -392,6 +393,8 @@ function toonDashboard(mij) {
   auto.appendChild(el('p', {id: 'scanStatus', className: 'sub'}, ''));
   auto.append(wachtLijst,klaarLijst);
   berichtenPane.appendChild(auto);
+  berichtenPane.appendChild(up);
+  berichtenPane.appendChild(testk);
   laadUitzendingen();
   if (mij.kanaal_url) {
     laadKanaalDiensten(mij.kanaal_url).then(() => startScan(true));

@@ -59,8 +59,11 @@ function bouwVerwerk(u) {
   inhoud.innerHTML = '';
   inhoud.appendChild(el('h1', null, u.titel));
   inhoud.appendChild(el('p', 'sub', 'Dienst van ' + u.datum));
+
+  // Optie 1: via het kanaal (audio/ondertitels transcriberen).
   const k = el('div', 'kaart');
-  k.appendChild(el('p', null, 'Deze dienst is nog niet verwerkt. Klik hieronder om de preek te transcriberen en er een weekboekje van te maken. Dat kan een paar minuten duren.'));
+  k.appendChild(el('div', 'label', 'Optie 1 — via het kanaal'));
+  k.appendChild(el('p', null, 'Laat de preek automatisch ophalen en transcriberen, en maak er een weekboekje van. Dat kan een paar minuten duren.'));
   const knop = el('button', 'primair', 'Verwerk deze preek');
   knop.onclick = async () => {
     knop.disabled = true; knop.textContent = 'Bezig met verwerken… (enkele minuten)';
@@ -75,6 +78,28 @@ function bouwVerwerk(u) {
   };
   k.appendChild(knop);
   inhoud.appendChild(k);
+
+  // Optie 2: eigen preektekst uploaden (geen audio nodig).
+  const k2 = el('div', 'kaart');
+  k2.appendChild(el('div', 'label', 'Optie 2 — je eigen preektekst'));
+  k2.appendChild(el('p', null, 'Heb je je preek als document? Upload je manuscript (PDF, DOCX of TXT); daar wordt direct een weekboekje van gemaakt — dan hoeft er niets beluisterd te worden.'));
+  const fileIn = el('input'); fileIn.type = 'file'; fileIn.accept = '.pdf,.docx,.txt';
+  k2.appendChild(fileIn);
+  const upknop = el('button', 'grijs', 'Verwerk geüploade tekst');
+  upknop.onclick = async () => {
+    const f = fileIn.files[0];
+    if (!f) { toon('fout', 'Kies eerst een bestand.'); return; }
+    upknop.disabled = true; upknop.textContent = 'Bezig met verwerken…'; toon('', '');
+    try {
+      const fd = new FormData(); fd.append('token', token); fd.append('file', f);
+      const r = await fetch('/api/uitzending/upload', {method: 'POST', body: fd});
+      if (!r.ok) throw new Error(await fout(r));
+      const res = await r.json();
+      bouw({...u, verwerkt: true, data: res.data, tekst: res.tekst});
+    } catch (f2) { toon('fout', f2.message); upknop.disabled = false; upknop.textContent = 'Verwerk geüploade tekst'; }
+  };
+  k2.appendChild(el('br')); k2.appendChild(upknop);
+  inhoud.appendChild(k2);
 }
 
 function veld(label, waarde, multiline, rows) {

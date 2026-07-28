@@ -698,6 +698,31 @@ def uitzending_verwerk(body: dict, db=Depends(get_db)):
     return {"ok": True, "data": _met_labels(data), "tekst": bewaard.get("tekst", "")}
 
 
+@router.post("/api/uitzending/upload")
+async def uitzending_upload(
+    token: str = Form(...), file: UploadFile = File(...), db=Depends(get_db),
+):
+    """Eigen preektekst aanleveren voor deze dienst i.p.v. via het kanaal."""
+    import documenten
+    import main
+
+    uit = _uit_op_token(db, token)
+    if not uit:
+        raise HTTPException(404, "Onbekende of verlopen link.")
+    inhoud = await file.read()
+    try:
+        tekst = documenten.haal_tekst(file.filename, inhoud)
+    except ValueError as fout:
+        raise HTTPException(400, str(fout))
+    if len(tekst) < 200:
+        raise HTTPException(400, "Het document bevat te weinig tekst voor een preek.")
+    try:
+        data = main.verwerk_tekst_en_bewaar(uit.video_id, tekst, titel_hint=uit.titel)
+    except Exception as fout:  # noqa: BLE001
+        raise HTTPException(502, f"Verwerken lukte niet: {fout}")
+    return {"ok": True, "data": _met_labels(data), "tekst": ""}
+
+
 @router.post("/api/uitzending/bewerk")
 def uitzending_bewerk(body: dict, db=Depends(get_db)):
     uit = _uit_op_token(db, (body or {}).get("token", ""))
