@@ -6,7 +6,14 @@ import urllib.error
 import urllib.request
 
 
+def is_ingeschakeld() -> bool:
+    """De centrale login is opt-in en staat zonder expliciete vlag volledig uit."""
+    return os.environ.get("COMMUNITY_TOOLS_SSO_ENABLED", "").lower() == "true"
+
+
 def wissel_ticket(ticket: str) -> dict:
+    if not is_ingeschakeld():
+        raise ValueError("Community Tools-login is niet ingeschakeld.")
     if not ticket.startswith("ctt_") or len(ticket) > 200:
         raise ValueError("Ongeldig toegangsticket.")
 

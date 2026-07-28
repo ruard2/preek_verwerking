@@ -2,14 +2,18 @@
 
 ## Community Tools-koppeling
 
-De beheerdersomgeving kan vanuit Community Tools worden geopend zonder tweede
-registratie. Configureer `COMMUNITY_TOOLS_URL`, `COMMUNITY_TOOLS_CLIENT_ID` en
-`COMMUNITY_TOOLS_CLIENT_SECRET` en gebruik als launch-URL:
+De beheerdersomgeving kan optioneel vanuit Community Tools worden geopend
+zonder tweede registratie. De bestaande registratie en login blijven volledig
+zelfstandig werken. Configureer `COMMUNITY_TOOLS_URL`,
+`COMMUNITY_TOOLS_CLIENT_ID`, `COMMUNITY_TOOLS_CLIENT_SECRET` en zet
+`COMMUNITY_TOOLS_SSO_ENABLED=true`. Gebruik als launch-URL:
 `https://<preek-domein>/api/community-tools/sso`.
 
 Het korte ticket wordt uitsluitend server-side omgewisseld. De bestaande
 kerk-, preek-, inschrijver- en verzenddata blijft lokaal; alleen stabiele
 centrale gebruikers- en organisatie-ID's worden toegevoegd.
+Zonder de expliciete vlag is de Community Tools-route uitgeschakeld. Een
+storing bij Community Tools heeft geen invloed op de bestaande lokale login.
 
 Plak een **kanaal** (een YouTube-kanaal of een Kerkdienstgemist-kerk) om alle
 diensten als klikbare lijst te zien, of een **directe link** naar één preek. De
