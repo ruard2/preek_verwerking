@@ -274,6 +274,12 @@ function toonDashboard(mij) {
     'Tóch versturen als goedkeuring op tijd uitblijft'));
   kaart.appendChild(rij2);
 
+  const rij3 = el('div', {className: 'rij'}); rij3.style.marginTop = '.5rem';
+  const chk3 = el('input', {id: 'aidiscl', type: 'checkbox', checked: mij.ai_disclaimer !== false});
+  rij3.append(chk3, el('label', {htmlFor: 'aidiscl'},
+    'Onderaan elke mail vermelden dat de tekst met AI is gemaakt (aanbevolen)'));
+  kaart.appendChild(rij3);
+
   const knop = el('button', {}, 'Instellingen opslaan');
   knop.onclick = async () => {
     try {
@@ -283,6 +289,7 @@ function toonDashboard(mij) {
         verzend_dag: +val('vdag'), verzend_tijd: val('vtijd'),
         auto_versturen: document.getElementById('auto').checked,
         versturen_zonder_goedkeuring: document.getElementById('zonder').checked,
+        ai_disclaimer: document.getElementById('aidiscl').checked,
         admin_taal: val('admin_taal'), inschrijf_taal: val('inschrijf_taal'),
         communicatie_taal: val('communicatie_taal')
       });

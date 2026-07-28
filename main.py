@@ -42,6 +42,14 @@ from transcript import (
     provider_bereikbaar,
 )
 
+import logging
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+)
+log = logging.getLogger("aftersermon")
+
 app = FastAPI(title="Preekverwerker")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 

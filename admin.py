@@ -17,6 +17,7 @@ from sqlalchemy import func, select
 import auth
 import automatisering
 import brevo
+import ratelimit
 import levering
 import render
 import store
@@ -157,6 +158,12 @@ def _basis_url(request: Request) -> str:
     return str(request.base_url).rstrip("/")
 
 
+def _rate(request: Request, actie: str, maximum: int):
+    ip = ratelimit.ip_van(request)
+    if not ratelimit.toegestaan(f"{actie}:{ip}", maximum):
+        raise HTTPException(429, "Te veel verzoeken. Probeer het later opnieuw.")
+
+
 # ---- Verzoekmodellen ----
 class RegistratieBody(BaseModel):
     naam: str = ""
@@ -186,6 +193,7 @@ class KanaalBody(BaseModel):
     verzend_dag: int = 0
     verzend_tijd: str = "07:00"
     versturen_zonder_goedkeuring: bool = False
+    ai_disclaimer: bool = True
     admin_taal: str = "auto"
     inschrijf_taal: str = "auto"
     communicatie_taal: str = "nl"
@@ -246,6 +254,7 @@ def _stuur_reset(request, kerk, token):
 # ---- Endpoints ----
 @router.post("/api/admin/register")
 def register(body: RegistratieBody, request: Request, db=Depends(get_db)):
+    _rate(request, "register", 10)
     try:
         kerk, token = auth.registreer(db, body.naam, body.email, body.wachtwoord)
     except auth.RegistratieFout as fout:
@@ -267,6 +276,7 @@ def verify(token: str, request: Request, db=Depends(get_db)):
 
 @router.post("/api/admin/login")
 def login(body: LoginBody, request: Request, db=Depends(get_db)):
+    _rate(request, "login", 20)
     resultaat = auth.login(db, body.email, body.wachtwoord)
     if resultaat is None:
         raise HTTPException(400, "Onjuist e-mailadres of wachtwoord.")
@@ -284,6 +294,7 @@ def logout(request: Request):
 
 @router.post("/api/admin/reset-aanvraag")
 def reset_aanvraag(body: EmailBody, request: Request, db=Depends(get_db)):
+    _rate(request, "reset", 10)
     token = auth.start_reset(db, body.email)
     if token:
         kerk = auth._kerk_op_email(db, body.email)
@@ -319,6 +330,7 @@ def mij(request: Request, db=Depends(get_db)):
         "verzend_dag": kerk.verzend_dag,
         "verzend_tijd": kerk.verzend_tijd,
         "versturen_zonder_goedkeuring": kerk.versturen_zonder_goedkeuring,
+        "ai_disclaimer": kerk.ai_disclaimer,
         "admin_taal": kerk.admin_taal,
         "inschrijf_taal": kerk.inschrijf_taal,
         "communicatie_taal": kerk.communicatie_taal,
@@ -334,6 +346,7 @@ def kanaal(body: KanaalBody, request: Request, db=Depends(get_db)):
     kerk.verzend_dag = int(body.verzend_dag) % 7
     kerk.verzend_tijd = (body.verzend_tijd or "07:00").strip()
     kerk.versturen_zonder_goedkeuring = bool(body.versturen_zonder_goedkeuring)
+    kerk.ai_disclaimer = bool(body.ai_disclaimer)
     kerk.admin_taal = ui_i18n.valid(body.admin_taal, "auto")
     kerk.inschrijf_taal = ui_i18n.valid(body.inschrijf_taal, "auto")
     kerk.communicatie_taal = ui_i18n.valid(
@@ -851,6 +864,8 @@ def kerk_info(kerk_id: int, db=Depends(get_db)):
 
 @router.post("/api/inschrijven")
 def inschrijven(body: InschrijvenBody, request: Request, db=Depends(get_db)):
+    _rate(request, "inschrijven", 15)
+    _rate(request, f"inschrijven-mail:{(body.email or '').lower()}", 3)
     kerk = db.get(Church, body.kerk_id)
     if not kerk:
         raise HTTPException(404, "Kerk niet gevonden.")

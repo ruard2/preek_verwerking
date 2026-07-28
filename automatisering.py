@@ -6,10 +6,13 @@ gebeuren in de tijdzone van de kerk. De verzendlog (Verzending) maakt het
 idempotent: niets wordt dubbel verstuurd, ook niet als de lus vaker draait.
 """
 
+import logging
 import secrets
 import threading
 import time as _time
 import traceback
+
+_log = logging.getLogger("aftersermon.auto")
 from datetime import datetime, time as dtime, timedelta
 
 try:
@@ -230,11 +233,15 @@ def tick(base_url):
             if not (kerk.kanaal_url or "").strip():
                 continue
             try:
-                if kerk.auto_scan:
-                    scan_kerk(db, kerk, base_url)
-                bezorg_kerk(db, kerk, base_url)
+                nieuw = scan_kerk(db, kerk, base_url) if kerk.auto_scan else 0
+                verzonden = bezorg_kerk(db, kerk, base_url)
+                if nieuw or verzonden:
+                    _log.info(
+                        "kerk %s: %s nieuwe dienst(en), %s mail(s) verzonden",
+                        kerk.id, nieuw, verzonden,
+                    )
             except Exception:  # noqa: BLE001 — één kerk mag de rest niet blokkeren
-                traceback.print_exc()
+                _log.exception("Fout bij verwerken/bezorgen voor kerk %s", kerk.id)
                 db.rollback()
     finally:
         db.close()

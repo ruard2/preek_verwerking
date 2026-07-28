@@ -76,6 +76,8 @@ class Church(Base):
     # Bij "kerk moet goedkeuren": toch versturen als er op het verzendmoment nog
     # geen goedkeuring is?
     versturen_zonder_goedkeuring: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Toon onderaan elke mail dat de tekst met AI is gemaakt (aanrader).
+    ai_disclaimer: Mapped[bool] = mapped_column(Boolean, default=True)
 
     aangemaakt: Mapped[DateTime] = mapped_column(DateTime, server_default=func.now())
 
