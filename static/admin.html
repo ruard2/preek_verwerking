@@ -435,7 +435,8 @@ function toonDashboard(mij) {
   auto.appendChild(el('p', {id: 'scanStatus', className: 'sub'}, ''));
   auto.append(wachtLijst,klaarLijst);
   berichtenPane.appendChild(auto);
-  berichtenPane.appendChild(up);
+  // (De losse 'Eigen preek uploaden'-kaart is bewust weggelaten: upload zit per
+  // dienst onder 'Openen & bewerken'.)
   berichtenPane.appendChild(testk);
   laadUitzendingen();
   if (mij.kanaal_url) {

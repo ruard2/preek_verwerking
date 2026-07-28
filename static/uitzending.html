@@ -81,8 +81,8 @@ function bouwVerwerk(u) {
 
   // Optie 2: eigen preektekst uploaden (geen audio nodig).
   const k2 = el('div', 'kaart');
-  k2.appendChild(el('div', 'label', 'Optie 2 — je eigen preektekst'));
-  k2.appendChild(el('p', null, 'Heb je je preek als document? Upload je manuscript (PDF, DOCX of TXT); daar wordt direct een weekboekje van gemaakt — dan hoeft er niets beluisterd te worden.'));
+  k2.appendChild(el('div', 'label', 'Optie 2 — je eigen preektekst of audio'));
+  k2.appendChild(el('p', null, 'Heb je je preek als document (PDF, DOCX, TXT) of als audio (MP3)? Upload hem hier; daar wordt direct een weekboekje van gemaakt. Bij een document hoeft er niets beluisterd te worden; audio wordt eerst getranscribeerd en het bestand daarna direct verwijderd.'));
   const fileIn = el('input'); fileIn.type = 'file'; fileIn.accept = '.pdf,.docx,.txt,.mp3,.m4a,.wav,.ogg';
   k2.appendChild(fileIn);
   const upknop = el('button', 'grijs', 'Verwerk geüploade tekst');
