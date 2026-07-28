@@ -1,0 +1,3 @@
+# Alleen voor tests (niet nodig in productie).
+pytest>=8.0
+httpx>=0.27
