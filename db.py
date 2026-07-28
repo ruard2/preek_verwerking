@@ -50,6 +50,12 @@ class Church(Base):
     __tablename__ = "churches"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    community_tools_organization_id: Mapped[str | None] = mapped_column(
+        String(100), unique=True, index=True, nullable=True
+    )
+    community_tools_user_id: Mapped[str | None] = mapped_column(
+        String(100), unique=True, index=True, nullable=True
+    )
     naam: Mapped[str] = mapped_column(String(200), default="")
     email: Mapped[str] = mapped_column(String(320), unique=True, index=True)
     wachtwoord_hash: Mapped[str] = mapped_column(String(200))
@@ -87,6 +93,9 @@ class Medebeheerder(Base):
     __tablename__ = "medebeheerders"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    community_tools_user_id: Mapped[str | None] = mapped_column(
+        String(100), unique=True, index=True, nullable=True
+    )
     kerk_id: Mapped[int] = mapped_column(ForeignKey("churches.id", ondelete="CASCADE"))
     naam: Mapped[str] = mapped_column(String(200), default="")
     email: Mapped[str] = mapped_column(String(320), unique=True, index=True)
@@ -209,3 +218,21 @@ def _voeg_ontbrekende_kolommen_toe():
 def init_db():
     Base.metadata.create_all(engine)
     _voeg_ontbrekende_kolommen_toe()
+    # create_all voegt geen indexes toe aan bestaande tabellen. Deze unieke
+    # centrale koppelingen moeten ook bij upgrades afgedwongen blijven.
+    with engine.begin() as conn:
+        conn.execute(text(
+            "CREATE UNIQUE INDEX IF NOT EXISTS "
+            "uq_churches_community_tools_organization "
+            "ON churches (community_tools_organization_id)"
+        ))
+        conn.execute(text(
+            "CREATE UNIQUE INDEX IF NOT EXISTS "
+            "uq_churches_community_tools_user "
+            "ON churches (community_tools_user_id)"
+        ))
+        conn.execute(text(
+            "CREATE UNIQUE INDEX IF NOT EXISTS "
+            "uq_medebeheerders_community_tools_user "
+            "ON medebeheerders (community_tools_user_id)"
+        ))

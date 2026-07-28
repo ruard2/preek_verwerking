@@ -1,5 +1,16 @@
 # Preekverwerker
 
+## Community Tools-koppeling
+
+De beheerdersomgeving kan vanuit Community Tools worden geopend zonder tweede
+registratie. Configureer `COMMUNITY_TOOLS_URL`, `COMMUNITY_TOOLS_CLIENT_ID` en
+`COMMUNITY_TOOLS_CLIENT_SECRET` en gebruik als launch-URL:
+`https://<preek-domein>/api/community-tools/sso`.
+
+Het korte ticket wordt uitsluitend server-side omgewisseld. De bestaande
+kerk-, preek-, inschrijver- en verzenddata blijft lokaal; alleen stabiele
+centrale gebruikers- en organisatie-ID's worden toegevoegd.
+
 Plak een **kanaal** (een YouTube-kanaal of een Kerkdienstgemist-kerk) om alle
 diensten als klikbare lijst te zien, of een **directe link** naar één preek. De
 app zoekt het preekgedeelte op, transcribeert dat en verwerkt het tot een

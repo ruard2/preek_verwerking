@@ -22,6 +22,7 @@ import render
 import store
 import subscribers
 import ui_i18n
+import community_tools
 from db import Church, Medebeheerder, SessionLocal, Subscriber, Uitzending, Verzending
 
 router = APIRouter()
@@ -58,6 +59,86 @@ def get_db():
         yield db
     finally:
         db.close()
+
+
+@router.get("/api/community-tools/sso")
+def community_tools_sso(ct_ticket: str, request: Request, db=Depends(get_db)):
+    """Wissel een eenmalig centraal ticket en open de gekoppelde kerkomgeving."""
+    try:
+        context = community_tools.wissel_ticket(ct_ticket)
+        gebruiker = context["user"]
+        organisatie = context["organization"]
+        kerk = db.scalar(
+            select(Church).where(
+                Church.community_tools_organization_id == organisatie["id"]
+            )
+        )
+        if not kerk:
+            kerk = db.scalar(
+                select(Church).where(Church.email == gebruiker["email"].lower())
+            )
+        if not kerk:
+            medebeheerder = db.scalar(
+                select(Medebeheerder).where(
+                    Medebeheerder.email == gebruiker["email"].lower()
+                )
+            )
+            kerk = db.get(Church, medebeheerder.kerk_id) if medebeheerder else None
+
+        if not kerk:
+            kerk = Church(
+                naam=organisatie["name"],
+                email=gebruiker["email"].lower(),
+                wachtwoord_hash=auth.hash_wachtwoord(secrets.token_urlsafe(48)),
+                email_geverifieerd=True,
+                community_tools_organization_id=organisatie["id"],
+                community_tools_user_id=gebruiker["id"],
+            )
+            db.add(kerk)
+            db.flush()
+        else:
+            if (
+                kerk.community_tools_organization_id
+                and kerk.community_tools_organization_id != organisatie["id"]
+            ):
+                raise ValueError("Lokale kerk is al aan een andere organisatie gekoppeld.")
+            kerk.community_tools_organization_id = organisatie["id"]
+            if kerk.email.lower() == gebruiker["email"].lower():
+                if (
+                    kerk.community_tools_user_id
+                    and kerk.community_tools_user_id != gebruiker["id"]
+                ):
+                    raise ValueError("Hoofdaccount is al aan een andere gebruiker gekoppeld.")
+                kerk.community_tools_user_id = gebruiker["id"]
+            else:
+                medebeheerder = db.scalar(
+                    select(Medebeheerder).where(
+                        (Medebeheerder.community_tools_user_id == gebruiker["id"])
+                        | (Medebeheerder.email == gebruiker["email"].lower())
+                    )
+                )
+                if medebeheerder and medebeheerder.kerk_id != kerk.id:
+                    raise ValueError("Beheerder hoort bij een andere lokale kerk.")
+                if not medebeheerder:
+                    medebeheerder = Medebeheerder(
+                        kerk_id=kerk.id,
+                        naam=gebruiker.get("name", ""),
+                        email=gebruiker["email"].lower(),
+                        community_tools_user_id=gebruiker["id"],
+                        email_geverifieerd=True,
+                    )
+                    db.add(medebeheerder)
+                else:
+                    medebeheerder.community_tools_user_id = gebruiker["id"]
+                    medebeheerder.email_geverifieerd = True
+
+        db.commit()
+        request.session.clear()
+        request.session["kerk_id"] = kerk.id
+        return RedirectResponse("/admin", status_code=303)
+    except Exception:
+        db.rollback()
+        return RedirectResponse("/admin?error=community-tools", status_code=303)
 
 
 def huidige_kerk(request: Request, db) -> Church | None:
