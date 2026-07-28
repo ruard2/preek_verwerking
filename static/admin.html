@@ -225,17 +225,23 @@ function toonDashboard(mij) {
   const basisPane = el('section', {className:'tab-pane actief', id:'tab-basis'});
   const ledenPane = el('section', {className:'tab-pane', id:'tab-leden'});
   const berichtenPane = el('section', {className:'tab-pane', id:'tab-berichten'});
-  [['tab-basis','Basisinstellingen'],['tab-leden','Verzendlijst'],['tab-berichten','Berichten']]
+  const analysePane = el('section', {className:'tab-pane', id:'tab-analyse'});
+  const panes = [basisPane,ledenPane,berichtenPane,analysePane];
+  [['tab-basis','Basisinstellingen'],['tab-leden','Verzendlijst'],['tab-berichten','Berichten'],['tab-analyse','Analyse']]
     .forEach(([id,label],i) => {
       const b=el('button',{className:i===0?'actief':'',type:'button'},label);
       b.onclick=()=>{
-        [basisPane,ledenPane,berichtenPane].forEach(p=>p.classList.toggle('actief',p.id===id));
+        panes.forEach(p=>p.classList.toggle('actief',p.id===id));
         [...tabNav.children].forEach(x=>x.classList.toggle('actief',x===b));
         if(id==='tab-berichten' && mij.kanaal_url) laadKanaalDiensten(mij.kanaal_url);
+        if(id==='tab-analyse') laadAnalyse();
       };
       tabNav.appendChild(b);
     });
-  inhoud.append(tabNav,basisPane,ledenPane,berichtenPane);
+  inhoud.append(tabNav,...panes);
+
+  analysePane.appendChild(el('div',{className:'kaart',id:'analyse-kaart'},'Laden…'));
+  window._analysePane = analysePane;
 
   // Onboarding-checklist (verdwijnt zodra alles is ingesteld).
   (async () => {
@@ -590,6 +596,32 @@ async function startScan(stil = false) {
     toon('fout', f.message);
     if (knop) { knop.disabled = false; knop.textContent = 'Scan nu op nieuwe diensten'; }
   }
+}
+
+async function laadAnalyse() {
+  const kaart = document.getElementById('analyse-kaart');
+  if (!kaart) return;
+  kaart.textContent = 'Laden…';
+  let a;
+  try { a = await fetch('/api/admin/analytics').then(r => r.json()); }
+  catch { kaart.textContent = 'Kon de cijfers niet laden.'; return; }
+  const tegel = (getal, label) =>
+    `<div style="flex:1 1 8rem;min-width:8rem;background:var(--soft);border-radius:.6rem;padding:.9rem 1rem">
+       <div style="font-size:1.6rem;font-weight:800;color:var(--groen)">${getal}</div>
+       <div class="sub" style="margin:0">${label}</div></div>`;
+  kaart.innerHTML =
+    '<h2>Analyse</h2>' +
+    '<div style="display:flex;flex-wrap:wrap;gap:.7rem;margin:.6rem 0 1.2rem">' +
+      tegel(a.inschrijvers_totaal, 'Inschrijvers') +
+      tegel(a.inschrijvers_bevestigd, 'Bevestigd') +
+      tegel(a.wekelijks, 'Wekelijks') +
+      tegel(a.dagelijks, 'Dagelijks') +
+      tegel(a.nieuw_30d, 'Nieuw (30 dagen)') +
+      tegel(a.verzonden_totaal, 'Verzonden e-mails') +
+      tegel(a.diensten_verwerkt, 'Verwerkte diensten') +
+    '</div>' +
+    '<p class="sub">Laatste verzending: ' + (a.laatste_verzending || '—') +
+      ' · Nog niet bevestigd: ' + a.inschrijvers_onbevestigd + '</p>';
 }
 
 async function laadInschrijvers() {

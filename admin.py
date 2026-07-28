@@ -368,6 +368,50 @@ def _sub_json(s):
     return data
 
 
+@router.get("/api/admin/analytics")
+def analytics(request: Request, db=Depends(get_db)):
+    from datetime import datetime, timedelta
+
+    kerk = _vereis_kerk(request, db)
+    subs = subscribers.lijst(db, kerk.id)
+    grens = datetime.utcnow() - timedelta(days=30)
+
+    def _recent(s):
+        try:
+            return bool(s.aangemaakt) and s.aangemaakt >= grens
+        except Exception:  # noqa: BLE001
+            return False
+
+    totaal = len(subs)
+    bevestigd = sum(1 for s in subs if s.bevestigd)
+    uit_ids = [
+        u.id for u in db.scalars(
+            select(Uitzending).where(Uitzending.kerk_id == kerk.id)
+        )
+    ]
+    verzonden, laatste = 0, None
+    if uit_ids:
+        verzonden = db.scalar(
+            select(func.count()).select_from(Verzending)
+            .where(Verzending.uitzending_id.in_(uit_ids))
+        ) or 0
+        laatste = db.scalar(
+            select(func.max(Verzending.verzonden_op))
+            .where(Verzending.uitzending_id.in_(uit_ids))
+        )
+    return {
+        "inschrijvers_totaal": totaal,
+        "inschrijvers_bevestigd": bevestigd,
+        "inschrijvers_onbevestigd": totaal - bevestigd,
+        "wekelijks": sum(1 for s in subs if s.frequentie == "wekelijks"),
+        "dagelijks": sum(1 for s in subs if s.frequentie == "dagelijks"),
+        "nieuw_30d": sum(1 for s in subs if _recent(s)),
+        "verzonden_totaal": verzonden,
+        "diensten_verwerkt": len(uit_ids),
+        "laatste_verzending": laatste.strftime("%Y-%m-%d %H:%M") if laatste else None,
+    }
+
+
 @router.get("/api/admin/inschrijvers")
 def inschrijvers_lijst(request: Request, db=Depends(get_db)):
     kerk = _vereis_kerk(request, db)
