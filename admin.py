@@ -65,6 +65,10 @@ def get_db():
 @router.get("/api/community-tools/sso")
 def community_tools_sso(ct_ticket: str, request: Request, db=Depends(get_db)):
     """Wissel een eenmalig centraal ticket en open de gekoppelde kerkomgeving."""
+    # Een centrale login mag nooit terugvallen op een eerder lokaal account.
+    # Wis daarom de bestaande identiteit vóór ticketvalidatie; alleen een
+    # volledig geslaagde exchange mag hieronder een nieuwe sessie zetten.
+    request.session.clear()
     try:
         context = community_tools.wissel_ticket(ct_ticket)
         gebruiker = context["user"]
@@ -134,7 +138,6 @@ def community_tools_sso(ct_ticket: str, request: Request, db=Depends(get_db)):
                     medebeheerder.email_geverifieerd = True
 
         db.commit()
-        request.session.clear()
         request.session["kerk_id"] = kerk.id
         return RedirectResponse("/admin", status_code=303)
     except Exception:
