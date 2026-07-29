@@ -46,27 +46,29 @@ const inhoud = document.getElementById('inhoud');
 function toon(soort, tekst) { meldingEl.innerHTML = tekst ? `<div class="melding ${soort}">${tekst}</div>` : ''; }
 function el(tag, cls, tekst) { const e = document.createElement(tag); if (cls) e.className = cls; if (tekst != null) e.textContent = tekst; return e; }
 async function fout(r) { const d = await r.json().catch(()=>({})); return (typeof d.detail==='string'?d.detail:null) || 'Er ging iets mis.'; }
+const T = s => AfterSermonI18n.text(s);
 
-if (params.get('goedgekeurd')) toon('ok', 'Goedgekeurd. De overdenkingen worden op de ingestelde tijden verstuurd.');
-if (params.get('fout')) toon('fout', 'Deze link is ongeldig of verlopen.');
+if (params.get('goedgekeurd')) toon('ok', T('Goedgekeurd. De overdenkingen worden op de ingestelde tijden verstuurd.'));
+if (params.get('fout')) toon('fout', T('Deze link is ongeldig of verlopen.'));
 
 let refs = {};
-if (!token) toon('fout', 'Geen geldige link.');
-else fetch('/api/uitzending/' + token).then(r => r.ok ? r.json() : Promise.reject(r)).then(bouw)
-  .catch(() => toon('fout', 'Deze link is ongeldig of verlopen.'));
+if (!token) toon('fout', T('Geen geldige link.'));
+else fetch('/api/uitzending/' + token).then(r => r.ok ? r.json() : Promise.reject(r))
+  .then(u => { AfterSermonI18n.set(u.communicatie_taal || 'auto'); bouw(u); })
+  .catch(() => toon('fout', T('Deze link is ongeldig of verlopen.')));
 
 function bouwVerwerk(u) {
   inhoud.innerHTML = '';
   inhoud.appendChild(el('h1', null, u.titel));
-  inhoud.appendChild(el('p', 'sub', 'Dienst van ' + u.datum));
+  inhoud.appendChild(el('p', 'sub', T('Dienst van') + ' ' + u.datum));
 
   // Optie 1: via het kanaal (audio/ondertitels transcriberen).
   const k = el('div', 'kaart');
-  k.appendChild(el('div', 'label', 'Optie 1 — via het kanaal'));
-  k.appendChild(el('p', null, 'Laat de preek automatisch ophalen en transcriberen, en maak er een weekboekje van. Dat kan een paar minuten duren.'));
-  const knop = el('button', 'primair', 'Verwerk deze preek');
+  k.appendChild(el('div', 'label', T('Optie 1 — via het kanaal')));
+  k.appendChild(el('p', null, T('Laat de preek automatisch ophalen en transcriberen, en maak er een weekboekje van. Dat kan een paar minuten duren.')));
+  const knop = el('button', 'primair', T('Verwerk deze preek'));
   knop.onclick = async () => {
-    knop.disabled = true; knop.textContent = 'Bezig met verwerken… (enkele minuten)';
+    knop.disabled = true; knop.textContent = T('Bezig met verwerken…');
     toon('', '');
     try {
       const r = await fetch('/api/uitzending/verwerk', {method: 'POST',
@@ -74,29 +76,29 @@ function bouwVerwerk(u) {
       if (!r.ok) throw new Error(await fout(r));
       const res = await r.json();
       bouw({...u, verwerkt: true, data: res.data, tekst: res.tekst});
-    } catch (f) { toon('fout', f.message); knop.disabled = false; knop.textContent = 'Verwerk deze preek'; }
+    } catch (f) { toon('fout', f.message); knop.disabled = false; knop.textContent = T('Verwerk deze preek'); }
   };
   k.appendChild(knop);
   inhoud.appendChild(k);
 
   // Optie 2: eigen preektekst uploaden (geen audio nodig).
   const k2 = el('div', 'kaart');
-  k2.appendChild(el('div', 'label', 'Optie 2 — je eigen preektekst of audio'));
-  k2.appendChild(el('p', null, 'Heb je je preek als document (PDF, DOCX, TXT) of als audio (MP3)? Upload hem hier; daar wordt direct een weekboekje van gemaakt. Bij een document hoeft er niets beluisterd te worden; audio wordt eerst getranscribeerd en het bestand daarna direct verwijderd.'));
+  k2.appendChild(el('div', 'label', T('Optie 2 — je eigen preektekst of audio')));
+  k2.appendChild(el('p', null, T('Heb je je preek als document (PDF, DOCX, TXT) of als audio (MP3)? Upload hem hier; daar wordt direct een weekboekje van gemaakt. Bij een document hoeft er niets beluisterd te worden; audio wordt eerst getranscribeerd en het bestand daarna direct verwijderd.')));
   const fileIn = el('input'); fileIn.type = 'file'; fileIn.accept = '.pdf,.docx,.txt,.mp3,.m4a,.wav,.ogg';
   k2.appendChild(fileIn);
-  const upknop = el('button', 'grijs', 'Verwerk geüploade tekst');
+  const upknop = el('button', 'grijs', T('Verwerk geüploade tekst'));
   upknop.onclick = async () => {
     const f = fileIn.files[0];
-    if (!f) { toon('fout', 'Kies eerst een bestand.'); return; }
-    upknop.disabled = true; upknop.textContent = 'Bezig met verwerken…'; toon('', '');
+    if (!f) { toon('fout', T('Kies eerst een bestand.')); return; }
+    upknop.disabled = true; upknop.textContent = T('Bezig met verwerken…'); toon('', '');
     try {
       const fd = new FormData(); fd.append('token', token); fd.append('file', f);
       const r = await fetch('/api/uitzending/upload', {method: 'POST', body: fd});
       if (!r.ok) throw new Error(await fout(r));
       const res = await r.json();
       bouw({...u, verwerkt: true, data: res.data, tekst: res.tekst});
-    } catch (f2) { toon('fout', f2.message); upknop.disabled = false; upknop.textContent = 'Verwerk geüploade tekst'; }
+    } catch (f2) { toon('fout', f2.message); upknop.disabled = false; upknop.textContent = T('Verwerk geüploade tekst'); }
   };
   k2.appendChild(el('br')); k2.appendChild(upknop);
   inhoud.appendChild(k2);
@@ -115,23 +117,23 @@ function bouw(u) {
   inhoud.innerHTML = '';
 
   const balk = el('div', 'balk');
-  const opslaan = el('button', 'grijs', 'Wijzigingen opslaan');
-  const test = el('button', 'grijs', 'Stuur test naar mezelf');
-  const keur = el('button', 'primair', u.goedgekeurd ? 'Opnieuw versturen goedkeuren' : 'Goedkeuren & versturen');
+  const opslaan = el('button', 'grijs', T('Wijzigingen opslaan'));
+  const test = el('button', 'grijs', T('Stuur test naar mezelf'));
+  const keur = el('button', 'primair', u.goedgekeurd ? T('Opnieuw versturen goedkeuren') : T('Goedkeuren & versturen'));
   test.onclick = async () => {
-    test.disabled = true; test.textContent = 'Versturen…';
+    test.disabled = true; test.textContent = T('Versturen…');
     try {
       const r = await fetch('/api/uitzending/test', {method: 'POST',
         headers: {'Content-Type':'application/json'}, body: JSON.stringify({token})});
       if (!r.ok) throw new Error(await fout(r));
       const d = await r.json();
-      toon('ok', 'Testmail verstuurd naar ' + d.naar + '.');
+      toon('ok', T('Testmail verstuurd naar') + ' ' + d.naar + '.');
     } catch (f) { toon('fout', f.message); }
-    test.disabled = false; test.textContent = 'Stuur test naar mezelf';
+    test.disabled = false; test.textContent = T('Stuur test naar mezelf');
   };
   balk.append(opslaan, test, keur);
   if (u.goedgekeurd) {
-    const concept = el('button', 'grijs', 'Terug naar concept');
+    const concept = el('button', 'grijs', T('Terug naar concept'));
     concept.onclick = async () => {
       const r = await fetch('/api/uitzending/concept', {method:'POST',
         headers:{'Content-Type':'application/json'}, body: JSON.stringify({token})});

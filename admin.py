@@ -836,6 +836,7 @@ def uitzending_data(token: str, db=Depends(get_db)):
         raise HTTPException(404, "Onbekende of verlopen link.")
     bewaard = store.resultaat_ophalen(uit.video_id) or {}
     data = bewaard.get("data") or {}
+    kerk = db.get(Church, uit.kerk_id)
     return {
         "titel": uit.titel, "datum": str(uit.datum), "goedgekeurd": uit.goedgekeurd,
         "goedgekeurd_op": uit.goedgekeurd_op.isoformat() if uit.goedgekeurd_op else None,
@@ -843,6 +844,7 @@ def uitzending_data(token: str, db=Depends(get_db)):
         "video_id": uit.video_id, "data": _met_labels(data),
         "tekst": bewaard.get("tekst", ""),
         "verwerkt": bool(data),
+        "communicatie_taal": kerk.communicatie_taal if kerk else "nl",
     }
 
 
