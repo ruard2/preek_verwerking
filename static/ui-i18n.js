@@ -6,6 +6,9 @@ window.AfterSermonI18n = (() => {
     af: {flag:"🇿🇦", name:"Afrikaans"}
   };
   const en = {
+    "Beheerders":"Administrators",
+    "Nodig extra mensen uit om deze kerk mee te beheren. Zij krijgen een e-mail om een eigen wachtwoord in te stellen.":"Invite others to help manage this church. They receive an email to set their own password.",
+    "E-mailadres uitnodigen":"Email address to invite","Uitnodigen":"Invite","Uitnodiging verstuurd.":"Invitation sent.",
     "Basisinstellingen":"Settings","Verzendlijst":"Recipients","Berichten":"Messages","Analyse":"Analytics",
     "Aan de slag":"Getting started",
     "Nog een paar stappen tot je eerste overdenkingen uitgaan:":"A few steps before your first devotionals go out:",
@@ -64,6 +67,9 @@ window.AfterSermonI18n = (() => {
     ,"Verwerken & bewerken":"Process & edit","Bekijken":"View"
   };
   const af = {
+    "Beheerders":"Administrateurs",
+    "Nodig extra mensen uit om deze kerk mee te beheren. Zij krijgen een e-mail om een eigen wachtwoord in te stellen.":"Nooi ander mense uit om hierdie gemeente saam te bestuur. Hulle kry ’n e-pos om hul eie wagwoord op te stel.",
+    "E-mailadres uitnodigen":"E-posadres om uit te nooi","Uitnodigen":"Nooi uit","Uitnodiging verstuurd.":"Uitnodiging gestuur.",
     "Basisinstellingen":"Basiese instellings","Verzendlijst":"Ontvangers","Berichten":"Boodskappe","Analyse":"Analise",
     "Aan de slag":"Kom aan die gang",
     "Nog een paar stappen tot je eerste overdenkingen uitgaan:":"Nog ’n paar stappe voor jou eerste oordenkings uitgaan:",

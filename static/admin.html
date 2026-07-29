@@ -399,16 +399,16 @@ function toonDashboard(mij) {
 
   // --- Medebeheerders (Verzendlijst/overzicht) ---
   const bh = el('div', {className: 'kaart'});
-  bh.appendChild(el('h2', {}, 'Beheerders'));
-  bh.appendChild(el('p', {className: 'sub'}, 'Nodig extra mensen uit om deze kerk mee te beheren. Zij krijgen een e-mail om een eigen wachtwoord in te stellen.'));
+  bh.appendChild(el('h2', {}, T('Beheerders')));
+  bh.appendChild(el('p', {className: 'sub'}, T('Nodig extra mensen uit om deze kerk mee te beheren. Zij krijgen een e-mail om een eigen wachtwoord in te stellen.')));
   const bhLijst = el('div', {id: 'bhlijst'}); bh.appendChild(bhLijst);
-  bh.appendChild(veld('E-mailadres uitnodigen', 'bh_email', 'email'));
-  const bhknop = el('button', {}, 'Uitnodigen');
+  bh.appendChild(veld(T('E-mailadres uitnodigen'), 'bh_email', 'email'));
+  const bhknop = el('button', {}, T('Uitnodigen'));
   bhknop.onclick = async () => {
     try {
       await post('/api/admin/medebeheerders', {email: val('bh_email')});
       document.getElementById('bh_email').value = '';
-      toon('ok', 'Uitnodiging verstuurd.'); laadBeheerders();
+      toon('ok', T('Uitnodiging verstuurd.')); laadBeheerders();
     } catch (f) { toon('fout', f.message); }
   };
   bh.appendChild(bhknop);
