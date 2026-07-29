@@ -106,6 +106,32 @@ def _kanaal_diensten(kerk, vernieuw=False):
 
 
 # ---------- Scannen + verwerken ----------
+def dagdeel(dienst):
+    """Bepaal of een dienst 'ochtend' of 'avond' is (of '' bij twijfel).
+
+    Eerst op titel/label (ochtend/avond, ook Engels/Afrikaans), anders op tijd
+    (vóór 13:00 = ochtend).
+    """
+    tekst = ((dienst.get("titel") or "") + " " + (dienst.get("label") or "")).lower()
+    if any(w in tekst for w in ("ochtend", "morgen", "morning", "oggend")):
+        return "ochtend"
+    if any(w in tekst for w in ("avond", "middag", "evening", "afternoon", "aand")):
+        return "avond"
+    tijd = dienst.get("tijd") or ""
+    if len(tijd) >= 2 and tijd[:2].isdigit():
+        return "ochtend" if int(tijd[:2]) < 13 else "avond"
+    return ""
+
+
+def _wil_ontvangen(sub, uit):
+    """Wil deze inschrijver deze dienst? Bij onbekend dagdeel: altijd ja."""
+    voorkeur = getattr(sub, "dienstvoorkeur", "beide") or "beide"
+    dd = getattr(uit, "dagdeel", "") or ""
+    if voorkeur == "beide" or not dd:
+        return True
+    return voorkeur == dd
+
+
 def scan_kerk(db, kerk, base_url, nu_lokaal=None, vernieuw=False):
     """Zoek nieuwe recente diensten, verwerk ze en maak een Uitzending aan."""
     if not (kerk.kanaal_url or "").strip():
@@ -138,6 +164,7 @@ def scan_kerk(db, kerk, base_url, nu_lokaal=None, vernieuw=False):
             kerk_id=kerk.id, video_id=video_id, url=d["url"],
             titel=d.get("titel") or d.get("label") or "Dienst",
             datum=datum, week_start=komende_maandag(datum),
+            dagdeel=dagdeel(d),
             goedgekeurd=bool(kerk.auto_versturen),
             goedkeur_token=secrets.token_urlsafe(24),
         )
@@ -206,6 +233,8 @@ def bezorg_kerk(db, kerk, base_url, nu_lokaal=None):
             continue
         data = bewaard["data"]
         for sub in inschrijvers:
+            if not _wil_ontvangen(sub, uit):
+                continue  # inschrijver wil dit dagdeel niet
             for dag, _moment in due_momenten(uit.week_start, kerk, sub, nu_lokaal):
                 al = db.scalar(select(Verzending).where(
                     Verzending.uitzending_id == uit.id,

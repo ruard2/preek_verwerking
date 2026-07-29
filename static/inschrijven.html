@@ -82,25 +82,32 @@ function toonBedankt(kerk) {
 }
 
 function bouwFormulier() {
+  const t = s => AfterSermonI18n.text(s);
   inhoud.innerHTML = `
     <div class="kaart">
-      <label for="naam">Naam</label><input id="naam">
-      <label for="email">E-mailadres *</label><input id="email" type="email" required>
-      <label for="tel">Telefoonnummer (optioneel)</label><input id="tel">
-      <label for="freq">Hoe vaak wil je ontvangen?</label>
+      <label for="naam">${t('Naam')}</label><input id="naam">
+      <label for="email">${t('E-mailadres *')}</label><input id="email" type="email" required>
+      <label for="tel">${t('Telefoonnummer (optioneel)')}</label><input id="tel">
+      <label for="freq">${t('Hoe vaak wil je ontvangen?')}</label>
       <select id="freq">
-        <option value="wekelijks">Eén keer per week (hele weekboekje ineens)</option>
-        <option value="dagelijks">Dagelijks (één overdenking per dag)</option>
+        <option value="wekelijks">${t('Eén keer per week (hele weekboekje ineens)')}</option>
+        <option value="dagelijks">${t('Dagelijks (één overdenking per dag)')}</option>
       </select>
-      <button id="knop">Aanmelden</button>
+      <label for="dienst">${t('Welke dienst(en) wil je ontvangen?')}</label>
+      <select id="dienst">
+        <option value="beide">${t('Beide diensten')}</option>
+        <option value="ochtend">${t('Alleen de ochtenddienst')}</option>
+        <option value="avond">${t('Alleen de avonddienst')}</option>
+      </select>
+      <button id="knop">${t('Aanmelden')}</button>
     </div>`;
   document.getElementById('knop').onclick = async () => {
-    if (!val('email')) { toon('fout', 'Vul je e-mailadres in.'); return; }
+    if (!val('email')) { toon('fout', t('Vul je e-mailadres in.')); return; }
     try {
       const r = await fetch('/api/inschrijven', {
         method: 'POST', headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({kerk_id: +kerkId, naam: val('naam'), email: val('email'),
-          telefoon: val('tel'), frequentie: val('freq')})
+          telefoon: val('tel'), frequentie: val('freq'), dienstvoorkeur: val('dienst')})
       });
       if (!r.ok) throw new Error(await fouttekst(r));
       inhoud.innerHTML = '';

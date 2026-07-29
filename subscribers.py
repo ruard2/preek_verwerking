@@ -33,20 +33,27 @@ def lijst(db, kerk_id):
     ))
 
 
+DIENSTVOORKEUREN = ("beide", "ochtend", "avond")
+
+
 def maak_inschrijver(db, kerk_id, naam, email, telefoon="", frequentie="wekelijks",
-                     ontvang_dag=0, ontvang_tijd="07:00", bevestigd=False):
+                     ontvang_dag=0, ontvang_tijd="07:00", bevestigd=False,
+                     dienstvoorkeur="beide"):
     """Maak (of werk bij) een inschrijver. Geeft (subscriber, is_nieuw)."""
     email = (email or "").strip().lower()
     if not email or "@" not in email:
         raise InschrijfFout("Geef een geldig e-mailadres op.")
     if frequentie not in FREQUENTIES:
         frequentie = "wekelijks"
+    if dienstvoorkeur not in DIENSTVOORKEUREN:
+        dienstvoorkeur = "beide"
     bestaand = _op_email(db, kerk_id, email)
     if bestaand:
         # Niet dupliceren; voorkeuren bijwerken en (indien nodig) opnieuw bevestigen.
         bestaand.naam = (naam or bestaand.naam or "").strip()
         bestaand.telefoon = (telefoon or bestaand.telefoon or "").strip()
         bestaand.frequentie = frequentie
+        bestaand.dienstvoorkeur = dienstvoorkeur
         bestaand.ontvang_dag = ontvang_dag
         bestaand.ontvang_tijd = ontvang_tijd
         if bevestigd:
@@ -61,6 +68,7 @@ def maak_inschrijver(db, kerk_id, naam, email, telefoon="", frequentie="wekelijk
     sub = Subscriber(
         kerk_id=kerk_id, naam=(naam or "").strip(), email=email,
         telefoon=(telefoon or "").strip(), frequentie=frequentie,
+        dienstvoorkeur=dienstvoorkeur,
         ontvang_dag=ontvang_dag, ontvang_tijd=ontvang_tijd,
         bevestigd=bevestigd,
         bevestig_token="" if bevestigd else _token(),
@@ -90,6 +98,8 @@ def op_voorkeur_token(db, token):
 def werk_voorkeuren_bij(db, sub, **velden):
     if velden.get("frequentie") in FREQUENTIES:
         sub.frequentie = velden["frequentie"]
+    if velden.get("dienstvoorkeur") in DIENSTVOORKEUREN:
+        sub.dienstvoorkeur = velden["dienstvoorkeur"]
     if "naam" in velden:
         sub.naam = (velden["naam"] or "").strip()
     if "telefoon" in velden:

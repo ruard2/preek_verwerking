@@ -90,14 +90,18 @@ def verstuur_een(kerk, data, base_url, sub, alleen_dag=None):
     )
 
 
-def verstuur_weekboekje(db, kerk, data, base_url):
+def verstuur_weekboekje(db, kerk, data, base_url, dagdeel=""):
     """Stuur het volledige weekboekje handmatig naar alle bevestigde inschrijvers.
 
-    Geeft het aantal verzonden mails terug.
+    Met `dagdeel` ("ochtend"/"avond") worden alleen inschrijvers meegenomen die
+    dat dagdeel willen (of "beide"). Geeft het aantal verzonden mails terug.
     """
     verzonden = 0
     for sub in subscribers.lijst(db, kerk.id):
         if not sub.bevestigd:
+            continue
+        voorkeur = getattr(sub, "dienstvoorkeur", "beide") or "beide"
+        if dagdeel and voorkeur != "beide" and voorkeur != dagdeel:
             continue
         verstuur_een(kerk, data, base_url, sub)
         verzonden += 1

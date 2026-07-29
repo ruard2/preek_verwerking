@@ -138,6 +138,8 @@ class Subscriber(Base):
 
     kanaal: Mapped[str] = mapped_column(String(20), default="email")  # email/whatsapp/app
     frequentie: Mapped[str] = mapped_column(String(20), default="wekelijks")  # of "dagelijks"
+    # Welke dienst(en) wil de inschrijver: "beide" | "ochtend" | "avond".
+    dienstvoorkeur: Mapped[str] = mapped_column(String(10), default="beide")
     ontvang_dag: Mapped[int] = mapped_column(Integer, default=0)  # wekelijks: 0=ma..6=zo
     ontvang_tijd: Mapped[str] = mapped_column(String(5), default="07:00")  # "HH:MM" (kerktijdzone)
 
@@ -167,6 +169,9 @@ class Uitzending(Base):
     goedgekeurd_op: Mapped[DateTime] = mapped_column(DateTime, nullable=True)
     goedgekeurd_door: Mapped[str] = mapped_column(String(320), default="")
     goedkeur_token: Mapped[str] = mapped_column(String(64), default="", index=True)
+    # Dagdeel van de dienst: "ochtend" | "avond" | "" (onbekend). Voor het
+    # filteren op dienstvoorkeur van de inschrijver.
+    dagdeel: Mapped[str] = mapped_column(String(10), default="")
 
 
 class Verzending(Base):

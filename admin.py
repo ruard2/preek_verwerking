@@ -217,6 +217,7 @@ class InschrijvenBody(BaseModel):
     email: str
     telefoon: str = ""
     frequentie: str = "wekelijks"
+    dienstvoorkeur: str = "beide"
 
 
 class VoorkeurBody(BaseModel):
@@ -224,6 +225,7 @@ class VoorkeurBody(BaseModel):
     naam: str = ""
     telefoon: str = ""
     frequentie: str = "wekelijks"
+    dienstvoorkeur: str = "beide"
     ontvang_dag: int = 0
     ontvang_tijd: str = "07:00"
 
@@ -363,7 +365,8 @@ def kanaal(body: KanaalBody, request: Request, db=Depends(get_db)):
 def _sub_json(s):
     data = {
         "id": s.id, "naam": s.naam, "email": s.email, "telefoon": s.telefoon,
-        "frequentie": s.frequentie, "ontvang_dag": s.ontvang_dag,
+        "frequentie": s.frequentie, "dienstvoorkeur": getattr(s, "dienstvoorkeur", "beide"),
+        "ontvang_dag": s.ontvang_dag,
         "ontvang_tijd": s.ontvang_tijd, "bevestigd": s.bevestigd,
     }
     if getattr(s, "kerk", None):
@@ -468,10 +471,13 @@ def verstuur(video_id: str, request: Request, db=Depends(get_db)):
     bewaard = store.resultaat_ophalen(video_id)
     if not bewaard or not bewaard.get("data"):
         raise HTTPException(404, "Voor deze dienst is nog geen verwerking beschikbaar.")
-    aantal = levering.verstuur_weekboekje(db, kerk, bewaard["data"], _basis_url(request))
     uitzending = db.scalar(select(Uitzending).where(
         Uitzending.kerk_id == kerk.id, Uitzending.video_id == video_id
     ))
+    dagdeel = (uitzending.dagdeel if uitzending else "") or ""
+    aantal = levering.verstuur_weekboekje(
+        db, kerk, bewaard["data"], _basis_url(request), dagdeel=dagdeel
+    )
     if uitzending:
         for sub in subscribers.lijst(db, kerk.id):
             if not sub.bevestigd:
@@ -965,6 +971,7 @@ def inschrijven(body: InschrijvenBody, request: Request, db=Depends(get_db)):
     try:
         sub, _ = subscribers.maak_inschrijver(
             db, kerk.id, body.naam, body.email, body.telefoon, body.frequentie,
+            dienstvoorkeur=body.dienstvoorkeur,
         )
     except subscribers.InschrijfFout as fout:
         raise HTTPException(400, str(fout))
@@ -1008,6 +1015,7 @@ def voorkeuren_opslaan(body: VoorkeurBody, db=Depends(get_db)):
         raise HTTPException(404, "Onbekende of verlopen link.")
     subscribers.werk_voorkeuren_bij(
         db, sub, naam=body.naam, telefoon=body.telefoon, frequentie=body.frequentie,
+        dienstvoorkeur=body.dienstvoorkeur,
         ontvang_dag=body.ontvang_dag, ontvang_tijd=body.ontvang_tijd,
     )
     return {"ok": True}
