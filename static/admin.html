@@ -441,7 +441,9 @@ function toonDashboard(mij) {
   // (Testverzending zit nu op de beoordeel-pagina, vlak vóór goedkeuren/versturen.)
   laadUitzendingen();
   if (mij.kanaal_url) {
-    laadKanaalDiensten(mij.kanaal_url).then(() => startScan(true));
+    // Alleen de (wekelijks gecachete) lijst tonen — NIET automatisch scannen.
+    // Scannen gebeurt wekelijks vanzelf (achtergrond) of via de knop hieronder.
+    laadKanaalDiensten(mij.kanaal_url);
   }
 
   // --- Analytics ---
