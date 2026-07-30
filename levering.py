@@ -79,15 +79,39 @@ def bouw_email(data, kerk_naam, base_url, voorkeur_token, alleen_dag=None,
 
 
 def verstuur_een(kerk, data, base_url, sub, alleen_dag=None):
-    """Stuur één e-mail (heel boekje of één dag) naar één inschrijver."""
-    onderwerp, html = bouw_email(
-        data, kerk.naam or "AfterSermon", base_url, sub.voorkeur_token, alleen_dag,
-        kerk.communicatie_taal, getattr(kerk, "ai_disclaimer", True),
-    )
-    return brevo.verzend(
-        sub.email, onderwerp, html,
-        van_naam=kerk.naam or None, antwoord_naar=kerk.email or None,
-    )
+    """Bezorg één overdenking bij één inschrijver via het gekozen kanaal
+    (e-mail en/of push)."""
+    kanaal = getattr(sub, "kanaal", "email") or "email"
+    if kanaal in ("email", "beide"):
+        onderwerp, html = bouw_email(
+            data, kerk.naam or "AfterSermon", base_url, sub.voorkeur_token, alleen_dag,
+            kerk.communicatie_taal, getattr(kerk, "ai_disclaimer", True),
+        )
+        brevo.verzend(
+            sub.email, onderwerp, html,
+            van_naam=kerk.naam or None, antwoord_naar=kerk.email or None,
+        )
+    if kanaal in ("push", "beide") and getattr(sub, "push_abonnement", ""):
+        _stuur_push(sub, data, alleen_dag)
+    return True
+
+
+def _stuur_push(sub, data, alleen_dag):
+    import json
+
+    import push
+
+    titel = data.get("titel") or "Overdenking bij de preek"
+    tekst = (data.get("samenvatting") or "")[:140]
+    dagen = data.get("dagen") or []
+    if alleen_dag is not None and 0 <= alleen_dag < len(dagen):
+        d = dagen[alleen_dag]
+        titel = f"{d.get('titel', '')}".strip() or titel
+        tekst = (d.get("gedachte") or "")[:140]
+    try:
+        push.stuur(json.loads(sub.push_abonnement), titel, tekst)
+    except Exception:  # noqa: BLE001 — push-fout mag de bezorging niet breken
+        pass
 
 
 def verstuur_weekboekje(db, kerk, data, base_url, dagdeel=""):

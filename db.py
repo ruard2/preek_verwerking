@@ -140,6 +140,9 @@ class Subscriber(Base):
     frequentie: Mapped[str] = mapped_column(String(20), default="wekelijks")  # of "dagelijks"
     # Welke dienst(en) wil de inschrijver: "beide" | "ochtend" | "avond".
     dienstvoorkeur: Mapped[str] = mapped_column(String(10), default="beide")
+    # Push-abonnement (browser) als JSON-tekst; leeg = geen push. Het gekozen
+    # kanaal ("email" | "push" | "beide") staat in het bestaande veld `kanaal`.
+    push_abonnement: Mapped[str] = mapped_column(Text, default="")
     ontvang_dag: Mapped[int] = mapped_column(Integer, default=0)  # wekelijks: 0=ma..6=zo
     ontvang_tijd: Mapped[str] = mapped_column(String(5), default="07:00")  # "HH:MM" (kerktijdzone)
 

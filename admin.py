@@ -21,6 +21,7 @@ import ratelimit
 import levering
 import render
 import store
+import push
 import subscribers
 import ui_i18n
 import community_tools
@@ -1027,6 +1028,56 @@ def afmelden(body: dict, db=Depends(get_db)):
     sub = subscribers.op_voorkeur_token(db, (body or {}).get("token", ""))
     if sub:
         subscribers.afmelden(db, sub)
+    return {"ok": True}
+
+
+# ---- Web-push (PWA-meldingen) ----
+@router.get("/api/push/publickey")
+def push_publickey():
+    return {"beschikbaar": push.beschikbaar(), "key": push.publieke_sleutel()}
+
+
+@router.post("/api/push/abonneer")
+def push_abonneer(body: dict, db=Depends(get_db)):
+    """Sla het browser-push-abonnement op bij de inschrijver (via voorkeur-token)."""
+    import json as _json
+
+    sub = subscribers.op_voorkeur_token(db, (body or {}).get("token", ""))
+    if not sub:
+        raise HTTPException(404, "Onbekende of verlopen link.")
+    abonnement = (body or {}).get("abonnement")
+    if not abonnement:
+        raise HTTPException(400, "Geen push-abonnement meegegeven.")
+    sub.push_abonnement = _json.dumps(abonnement)
+    # Kanaal bijwerken naar de keuze (email/push/beide); standaard 'beide'.
+    kanaal = (body or {}).get("kanaal")
+    if kanaal in ("email", "push", "beide"):
+        sub.kanaal = kanaal
+    elif sub.kanaal == "email":
+        sub.kanaal = "beide"
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/api/push/test")
+def push_test(body: dict, db=Depends(get_db)):
+    """Stuur een testmelding naar dit push-abonnement."""
+    import json as _json
+
+    sub = subscribers.op_voorkeur_token(db, (body or {}).get("token", ""))
+    if not sub or not sub.push_abonnement:
+        raise HTTPException(400, "Geen push-abonnement gevonden.")
+    try:
+        push.stuur(
+            _json.loads(sub.push_abonnement),
+            "AfterSermon", "Melding-test: je ontvangt voortaan de overdenkingen hier.",
+        )
+    except push.PushVerlopen:
+        sub.push_abonnement = ""
+        db.commit()
+        raise HTTPException(410, "Het push-abonnement is verlopen; zet meldingen opnieuw aan.")
+    except Exception as fout:  # noqa: BLE001
+        raise HTTPException(502, f"Versturen mislukte: {fout}")
     return {"ok": True}
 
 
