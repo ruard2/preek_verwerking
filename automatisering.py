@@ -90,7 +90,7 @@ def _tz(kerk):
 
 def _nu_lokaal(kerk):
     tz = _tz(kerk)
-    return datetime.now(tz).replace(tzinfo=None) if tz else datetime.utcnow()
+    return datetime.now(tz).replace(tzinfo=None) if tz else datetime.now()
 
 
 def _kanaal_diensten(kerk, vernieuw=False):

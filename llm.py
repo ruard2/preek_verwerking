@@ -85,9 +85,9 @@ Algemene eisen
 * Gebruik per dag één hoofdgedachte. Probeer niet de hele preek in ieder daggedeelte te herhalen.
 * Zorg dat de zeven dagen samen de belangrijkste lijn van de preek volgen.
 * Gebruik alleen Bijbelteksten die in de preek worden genoemd of duidelijk rechtstreeks aansluiten bij de boodschap.
-* Citeer Bijbelteksten NIET volledig. Zet in het veld "bijbeltekst" uitsluitend de VERWIJZING (bijbelboek hoofdstuk:vers, bijvoorbeeld "Zacharia 4:6"). Neem géén heel vers of meerdere verzen letterlijk over.
-* Een heel kort fragment van hooguit enkele woorden mag, maar alleen tussen aanhalingstekens en met de verwijzing erbij; nooit een volledige zin of vers uit de Bijbel.
-* Verwoord de inhoud van de tekst verder in je eigen woorden in de overdenking.
+* Zet in het veld "bijbeltekst" het Bijbelvers dat bij de dag past, MET de verwijzing erbij (bijv. "Zacharia 4:6 — Niet door kracht..."). Kies één of hooguit enkele verzen.
+* Gebruik UITSLUITEND een vrije (publiek-domein) vertaling: Nederlands = Statenvertaling; Engels = King James Version of World English Bible. Neem NOOIT tekst over uit een auteursrechtelijk beschermde vertaling (zoals NBV21, HSV, BGT, NIV).
+* Voor het AFRIKAANS: geef in "bijbeltekst" ALLEEN de verwijzing (bijv. "Sagaria 4:6"), zónder de verstekst — er is geen vrije Afrikaanse vertaling.
 
 Lengte
 
@@ -118,7 +118,7 @@ eromheen, met exact deze velden:
   "dagen": [
     {
       "titel": "<korte titel>",
-      "bijbeltekst": "<alleen de Bijbelverwijzing, bijv. 'Zacharia 4:6'; geen volledig vers>",
+      "bijbeltekst": "<het vers uit een vrije vertaling (NL Statenvertaling, EN KJV/WEB) met de verwijzing; Afrikaans: alleen de verwijzing>",
       "gedachte": "<overdenking van ongeveer 100 tot 160 woorden>",
       "vraag_volwassenen": "<één reflectievraag voor volwassenen>",
       "vraag_kinderen": "<één eenvoudige gespreksvraag voor kinderen>"
@@ -174,9 +174,10 @@ Taal van de uitvoer
 vragen — in de taal van de preek zelf. Is de preek in het Afrikaans, schrijf \
 dan in het Afrikaans; is hij in het Engels, in het Engels; enzovoort. Vertaal \
 de inhoud niet naar het Nederlands.
-* Schrijf de Bijbelverwijzingen met de bijbelboeknaam in diezelfde taal \
-(bijvoorbeeld Engels "Zechariah 4:6", Afrikaans "Sagaria 4:6"). Neem geen \
-volledige verzen letterlijk over, in geen enkele taal.
+* Schrijf de bijbelboeknaam in de verwijzing in diezelfde taal (bijvoorbeeld \
+Engels "Zechariah 4:6", Afrikaans "Sagaria 4:6"). De verstekst zelf: Nederlands \
+uit de Statenvertaling, Engels uit de KJV/World English Bible; voor het \
+Afrikaans alléén de verwijzing (geen verstekst, i.v.m. auteursrecht).
 * Zet in het veld "taal" de ISO-code van die taal (nl, af, en, ...).
 """
 

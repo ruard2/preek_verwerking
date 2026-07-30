@@ -381,7 +381,7 @@ def analytics(request: Request, db=Depends(get_db)):
 
     kerk = _vereis_kerk(request, db)
     subs = subscribers.lijst(db, kerk.id)
-    grens = datetime.utcnow() - timedelta(days=30)
+    grens = datetime.now() - timedelta(days=30)
 
     def _recent(s):
         try:
@@ -808,7 +808,7 @@ def _keur_goed(db, uit, door):
     from datetime import datetime
 
     uit.goedgekeurd = True
-    uit.goedgekeurd_op = datetime.utcnow()
+    uit.goedgekeurd_op = datetime.now()
     uit.goedgekeurd_door = door or ""
     db.commit()
 

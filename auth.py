@@ -28,7 +28,7 @@ def maak_token(db, kerk, soort, geldig_uren=24):
     token = secrets.token_urlsafe(32)
     db.add(EmailToken(
         kerk_id=kerk.id, token=token, soort=soort,
-        verloopt=datetime.utcnow() + timedelta(hours=geldig_uren),
+        verloopt=datetime.now() + timedelta(hours=geldig_uren),
     ))
     db.commit()
     return token
@@ -38,7 +38,7 @@ def _gebruik_token(db, token, soort):
     rij = db.scalar(select(EmailToken).where(EmailToken.token == token))
     if (
         not rij or rij.soort != soort or rij.gebruikt
-        or rij.verloopt < datetime.utcnow()
+        or rij.verloopt < datetime.now()
     ):
         return None
     return rij
