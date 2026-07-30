@@ -207,6 +207,7 @@ class InschrijverBody(BaseModel):
     email: str
     telefoon: str = ""
     frequentie: str = "wekelijks"
+    dienstvoorkeur: str = "beide"
     ontvang_dag: int = 0
     ontvang_tijd: str = "07:00"
 

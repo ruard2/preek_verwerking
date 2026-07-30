@@ -463,13 +463,18 @@ function toonDashboard(mij) {
   subs.append(veld('Naam', 's_naam'), veld('E-mailadres', 's_email', 'email'),
               veld('Telefoon (optioneel)', 's_tel'));
   const sfreq = el('select', {id: 's_freq'});
-  sfreq.append(el('option', {value: 'wekelijks'}, 'Wekelijks'), el('option', {value: 'dagelijks'}, 'Dagelijks'));
-  subs.appendChild(el('label', {}, 'Frequentie')); subs.appendChild(sfreq);
-  const stoe = el('button', {}, 'Toevoegen');
+  sfreq.append(el('option', {value: 'wekelijks'}, T('Wekelijks')), el('option', {value: 'dagelijks'}, T('Dagelijks')));
+  subs.appendChild(el('label', {}, T('Frequentie'))); subs.appendChild(sfreq);
+  const sdienst = el('select', {id: 's_dienst'});
+  sdienst.append(el('option', {value: 'beide'}, T('Beide diensten')),
+    el('option', {value: 'ochtend'}, T('Alleen de ochtenddienst')),
+    el('option', {value: 'avond'}, T('Alleen de avonddienst')));
+  subs.appendChild(el('label', {}, T('Welke dienst(en)?'))); subs.appendChild(sdienst);
+  const stoe = el('button', {}, T('Toevoegen'));
   stoe.onclick = async () => {
     try {
       await post('/api/admin/inschrijvers', {naam: val('s_naam'), email: val('s_email'),
-        telefoon: val('s_tel'), frequentie: val('s_freq')});
+        telefoon: val('s_tel'), frequentie: val('s_freq'), dienstvoorkeur: val('s_dienst')});
       document.getElementById('s_naam').value = ''; document.getElementById('s_email').value = '';
       document.getElementById('s_tel').value = '';
       laadInschrijvers();
