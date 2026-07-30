@@ -220,6 +220,7 @@ class InschrijvenBody(BaseModel):
     telefoon: str = ""
     frequentie: str = "wekelijks"
     dienstvoorkeur: str = "beide"
+    kanaal: str = "email"  # email | push | beide
 
 
 class VoorkeurBody(BaseModel):
@@ -973,7 +974,7 @@ def inschrijven(body: InschrijvenBody, request: Request, db=Depends(get_db)):
     try:
         sub, _ = subscribers.maak_inschrijver(
             db, kerk.id, body.naam, body.email, body.telefoon, body.frequentie,
-            dienstvoorkeur=body.dienstvoorkeur,
+            dienstvoorkeur=body.dienstvoorkeur, kanaal=body.kanaal,
         )
     except subscribers.InschrijfFout as fout:
         raise HTTPException(400, str(fout))
@@ -995,10 +996,13 @@ def inschrijven(body: InschrijvenBody, request: Request, db=Depends(get_db)):
 @router.get("/api/inschrijven/bevestig")
 def inschrijven_bevestig(token: str, db=Depends(get_db)):
     sub = subscribers.bevestig(db, token)
-    doel = (
-        f"/inschrijven?kerk={sub.kerk_id}&bevestigd=1"
-        if sub else "/inschrijven?bevestig_mislukt=1"
-    )
+    if not sub:
+        return RedirectResponse("/inschrijven?bevestig_mislukt=1", status_code=303)
+    doel = f"/inschrijven?kerk={sub.kerk_id}&bevestigd=1"
+    # Koos deze inschrijver meldingen? Geef het voorkeur-token mee zodat de
+    # bedankt-pagina ze meteen kan aanzetten.
+    if sub.kanaal in ("push", "beide"):
+        doel += f"&vt={sub.voorkeur_token}"
     return RedirectResponse(doel, status_code=303)
 
 

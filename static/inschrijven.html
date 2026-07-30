@@ -32,6 +32,10 @@
   @media (prefers-color-scheme: dark) { .ok { background:#1c2a1c; color:#9fd6a3; } .fout { background:#3a1c1a; color:#f0a9a3; } }
 </style>
 <link rel="stylesheet" href="/static/dashboard.css">
+<link rel="manifest" href="/static/manifest.json">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#167455">
+<link rel="apple-touch-icon" href="/static/icon.svg">
 </head>
 <body>
   <h1 id="titel">Aanmelden</h1>
@@ -40,6 +44,7 @@
   <div id="inhoud"></div>
   <p style="margin-top:2.5rem;font-size:.8rem"><a href="/privacy" style="color:var(--grijs)">Privacyverklaring</a></p>
 <script src="/static/ui-i18n.js"></script>
+<script src="/static/push-client.js"></script>
 <script>
 const params = new URLSearchParams(location.search);
 const kerkId = params.get('kerk');
@@ -79,6 +84,27 @@ function toonBedankt(kerk) {
       <p>${AfterSermonI18n.text('Je e-mailadres is bevestigd. Vanaf nu ontvang je de overdenkingen van deze kerk volgens de gekozen frequentie.')}</p>
       <p>${AfterSermonI18n.text('We hopen dat ze je helpen om de boodschap van zondag mee te nemen in de week.')}</p>
     </div>`;
+
+  const vt = params.get('vt');
+  if (vt && window.AfterSermonPush) {
+    const T = s => AfterSermonI18n.text(s);
+    const kaart = document.createElement('div'); kaart.className = 'kaart';
+    if (AfterSermonPush.iOSnietGeinstalleerd()) {
+      kaart.innerHTML = `<h2>${T('Meldingen op je iPhone')}</h2>` +
+        `<p class="sub">${T('Tik onderin op Deel en kies "Zet op beginscherm". Open AfterSermon daarna vanaf je beginscherm en zet meldingen aan.')}</p>`;
+    } else {
+      kaart.innerHTML = `<h2>${T('Meldingen aanzetten')}</h2>` +
+        `<p class="sub">${T('Ontvang de overdenkingen als melding op dit apparaat.')}</p>`;
+      const knop = document.createElement('button');
+      knop.textContent = T('Meldingen aanzetten');
+      knop.onclick = () => AfterSermonPush.aanzetten(vt, (soort, tekst) => {
+        const m = document.createElement('div'); m.className = 'melding ' + soort;
+        m.textContent = tekst; kaart.appendChild(m);
+      });
+      kaart.appendChild(knop);
+    }
+    inhoud.appendChild(kaart);
+  }
 }
 
 function bouwFormulier() {
@@ -99,6 +125,12 @@ function bouwFormulier() {
         <option value="ochtend">${t('Alleen de ochtenddienst')}</option>
         <option value="avond">${t('Alleen de avonddienst')}</option>
       </select>
+      <label for="kanaal">${t('Hoe wil je ontvangen?')}</label>
+      <select id="kanaal">
+        <option value="email">${t('Per e-mail')}</option>
+        <option value="push">${t('Als melding op mijn telefoon of computer')}</option>
+        <option value="beide">${t('Allebei')}</option>
+      </select>
       <button id="knop">${t('Aanmelden')}</button>
     </div>`;
   document.getElementById('knop').onclick = async () => {
@@ -107,7 +139,8 @@ function bouwFormulier() {
       const r = await fetch('/api/inschrijven', {
         method: 'POST', headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({kerk_id: +kerkId, naam: val('naam'), email: val('email'),
-          telefoon: val('tel'), frequentie: val('freq'), dienstvoorkeur: val('dienst')})
+          telefoon: val('tel'), frequentie: val('freq'), dienstvoorkeur: val('dienst'),
+          kanaal: val('kanaal')})
       });
       if (!r.ok) throw new Error(await fouttekst(r));
       inhoud.innerHTML = '';
