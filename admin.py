@@ -4,7 +4,7 @@ Server-rendered pagina is static/admin.html; hier zitten de JSON-endpoints en
 de sessie-afhandeling (ondertekende cookie via Starlette SessionMiddleware).
 """
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, RedirectResponse, Response
 from pydantic import BaseModel
 
@@ -145,6 +145,62 @@ def community_tools_sso(ct_ticket: str, request: Request, db=Depends(get_db)):
     except Exception:
         db.rollback()
         return RedirectResponse("/admin?error=community-tools", status_code=303)
+
+
+@router.get("/api/community-tools/v1/organizations/{organization_id}/users")
+def community_tools_organization_users(
+    organization_id: str,
+    authorization: str | None = Header(default=None),
+    db=Depends(get_db),
+):
+    """Geef uitsluitend beheeraccounts van de gekoppelde kerk terug.
+
+    Dit endpoint is aanvullend op de bestaande standalone login en leest geen
+    inschrijvers, preken of andere inhoudelijke kerkgegevens uit.
+    """
+    if not community_tools.verifieer_beheer_token(authorization):
+        raise HTTPException(401, "Ongeldige Community Tools-beheerverbinding.")
+
+    kerk = db.scalar(
+        select(Church).where(
+            Church.community_tools_organization_id == organization_id
+        )
+    )
+    if not kerk:
+        raise HTTPException(404, "Organisatie is nog niet aan AfterSermon gekoppeld.")
+
+    medebeheerders = db.scalars(
+        select(Medebeheerder)
+        .where(Medebeheerder.kerk_id == kerk.id)
+        .order_by(Medebeheerder.naam, Medebeheerder.email)
+    ).all()
+    gebruikers = [
+        {
+            "id": f"church:{kerk.id}",
+            "communityToolsUserId": kerk.community_tools_user_id,
+            "name": kerk.naam or kerk.email,
+            "email": kerk.email,
+            "role": "owner",
+            "status": "active" if kerk.email_geverifieerd else "pending",
+        }
+    ]
+    gebruikers.extend(
+        {
+            "id": f"co-admin:{beheerder.id}",
+            "communityToolsUserId": beheerder.community_tools_user_id,
+            "name": beheerder.naam or beheerder.email,
+            "email": beheerder.email,
+            "role": "editor",
+            "status": "active" if beheerder.email_geverifieerd else "pending",
+        }
+        for beheerder in medebeheerders
+    )
+    return {
+        "version": "1",
+        "product": "sermon_processing",
+        "organizationId": organization_id,
+        "users": gebruikers,
+    }
 
 
 def huidige_kerk(request: Request, db) -> Church | None:

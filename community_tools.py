@@ -2,6 +2,7 @@
 
 import json
 import os
+import secrets
 import urllib.error
 import urllib.request
 
@@ -9,6 +10,22 @@ import urllib.request
 def is_ingeschakeld() -> bool:
     """De centrale login is opt-in en staat zonder expliciete vlag volledig uit."""
     return os.environ.get("COMMUNITY_TOOLS_SSO_ENABLED", "").lower() == "true"
+
+
+def beheer_is_ingeschakeld() -> bool:
+    """De beheer-API is een afzonderlijke, opt-in koppeling."""
+    return os.environ.get("COMMUNITY_TOOLS_MANAGEMENT_ENABLED", "").lower() == "true"
+
+
+def verifieer_beheer_token(authorization: str | None) -> bool:
+    """Vergelijk het server-to-server token zonder timing-informatie te lekken."""
+    verwacht = os.environ.get("COMMUNITY_TOOLS_MANAGEMENT_SECRET", "")
+    prefix = "Bearer "
+    if not beheer_is_ingeschakeld() or not verwacht or not authorization:
+        return False
+    if not authorization.startswith(prefix):
+        return False
+    return secrets.compare_digest(authorization[len(prefix):], verwacht)
 
 
 def wissel_ticket(ticket: str) -> dict:
