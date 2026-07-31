@@ -17,7 +17,7 @@ def test_management_api_requires_exact_bearer_secret(monkeypatch):
     assert not community_tools.verifieer_beheer_token(None)
 
 
-def test_management_endpoint_lists_only_product_admin_accounts(
+def test_management_endpoint_separates_admins_and_subscribers(
     client, db, uniek_email, monkeypatch
 ):
     from db import Church, Medebeheerder, Subscriber
@@ -65,5 +65,8 @@ def test_management_endpoint_lists_only_product_admin_accounts(
     assert response.status_code == 200
     payload = response.json()
     assert payload["product"] == "sermon_processing"
-    assert [user["role"] for user in payload["users"]] == ["owner", "editor"]
-    assert all(user["name"] != "Privé abonnee" for user in payload["users"])
+    assert [user["role"] for user in payload["users"]] == ["owner", "editor", "subscriber"]
+    assert [user["kind"] for user in payload["users"]] == ["admin", "admin", "user"]
+    subscriber = payload["users"][-1]
+    assert subscriber["name"] == "Privé abonnee"
+    assert "telefoon" not in subscriber

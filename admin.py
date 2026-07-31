@@ -182,6 +182,7 @@ def community_tools_organization_users(
             "email": kerk.email,
             "role": "owner",
             "status": "active" if kerk.email_geverifieerd else "pending",
+            "kind": "admin",
         }
     ]
     gebruikers.extend(
@@ -192,8 +193,25 @@ def community_tools_organization_users(
             "email": beheerder.email,
             "role": "editor",
             "status": "active" if beheerder.email_geverifieerd else "pending",
+            "kind": "admin",
         }
         for beheerder in medebeheerders
+    )
+    gebruikers.extend(
+        {
+            "id": f"subscriber:{subscriber.id}",
+            "communityToolsUserId": None,
+            "name": subscriber.naam or subscriber.email,
+            "email": subscriber.email,
+            "role": "subscriber",
+            "status": "active" if subscriber.bevestigd else "pending",
+            "kind": "user",
+        }
+        for subscriber in db.scalars(
+            select(Subscriber)
+            .where(Subscriber.kerk_id == kerk.id)
+            .order_by(Subscriber.naam, Subscriber.email)
+        ).all()
     )
     return {
         "version": "1",
@@ -201,6 +219,78 @@ def community_tools_organization_users(
         "organizationId": organization_id,
         "users": gebruikers,
     }
+
+
+@router.patch("/api/community-tools/v1/organizations/{organization_id}/users/{managed_user_id}")
+def community_tools_update_user(
+    organization_id: str,
+    managed_user_id: str,
+    body: dict,
+    authorization: str | None = Header(default=None),
+    db=Depends(get_db),
+):
+    kerk = _management_church(db, organization_id, authorization)
+    name = str(body.get("name") or "").strip()
+    email = str(body.get("email") or "").strip().lower()
+    status = str(body.get("status") or "active")
+    if not name or not email:
+        raise HTTPException(400, "Naam en e-mail zijn verplicht.")
+    soort, _, raw_id = managed_user_id.partition(":")
+    record_id = int(raw_id) if raw_id.isdigit() else 0
+    if soort == "subscriber":
+        record = db.get(Subscriber, record_id)
+        if not record or record.kerk_id != kerk.id:
+            raise HTTPException(404, "Gebruiker niet gevonden.")
+        record.naam, record.email = name, email
+        record.bevestigd = status == "active"
+    elif soort == "co-admin":
+        record = db.get(Medebeheerder, record_id)
+        if not record or record.kerk_id != kerk.id:
+            raise HTTPException(404, "Beheerder niet gevonden.")
+        record.naam, record.email = name, email
+        record.email_geverifieerd = status == "active"
+    elif soort == "church" and record_id == kerk.id:
+        kerk.naam = name
+    else:
+        raise HTTPException(400, "Dit account kan hier niet worden aangepast.")
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(409, "E-mailadres is al in gebruik.")
+    return {"ok": True}
+
+
+@router.delete("/api/community-tools/v1/organizations/{organization_id}/users/{managed_user_id}")
+def community_tools_remove_user(
+    organization_id: str,
+    managed_user_id: str,
+    authorization: str | None = Header(default=None),
+    db=Depends(get_db),
+):
+    kerk = _management_church(db, organization_id, authorization)
+    soort, _, raw_id = managed_user_id.partition(":")
+    record_id = int(raw_id) if raw_id.isdigit() else 0
+    if soort == "subscriber":
+        record = db.get(Subscriber, record_id)
+    elif soort == "co-admin":
+        record = db.get(Medebeheerder, record_id)
+    else:
+        raise HTTPException(409, "De hoofdbeheerder kan niet worden verwijderd.")
+    if not record or record.kerk_id != kerk.id:
+        raise HTTPException(404, "Account niet gevonden.")
+    db.delete(record)
+    db.commit()
+    return {"ok": True}
+
+
+def _management_church(db, organization_id: str, authorization: str | None):
+    if not community_tools.verifieer_beheer_token(authorization):
+        raise HTTPException(401, "Ongeldige Community Tools-beheerverbinding.")
+    kerk = db.scalar(select(Church).where(Church.community_tools_organization_id == organization_id))
+    if not kerk:
+        raise HTTPException(404, "Organisatie is nog niet gekoppeld.")
+    return kerk
 
 
 def huidige_kerk(request: Request, db) -> Church | None:
