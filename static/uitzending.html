@@ -166,6 +166,26 @@ function bouw(u) {
     const vv = veld(L.vraag || 'Vraag', dag.vraag_volwassenen, true, 2);
     const vk = veld(L.vraag_kinderen || 'Vraag voor kinderen', dag.vraag_kinderen, true, 2);
     [t, bt, g, vv, vk].forEach(x => k.appendChild(x.w));
+    const herknop = el('button', 'grijs', T('Herschrijf deze dag'));
+    herknop.type = 'button';
+    herknop.onclick = async () => {
+      herknop.disabled = true; const orig = herknop.textContent; herknop.textContent = T('Bezig…');
+      toon('', '');
+      try {
+        const r = await fetch('/api/uitzending/hergenereer-dag', {method: 'POST',
+          headers: {'Content-Type': 'application/json'}, body: JSON.stringify({token, dag: idx})});
+        if (!r.ok) throw new Error(await fout(r));
+        const res = await r.json();
+        const nd = (res.data.dagen || [])[idx] || {};
+        const ref = refs.dagen[idx];
+        ref.titel.value = nd.titel || ''; ref.bijbeltekst.value = nd.bijbeltekst || '';
+        ref.gedachte.value = nd.gedachte || ''; ref.vraag_volwassenen.value = nd.vraag_volwassenen || '';
+        ref.vraag_kinderen.value = nd.vraag_kinderen || '';
+        toon('ok', T('Deze dag is opnieuw geschreven.'));
+      } catch (f) { toon('fout', f.message); }
+      finally { herknop.disabled = false; herknop.textContent = orig; }
+    };
+    k.appendChild(herknop);
     inhoud.appendChild(k);
     refs.dagen.push({titel: t.i, bijbeltekst: bt.i, gedachte: g.i, vraag_volwassenen: vv.i, vraag_kinderen: vk.i});
   });

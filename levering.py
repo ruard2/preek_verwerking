@@ -8,9 +8,9 @@ import subscribers
 import ui_i18n
 
 
-def _dag_blok(L, dag, nummer):
+def _dag_blok(L, dag, nummer, accent="#2c5f2d"):
     return (
-        f'<h3 style="color:#2c5f2d;margin:1.4em 0 .3em">'
+        f'<h3 style="color:{accent};margin:1.4em 0 .3em">'
         f'{escape(L["dag"])} {nummer} – {escape(dag.get("titel", ""))}</h3>'
         f'<p style="color:#6b6b64;font-size:12px;text-transform:uppercase;'
         f'letter-spacing:.05em;margin:.6em 0 .1em">{escape(L["bijbeltekst"])}</p>'
@@ -28,13 +28,22 @@ def _dag_blok(L, dag, nummer):
 
 
 def bouw_email(data, kerk_naam, base_url, voorkeur_token, alleen_dag=None,
-               communicatie_taal="nl", ai_disclaimer=True):
+               communicatie_taal="nl", ai_disclaimer=True, logo_url=None,
+               accent="#2c5f2d"):
     """Geef (onderwerp, html) voor het weekboekje of één dag (0-geïndexeerd)."""
+    accent = accent or "#2c5f2d"
     L = render.labels(data.get("taal"))
     titel = data.get("titel", L["week"])
     dagen = data.get("dagen", [])
 
-    kop = f'<h2 style="color:#2c5f2d;margin:0 0 .2em">{escape(titel)}</h2>'
+    kop = ""
+    if logo_url:
+        kop += (
+            f'<div style="text-align:center;margin:0 0 1.2em">'
+            f'<img src="{escape(logo_url)}" alt="{escape(kerk_naam)}" '
+            f'style="max-height:64px;max-width:220px"></div>'
+        )
+    kop += f'<h2 style="color:{accent};margin:0 0 .2em">{escape(titel)}</h2>'
     onder = []
     if data.get("bijbelgedeelte"):
         onder.append(f"{escape(L['bijbelgedeelte'])}: {escape(data['bijbelgedeelte'])}")
@@ -44,7 +53,7 @@ def bouw_email(data, kerk_naam, base_url, voorkeur_token, alleen_dag=None,
 
     if alleen_dag is not None and 0 <= alleen_dag < len(dagen):
         onderwerp = f"{titel} — {L['dag']} {alleen_dag + 1}"
-        body = kop + _dag_blok(L, dagen[alleen_dag], alleen_dag + 1)
+        body = kop + _dag_blok(L, dagen[alleen_dag], alleen_dag + 1, accent)
     else:
         onderwerp = titel
         body = kop
@@ -54,7 +63,7 @@ def bouw_email(data, kerk_naam, base_url, voorkeur_token, alleen_dag=None,
             f'<p>{escape(data.get("samenvatting", ""))}</p>'
         )
         for i, dag in enumerate(dagen):
-            body += _dag_blok(L, dag, i + 1)
+            body += _dag_blok(L, dag, i + 1, accent)
 
     afmeld = f"{base_url}/afmelden?token={voorkeur_token}"
     voorkeur = f"{base_url}/voorkeuren?token={voorkeur_token}"
@@ -67,8 +76,8 @@ def bouw_email(data, kerk_naam, base_url, voorkeur_token, alleen_dag=None,
         f'<hr style="border:none;border-top:1px solid #e2e2dd;margin:2em 0 1em">'
         f'<p style="color:#8a8a80;font-size:12px">'
         f'{escape(C["receiving"].format(church=kerk_naam))} '
-        f'<a href="{voorkeur}" style="color:#2c5f2d">{escape(C["preferences"])}</a> · '
-        f'<a href="{afmeld}" style="color:#2c5f2d">{escape(C["unsubscribe"])}</a></p>'
+        f'<a href="{voorkeur}" style="color:{accent}">{escape(C["preferences"])}</a> · '
+        f'<a href="{afmeld}" style="color:{accent}">{escape(C["unsubscribe"])}</a></p>'
         f'{disclaimer}'
     )
     html = (
@@ -83,9 +92,11 @@ def verstuur_een(kerk, data, base_url, sub, alleen_dag=None):
     (e-mail en/of push)."""
     kanaal = getattr(sub, "kanaal", "email") or "email"
     if kanaal in ("email", "beide"):
+        logo_url = f"{base_url}/logo/{kerk.id}" if getattr(kerk, "logo", "") else None
         onderwerp, html = bouw_email(
             data, kerk.naam or "AfterSermon", base_url, sub.voorkeur_token, alleen_dag,
-            kerk.communicatie_taal, getattr(kerk, "ai_disclaimer", True),
+            kerk.communicatie_taal, getattr(kerk, "ai_disclaimer", True), logo_url,
+            getattr(kerk, "accentkleur", None),
         )
         brevo.verzend(
             sub.email, onderwerp, html,

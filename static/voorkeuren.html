@@ -52,6 +52,7 @@ else {
 
 function bouw(s) {
   AfterSermonI18n.set(s.communicatie_taal || 'auto');
+  if (s.accentkleur) document.documentElement.style.setProperty('--groen', s.accentkleur);
   if (afmeldModus) toon('', '');
   const t = x => AfterSermonI18n.text(x);
   inhoud.innerHTML = `

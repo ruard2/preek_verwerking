@@ -41,6 +41,7 @@ import supadata
 import transcript as ts
 from audio import transcribeer_preek
 from llm import verwerk_preek
+from llm import hergenereer_dag as llm_hergenereer_dag
 from llm import normaliseer as llm_normaliseer
 from llm import schoon_transcript as llm_schoon_transcript
 from transcript import (
@@ -230,7 +231,7 @@ def _verrijk_datums_via_supadata(diensten, maximum=10):
                 d["gepland"] = True
 
 
-def _proces_kerkdienstgemist(url, meld):
+def _proces_kerkdienstgemist(url, meld, bijbel=None):
     """Kerkdienstgemist: alleen het preekgedeelte transcriberen via OpenAI.
 
     Geeft (data, tekst, meta, ondertitel) terug.
@@ -254,7 +255,8 @@ def _proces_kerkdienstgemist(url, meld):
 
     meld("Verwerken met AI — dit kan enkele minuten duren...")
     data = verwerk_preek(
-        transcript, taal_hint="nl", extra_context="\n".join(context) or None
+        transcript, taal_hint="nl", extra_context="\n".join(context) or None,
+        **(bijbel or {})
     )
     # Liturgie altijd meebewaren (Kerkdienstgemist levert die; YouTube niet).
     if o.get("liturgie"):
@@ -289,7 +291,8 @@ def _proces_audio_bron(o, bronnaam, meld):
 
     meld("Verwerken met AI — dit kan enkele minuten duren...")
     data = verwerk_preek(
-        transcript, extra_context="\n".join(context) or None, volledige_dienst=True
+        transcript, extra_context="\n".join(context) or None, volledige_dienst=True,
+        **(bijbel or {})
     )
     if o.get("liturgie"):
         data["liturgie"] = o["liturgie"]
@@ -303,13 +306,13 @@ def _proces_audio_bron(o, bronnaam, meld):
     return data, tekst, meta, o["titel"], transcript
 
 
-def _proces_kerkomroep(url, meld):
+def _proces_kerkomroep(url, meld, bijbel=None):
     """Kerkomroep: de hele dienst-mp3 transcriberen (geen preek-markering)."""
     meld("Uitzending ophalen (Kerkomroep)...")
     return _proces_audio_bron(kerkomroep.haal_opname(url), "Kerkomroep", meld)
 
 
-def _proces_youtube(url, meld):
+def _proces_youtube(url, meld, bijbel=None):
     """YouTube: transcriptbron kiezen (Supadata gehost / yt-dlp lokaal).
 
     Geeft (data, tekst, meta, ondertitel) terug.
@@ -348,16 +351,34 @@ def _proces_youtube(url, meld):
 
     meld(gevonden + f"Bron: {bron}. Verwerken met AI — dit kan enkele "
          "minuten duren...")
-    data = verwerk_preek(transcript, seg["welkom"], taal_hint=taal_hint)
+    data = verwerk_preek(transcript, seg["welkom"], taal_hint=taal_hint, **(bijbel or {}))
     tekst = render.naar_tekst(data)
     return data, tekst, meta, meta.get("titel"), transcript
 
 
-def verwerk_en_bewaar(url, herverwerk=False, meld=None):
+def bijbel_van_kerk(kerk):
+    """Bouw de verwerk-opties (Bijbeltekst + stijl) uit een Church-record.
+
+    Het resultaat wordt als **kwargs aan verwerk_preek doorgegeven: citaat_volledig,
+    vertaling, toon en lengte. Verdraagt None (losse verwerking zonder kerk) → dan
+    de standaardwaarden van verwerk_preek.
+    """
+    if kerk is None:
+        return None
+    return {
+        "citaat_volledig": getattr(kerk, "citaat_volledig", True),
+        "vertaling": getattr(kerk, "bijbelvertaling", "vrij") or "vrij",
+        "toon": getattr(kerk, "toon", "warm") or "warm",
+        "lengte": getattr(kerk, "lengte", "middel") or "middel",
+    }
+
+
+def verwerk_en_bewaar(url, herverwerk=False, meld=None, bijbel=None):
     """Verwerk een dienst (of laad uit cache) en bewaar het resultaat.
 
-    Herbruikbaar vanuit de interactieve taak én de automatisering. Geeft een dict
-    met o.a. video_id, data, tekst, meta, transcript_ruw, preek_schoon, uit_cache.
+    Herbruikbaar vanuit de interactieve taak én de automatisering. `bijbel` is een
+    optioneel dict {citaat_volledig, vertaling} met de Bijbeltekst-voorkeur van de
+    kerk. Geeft een dict met o.a. video_id, data, tekst, meta, uit_cache.
     """
     meld = meld or (lambda _s: None)
     is_kdg = kerkdienstgemist.is_kerkdienstgemist(url)
@@ -381,11 +402,11 @@ def verwerk_en_bewaar(url, herverwerk=False, meld=None):
 
     # 2. Verwerken via de juiste bron.
     if is_kdg:
-        data, tekst, meta, ondertitel, transcript_ruw = _proces_kerkdienstgemist(url, meld)
+        data, tekst, meta, ondertitel, transcript_ruw = _proces_kerkdienstgemist(url, meld, bijbel)
     elif is_ko:
-        data, tekst, meta, ondertitel, transcript_ruw = _proces_kerkomroep(url, meld)
+        data, tekst, meta, ondertitel, transcript_ruw = _proces_kerkomroep(url, meld, bijbel)
     else:
-        data, tekst, meta, ondertitel, transcript_ruw = _proces_youtube(url, meld)
+        data, tekst, meta, ondertitel, transcript_ruw = _proces_youtube(url, meld, bijbel)
 
     # 2b. Opgeschoonde, volledige preektekst (aparte AI-stap; niet fataal).
     preek_schoon = ""
@@ -404,14 +425,14 @@ def verwerk_en_bewaar(url, herverwerk=False, meld=None):
     return {"video_id": vid, "uit_cache": False, **payload}
 
 
-def verwerk_tekst_en_bewaar(video_id, tekst, titel_hint=None, volledige_dienst=False):
+def verwerk_tekst_en_bewaar(video_id, tekst, titel_hint=None, volledige_dienst=False, bijbel=None):
     """Verwerk een aangeleverde preektekst of dienst-transcript en bewaar het.
 
     Bij een document (preekmanuscript) is de tekst de preek zelf. Bij audio van
     een volledige dienst (volledige_dienst=True) moet het model zelf het
     preekgedeelte eruit halen.
     """
-    data = verwerk_preek(tekst, volledige_dienst=volledige_dienst)
+    data = verwerk_preek(tekst, volledige_dienst=volledige_dienst, **(bijbel or {}))
     if titel_hint and not data.get("titel"):
         data["titel"] = titel_hint
     rendered = render.naar_tekst(data)
@@ -422,6 +443,35 @@ def verwerk_tekst_en_bewaar(video_id, tekst, titel_hint=None, volledige_dienst=F
     }
     store.resultaat_opslaan(video_id, payload)
     return data
+
+
+def hergenereer_dag_en_bewaar(video_id, dag_index, bijbel=None):
+    """Genereer één dag opnieuw voor een reeds verwerkt weekboekje en bewaar het.
+
+    Gebruikt de opgeschoonde preektekst (of het ruwe transcript) als bron. Geeft
+    het bijgewerkte resultaat-dict terug (met nieuwe `data` en `tekst`).
+    """
+    bewaard = store.resultaat_ophalen(video_id)
+    if not bewaard or not bewaard.get("data"):
+        raise ValueError("Deze dienst is nog niet verwerkt.")
+    data = llm_normaliseer(bewaard["data"])
+    bron = bewaard.get("preek_schoon") or bewaard.get("transcript_ruw") or ""
+    opties = bijbel or {}
+    nieuwe_dag = llm_hergenereer_dag(
+        data, dag_index, bron,
+        toon=opties.get("toon", "warm"), lengte=opties.get("lengte", "middel"),
+        citaat_volledig=opties.get("citaat_volledig", True),
+        vertaling=opties.get("vertaling", "vrij"),
+    )
+    dagen = data.get("dagen") or []
+    if not (0 <= dag_index < len(dagen)):
+        raise ValueError("Ongeldige dag.")
+    # Bestaande sleutels behouden, alleen de gegenereerde velden vervangen.
+    dagen[dag_index].update({k: v for k, v in nieuwe_dag.items() if v})
+    tekst = render.naar_tekst(data)
+    payload = {**bewaard, "data": data, "tekst": tekst}
+    store.resultaat_opslaan(video_id, payload)
+    return {"video_id": video_id, **payload}
 
 
 def _voer_taak_uit(taak_id, url):

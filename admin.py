@@ -9,6 +9,7 @@ from fastapi.responses import FileResponse, RedirectResponse, Response
 from pydantic import BaseModel
 
 import os
+import re
 import secrets
 import threading
 
@@ -201,6 +202,11 @@ class KanaalBody(BaseModel):
     admin_taal: str = "auto"
     inschrijf_taal: str = "auto"
     communicatie_taal: str = "nl"
+    citaat_volledig: bool = True
+    bijbelvertaling: str = "vrij"
+    accentkleur: str = "#2c5f2d"
+    toon: str = "warm"
+    lengte: str = "middel"
 
 
 class InschrijverBody(BaseModel):
@@ -342,6 +348,12 @@ def mij(request: Request, db=Depends(get_db)):
         "admin_taal": kerk.admin_taal,
         "inschrijf_taal": kerk.inschrijf_taal,
         "communicatie_taal": kerk.communicatie_taal,
+        "citaat_volledig": kerk.citaat_volledig,
+        "bijbelvertaling": kerk.bijbelvertaling,
+        "heeft_logo": bool(kerk.logo),
+        "accentkleur": kerk.accentkleur or "#2c5f2d",
+        "toon": kerk.toon or "warm",
+        "lengte": kerk.lengte or "middel",
     }
 
 
@@ -360,6 +372,15 @@ def kanaal(body: KanaalBody, request: Request, db=Depends(get_db)):
     kerk.communicatie_taal = ui_i18n.valid(
         body.communicatie_taal, "nl", allow_auto=False
     )
+    kerk.citaat_volledig = bool(body.citaat_volledig)
+    _vertalingen = {"vrij", "nbv21", "hsv", "afr1953", "kjv", "esv", "niv"}
+    kerk.bijbelvertaling = (
+        body.bijbelvertaling if body.bijbelvertaling in _vertalingen else "vrij"
+    )
+    kleur = (body.accentkleur or "").strip()
+    kerk.accentkleur = kleur if re.fullmatch(r"#[0-9a-fA-F]{6}", kleur) else "#2c5f2d"
+    kerk.toon = body.toon if body.toon in {"warm", "nuchter", "toegankelijk", "verdiepend"} else "warm"
+    kerk.lengte = body.lengte if body.lengte in {"kort", "middel", "lang"} else "middel"
     db.commit()
     return {"ok": True, "kanaal_url": kerk.kanaal_url}
 
@@ -374,6 +395,7 @@ def _sub_json(s):
     }
     if getattr(s, "kerk", None):
         data["communicatie_taal"] = s.kerk.communicatie_taal
+        data["accentkleur"] = s.kerk.accentkleur or "#2c5f2d"
     return data
 
 
@@ -661,6 +683,7 @@ async def upload_preek(
         data = main.verwerk_tekst_en_bewaar(
             video_id, tekst, titel_hint=file.filename,
             volledige_dienst=audio_mod.is_audio(file.filename),
+            bijbel=main.bijbel_van_kerk(kerk),
         )
     except Exception as fout:  # noqa: BLE001
         raise HTTPException(502, f"Verwerken lukte niet: {fout}")
@@ -679,6 +702,38 @@ async def upload_preek(
     db.add(uit)
     db.commit()
     return {"ok": True, "video_id": video_id, "bewerk_url": f"/uitzending?token={uit.goedkeur_token}"}
+
+
+_LOGO_TYPES = {"image/png", "image/jpeg", "image/webp", "image/gif", "image/svg+xml"}
+_LOGO_MAX = 500 * 1024  # 500 kB
+
+
+@router.post("/api/admin/logo")
+async def logo_upload(request: Request, file: UploadFile = File(...), db=Depends(get_db)):
+    """Upload het logo van de kerk (PNG/JPG/WEBP/GIF/SVG, max 500 kB)."""
+    import base64
+    kerk = _vereis_kerk(request, db)
+    ctype = (file.content_type or "").split(";")[0].strip().lower()
+    if ctype not in _LOGO_TYPES:
+        raise HTTPException(400, "Alleen PNG, JPG, WEBP, GIF of SVG is toegestaan.")
+    inhoud = await file.read()
+    if not inhoud:
+        raise HTTPException(400, "Leeg bestand.")
+    if len(inhoud) > _LOGO_MAX:
+        raise HTTPException(400, "Het logo mag maximaal 500 kB zijn.")
+    kerk.logo = base64.b64encode(inhoud).decode("ascii")
+    kerk.logo_type = ctype
+    db.commit()
+    return {"ok": True, "logo_url": f"/logo/{kerk.id}"}
+
+
+@router.delete("/api/admin/logo")
+def logo_verwijder(request: Request, db=Depends(get_db)):
+    kerk = _vereis_kerk(request, db)
+    kerk.logo = ""
+    kerk.logo_type = ""
+    db.commit()
+    return {"ok": True}
 
 
 @router.put("/api/admin/inschrijvers/{sub_id}")
@@ -867,9 +922,12 @@ def uitzending_test(body: dict, request: Request, db=Depends(get_db)):
     if not bewaard or not bewaard.get("data"):
         raise HTTPException(400, "Verwerk de dienst eerst voordat je een test stuurt.")
     kerk = db.get(Church, uit.kerk_id)
+    base = _basis_url(request)
+    logo_url = f"{base}/logo/{kerk.id}" if getattr(kerk, "logo", "") else None
     onderwerp, html = levering.bouw_email(
-        bewaard["data"], kerk.naam or "AfterSermon", _basis_url(request), "test",
+        bewaard["data"], kerk.naam or "AfterSermon", base, "test",
         None, kerk.communicatie_taal, getattr(kerk, "ai_disclaimer", True),
+        logo_url, getattr(kerk, "accentkleur", None),
     )
     brevo.verzend(
         kerk.email, "[TEST] " + onderwerp, html,
@@ -889,12 +947,37 @@ def uitzending_verwerk(body: dict, db=Depends(get_db)):
         import main
 
         try:
-            main.verwerk_en_bewaar(uit.url)
+            main.verwerk_en_bewaar(
+                uit.url, bijbel=main.bijbel_van_kerk(db.get(Church, uit.kerk_id))
+            )
         except Exception as fout:  # noqa: BLE001
             raise HTTPException(502, f"Verwerken lukte niet: {fout}")
         bewaard = store.resultaat_ophalen(uit.video_id) or {}
     data = bewaard.get("data") or {}
     return {"ok": True, "data": _met_labels(data), "tekst": bewaard.get("tekst", "")}
+
+
+@router.post("/api/uitzending/hergenereer-dag")
+def uitzending_hergenereer_dag(body: dict, db=Depends(get_db)):
+    """Genereer één dag-overdenking opnieuw voor deze dienst."""
+    import main
+    uit = _uit_op_token(db, (body or {}).get("token", ""))
+    if not uit:
+        raise HTTPException(404, "Onbekende of verlopen link.")
+    try:
+        dag_index = int((body or {}).get("dag"))
+    except (TypeError, ValueError):
+        raise HTTPException(400, "Geef een geldige dag op.")
+    try:
+        r = main.hergenereer_dag_en_bewaar(
+            uit.video_id, dag_index,
+            bijbel=main.bijbel_van_kerk(db.get(Church, uit.kerk_id)),
+        )
+    except ValueError as fout:
+        raise HTTPException(400, str(fout))
+    except Exception as fout:  # noqa: BLE001
+        raise HTTPException(502, f"Opnieuw genereren lukte niet: {fout}")
+    return {"ok": True, "data": _met_labels(r["data"]), "tekst": r.get("tekst", "")}
 
 
 @router.post("/api/uitzending/upload")
@@ -925,6 +1008,7 @@ async def uitzending_upload(
         data = main.verwerk_tekst_en_bewaar(
             uit.video_id, tekst, titel_hint=uit.titel,
             volledige_dienst=audio_mod.is_audio(file.filename),
+            bijbel=main.bijbel_van_kerk(db.get(Church, uit.kerk_id)),
         )
     except Exception as fout:  # noqa: BLE001
         raise HTTPException(502, f"Verwerken lukte niet: {fout}")
@@ -961,7 +1045,30 @@ def kerk_info(kerk_id: int, db=Depends(get_db)):
     kerk = db.get(Church, kerk_id)
     if not kerk:
         raise HTTPException(404, "Kerk niet gevonden.")
-    return {"naam": kerk.naam or "AfterSermon", "inschrijf_taal": kerk.inschrijf_taal}
+    return {
+        "naam": kerk.naam or "AfterSermon",
+        "inschrijf_taal": kerk.inschrijf_taal,
+        "heeft_logo": bool(kerk.logo),
+        "accentkleur": kerk.accentkleur or "#2c5f2d",
+    }
+
+
+@router.get("/logo/{kerk_id}")
+def kerk_logo(kerk_id: int, db=Depends(get_db)):
+    """Publiek logo van de kerk — bruikbaar als <img src> in mail en op de site."""
+    import base64
+    kerk = db.get(Church, kerk_id)
+    if not kerk or not kerk.logo:
+        raise HTTPException(404, "Geen logo.")
+    try:
+        ruw = base64.b64decode(kerk.logo)
+    except Exception:  # noqa: BLE001
+        raise HTTPException(404, "Geen logo.")
+    return Response(
+        content=ruw,
+        media_type=kerk.logo_type or "image/png",
+        headers={"Cache-Control": "public, max-age=300"},
+    )
 
 
 @router.post("/api/inschrijven")

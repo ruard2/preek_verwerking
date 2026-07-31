@@ -85,8 +85,7 @@ Algemene eisen
 * Gebruik per dag één hoofdgedachte. Probeer niet de hele preek in ieder daggedeelte te herhalen.
 * Zorg dat de zeven dagen samen de belangrijkste lijn van de preek volgen.
 * Gebruik alleen Bijbelteksten die in de preek worden genoemd of duidelijk rechtstreeks aansluiten bij de boodschap.
-* Zet in het veld "bijbeltekst" precies ÉÉN Bijbelvers dat bij de dag past, MET de verwijzing erbij (bijv. "Zacharia 4:6 — Niet door kracht..."). NOOIT meer dan één vers.
-* Vertalingen: Nederlands = Statenvertaling; Engels = King James Version of World English Bible; Afrikaans = die 1933/1953-vertaling (Ou Vertaling), met "(1953)" als bronvermelding achter het vers. Neem NOOIT tekst over uit andere auteursrechtelijk beschermde vertalingen (NBV21, HSV, BGT, NIV).
+* Voor het veld "bijbeltekst": volg exact de aparte instructie onderaan (volledig vers of alleen de verwijzing, en welke vertaling). Kies altijd hooguit ÉÉN vers.
 
 Lengte
 
@@ -202,14 +201,66 @@ uit die onderdelen over in de samenvatting, de dagen of de vragen.
 """
 
 
+# Auteursrechtelijk beschermde vertalingen: (volledige naam, bronvermelding).
+_VERTALINGEN = {
+    "nbv21": ("NBV21", "(NBV21)"),
+    "hsv": ("Herziene Statenvertaling", "(HSV)"),
+    "niv": ("New International Version", "(NIV)"),
+    "esv": ("English Standard Version", "(ESV)"),
+    "kjv": ("King James Version", "(KJV)"),
+    "afr1953": ("Afrikaanse Bybelvertaling van 1953", "(1953)"),
+}
+
+
+def _bijbel_instructie(citaat_volledig, vertaling):
+    if not citaat_volledig:
+        return (
+            '\nBIJBELTEKST-INSTRUCTIE: zet in het veld "bijbeltekst" ALLEEN de '
+            "verwijzing (bijbelboek hoofdstuk:vers), zónder de verstekst.\n"
+        )
+    if vertaling in _VERTALINGEN:
+        naam, kort = _VERTALINGEN[vertaling]
+        return (
+            f'\nBIJBELTEKST-INSTRUCTIE: zet in "bijbeltekst" precies ÉÉN vers met de '
+            f"verwijzing, uit de {naam}, en zet {kort} als bronvermelding achter het "
+            "vers. Nooit meer dan één vers.\n"
+        )
+    return (
+        '\nBIJBELTEKST-INSTRUCTIE: zet in "bijbeltekst" precies ÉÉN vers met de '
+        "verwijzing, uit een vrije (publiek-domein) vertaling — Nederlands = "
+        "Statenvertaling, Engels = King James Version of World English Bible, "
+        'Afrikaans = 1933/1953-vertaling met "(1953)". Nooit meer dan één vers.\n'
+    )
+
+
+_TONEN = {
+    "warm": "warm, pastoraal en bemoedigend",
+    "nuchter": "nuchter, bijbelgetrouw en verdiepend, zonder sentimentaliteit",
+    "toegankelijk": "eigentijds, toegankelijk en concreet, met voorbeelden uit het dagelijks leven",
+    "verdiepend": "theologisch verdiepend en rijk, maar begrijpelijk voor een brede gemeente",
+}
+_LENGTES = {
+    "kort": "Houd elke overdenking beknopt: de gedachte is 2 tot 3 zinnen.",
+    "middel": "Houd elke overdenking gemiddeld van lengte: de gedachte is 4 tot 6 zinnen.",
+    "lang": "Maak elke overdenking uitgebreider: de gedachte is een volle alinea van 7 tot 10 zinnen.",
+}
+
+
+def _stijl_instructie(toon, lengte):
+    t = _TONEN.get(toon or "warm", _TONEN["warm"])
+    l = _LENGTES.get(lengte or "middel", _LENGTES["middel"])
+    return f"\nSTIJL: schrijf de overdenkingen in een {t} toon. {l}\n"
+
+
 def verwerk_preek(transcript, welkom=None, taal_hint=None, extra_context=None,
-                  volledige_dienst=False):
+                  volledige_dienst=False, citaat_volledig=True, vertaling="vrij",
+                  toon="warm", lengte="middel"):
     """Verwerk het transcript tot een gestructureerd resultaat (dict).
 
     Geeft een dict met de velden: taal, titel, bijbelgedeelte, voorganger,
     samenvatting, dagen[7]. Werpt een fout bij een ongeldig antwoord. Met
-    volledige_dienst=True bevat de transcriptie de hele dienst en moet het model
-    zelf het preekgedeelte eruit halen.
+    volledige_dienst=True bevat de transcriptie de hele dienst. citaat_volledig
+    en vertaling bepalen hoe het Bijbelvers wordt getoond.
     """
     if not os.environ.get("OPENAI_API_KEY"):
         raise RuntimeError(
@@ -217,7 +268,8 @@ def verwerk_preek(transcript, welkom=None, taal_hint=None, extra_context=None,
             "omgevingsvariabele (in Railway: Variables)."
         )
     client = OpenAI()
-    inhoud = GEBRUIKER_INLEIDING
+    inhoud = GEBRUIKER_INLEIDING + _bijbel_instructie(citaat_volledig, vertaling)
+    inhoud += _stijl_instructie(toon, lengte)
     if volledige_dienst:
         inhoud += VOLLEDIGE_DIENST_INSTRUCTIE
     if extra_context:
@@ -327,6 +379,69 @@ def schoon_transcript(transcript, taal_hint=None):
         ],
     )
     return (antwoord.choices[0].message.content or "").strip()
+
+
+def hergenereer_dag(data, dag_index, bron="", toon="warm", lengte="middel",
+                    citaat_volledig=True, vertaling="vrij"):
+    """Genereer één dag-overdenking opnieuw, passend bij het weekthema.
+
+    `data` is het bestaande resultaat (titel/bijbelgedeelte/samenvatting/dagen);
+    `dag_index` is 0-geïndexeerd; `bron` is (optioneel) de opgeschoonde preektekst.
+    Geeft een nieuw dag-dict (titel, bijbeltekst, gedachte, vraag_volwassenen,
+    vraag_kinderen). Werpt een fout bij een ongeldig antwoord.
+    """
+    if not os.environ.get("OPENAI_API_KEY"):
+        raise RuntimeError("OPENAI_API_KEY is niet ingesteld.")
+    dagen = data.get("dagen") or []
+    if not (0 <= dag_index < len(dagen)):
+        raise ValueError("Ongeldige dag.")
+    client = OpenAI()
+    taal = data.get("taal") or "nl"
+    context = [
+        f"Titel van de week: {data.get('titel', '')}",
+        f"Bijbelgedeelte: {data.get('bijbelgedeelte', '')}",
+        f"Samenvatting van de preek: {data.get('samenvatting', '')}",
+    ]
+    andere = [
+        f"Dag {i + 1}: {d.get('titel', '')}"
+        for i, d in enumerate(dagen) if i != dag_index
+    ]
+    if andere:
+        context.append("De andere dagen gaan al over:\n" + "\n".join(andere))
+    inhoud = (
+        f"Schrijf ÉÉN nieuwe dagelijkse overdenking (dag {dag_index + 1} van "
+        f"{len(dagen)}) bij deze preek. Kies een invalshoek die de andere dagen "
+        "aanvult en niet in herhaling valt.\n"
+        + _bijbel_instructie(citaat_volledig, vertaling)
+        + _stijl_instructie(toon, lengte)
+        + f"\nSchrijf in de taal met code '{taal}'.\n"
+        + "\n".join(context)
+    )
+    if bron:
+        inhoud += "\n\n--- PREEKTEKST ---\n" + bron[:12000]
+    inhoud += (
+        '\n\nGeef UITSLUITEND JSON terug in de vorm: {"dag": {"titel": "...", '
+        '"bijbeltekst": "...", "gedachte": "...", "vraag_volwassenen": "...", '
+        '"vraag_kinderen": "..."}}'
+    )
+    antwoord = client.chat.completions.create(
+        model=MODEL,
+        response_format={"type": "json_object"},
+        messages=[
+            {"role": "system", "content": SYSTEEM_PROMPT + AANVULLENDE_INSTRUCTIES},
+            {"role": "user", "content": inhoud},
+        ],
+    )
+    ruw = antwoord.choices[0].message.content
+    try:
+        obj = json.loads(ruw)
+    except (json.JSONDecodeError, TypeError) as fout:
+        raise RuntimeError(f"Ongeldig JSON-antwoord van het model: {fout}") from None
+    dag = obj.get("dag") if isinstance(obj, dict) and isinstance(obj.get("dag"), dict) else obj
+    if not isinstance(dag, dict):
+        raise RuntimeError("Het model gaf geen bruikbare dag terug.")
+    _vul_synoniemen(dag, _DAG_SYNONIEMEN)
+    return dag
 
 
 def _valideer(data, taal_hint):

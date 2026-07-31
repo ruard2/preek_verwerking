@@ -63,6 +63,14 @@ if (!kerkId) {
   fetch('/api/kerk/' + kerkId).then(r => r.ok ? r.json() : Promise.reject())
     .then(k => {
       AfterSermonI18n.set(k.inschrijf_taal || 'auto');
+      if (k.accentkleur) document.documentElement.style.setProperty('--groen', k.accentkleur);
+      if (k.heeft_logo) {
+        const logo = document.createElement('img');
+        logo.src = '/logo/' + kerkId;
+        logo.alt = k.naam || '';
+        logo.style.cssText = 'max-height:72px;max-width:240px;display:block;margin:0 0 1rem';
+        document.getElementById('titel').before(logo);
+      }
       if (params.get('bevestigd')) toonBedankt(k);
       else {
         document.getElementById('titel').textContent =

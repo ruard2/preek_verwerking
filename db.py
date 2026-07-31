@@ -72,6 +72,10 @@ class Church(Base):
     admin_taal: Mapped[str] = mapped_column(String(5), default="auto")
     inschrijf_taal: Mapped[str] = mapped_column(String(5), default="auto")
     communicatie_taal: Mapped[str] = mapped_column(String(5), default="nl")
+    # Bijbeltekst: volledig vers tonen of alleen de verwijzing; en welke vertaling
+    # ("vrij" = publiek domein per taal, of een specifieke zoals nbv21/hsv/niv/esv).
+    citaat_volledig: Mapped[bool] = mapped_column(Boolean, default=True)
+    bijbelvertaling: Mapped[str] = mapped_column(String(20), default="vrij")
     # De kerk bepaalt het verzendmoment (in de kerk-tijdzone). Wekelijks: de hele
     # bundel op verzend_dag; dagelijks: dag 1 op verzend_dag, dan elke dag verder.
     verzend_dag: Mapped[int] = mapped_column(Integer, default=0)  # 0=ma .. 6=zo
@@ -81,6 +85,15 @@ class Church(Base):
     versturen_zonder_goedkeuring: Mapped[bool] = mapped_column(Boolean, default=False)
     # Toon onderaan elke mail dat de tekst met AI is gemaakt (aanrader).
     ai_disclaimer: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Eigen logo van de kerk (base64 van de afbeelding) + het content-type. Wordt
+    # bovenaan de mail en op de inschrijfpagina getoond via /logo/{kerk_id}.
+    logo: Mapped[str] = mapped_column(Text, default="")
+    logo_type: Mapped[str] = mapped_column(String(80), default="")
+    # Accentkleur (hex) voor de mails en publieke pagina's van deze kerk.
+    accentkleur: Mapped[str] = mapped_column(String(7), default="#2c5f2d")
+    # Kwaliteitsknoppen voor de overdenkingen: toon en lengte.
+    toon: Mapped[str] = mapped_column(String(20), default="warm")
+    lengte: Mapped[str] = mapped_column(String(20), default="middel")
 
     aangemaakt: Mapped[DateTime] = mapped_column(DateTime, server_default=func.now())
 

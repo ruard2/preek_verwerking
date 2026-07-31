@@ -323,8 +323,13 @@ function toonDashboard(mij) {
         versturen_zonder_goedkeuring: document.getElementById('zonder').checked,
         ai_disclaimer: document.getElementById('aidiscl').checked,
         admin_taal: val('admin_taal'), inschrijf_taal: val('inschrijf_taal'),
-        communicatie_taal: val('communicatie_taal')
+        communicatie_taal: val('communicatie_taal'),
+        citaat_volledig: document.getElementById('citaat_volledig').value !== 'ref',
+        bijbelvertaling: val('bijbelvertaling'),
+        accentkleur: val('accentkleur'),
+        toon: val('toon'), lengte: val('lengte')
       });
+      if (mij) { mij.accentkleur = val('accentkleur'); mij.toon = val('toon'); mij.lengte = val('lengte'); }
       mij.kanaal_url = kanaalUrl;
       toon('ok', kanaalUrl
         ? 'Instellingen opgeslagen. Het kanaal wordt nu direct gescand.'
@@ -350,8 +355,114 @@ function toonDashboard(mij) {
   taalSelect('Taal inschrijfpagina','inschrijf_taal',mij.inschrijf_taal);
   taalSelect('Taal communicatie','communicatie_taal',mij.communicatie_taal,false);
   kaart.insertBefore(talen, knop);
+
+  const bijbel = el('div');
+  bijbel.appendChild(el('h2', {}, T('Bijbeltekst')));
+  bijbel.appendChild(el('p', {className: 'sub'},
+    T('Kies of het dagstukje de volledige verstekst toont of alleen de verwijzing, en uit welke vertaling. Er wordt altijd hoogstens één vers getoond, met bronvermelding.')));
+  bijbel.appendChild(el('label', {htmlFor: 'citaat_volledig'}, T('Weergave van de Bijbeltekst')));
+  const cv = el('select', {id: 'citaat_volledig'});
+  cv.appendChild(el('option', {value: 'vol'}, T('Volledige verstekst tonen')));
+  cv.appendChild(el('option', {value: 'ref'}, T('Alleen de verwijzing tonen')));
+  cv.value = (mij.citaat_volledig === false) ? 'ref' : 'vol';
+  bijbel.appendChild(cv);
+  bijbel.appendChild(el('label', {htmlFor: 'bijbelvertaling'}, T('Vertaling')));
+  const bv = el('select', {id: 'bijbelvertaling'});
+  bv.appendChild(el('option', {value: 'vrij'}, T('Automatisch (publiek domein)')));
+  [['🇳🇱 Nederlands', [['nbv21', 'NBV21'], ['hsv', 'Herziene Statenvertaling (HSV)']]],
+   ['🇿🇦 Afrikaans', [['afr1953', 'Afrikaans 1953']]],
+   ['🇬🇧 English', [['kjv', 'King James Version (KJV)'], ['esv', 'English Standard Version (ESV)'], ['niv', 'New International Version (NIV)']]]]
+    .forEach(g => {
+      const og = el('optgroup', {label: g[0]});
+      g[1].forEach(o => og.appendChild(el('option', {value: o[0]}, o[1])));
+      bv.appendChild(og);
+    });
+  bv.value = mij.bijbelvertaling || 'vrij';
+  bijbel.appendChild(bv);
+  kaart.insertBefore(bijbel, knop);
+
+  const kleur = el('div');
+  kleur.appendChild(el('h2', {}, T('Kleur')));
+  kleur.appendChild(el('p', {className: 'sub'},
+    T('Kies de accentkleur voor je mails en de inschrijfpagina.')));
+  kleur.appendChild(el('label', {htmlFor: 'accentkleur'}, T('Accentkleur')));
+  const kl = el('input', {id: 'accentkleur', type: 'color', value: mij.accentkleur || '#2c5f2d'});
+  kl.style.cssText = 'width:3rem;height:2.2rem;padding:.1rem;vertical-align:middle';
+  kleur.appendChild(kl);
+  const swatches = el('span'); swatches.style.marginLeft = '.6rem';
+  ['#2c5f2d', '#167455', '#1d4ed8', '#7c3aed', '#b91c1c', '#b45309', '#0f766e', '#334155']
+    .forEach(c => {
+      const s = el('button', {type: 'button', title: c});
+      s.style.cssText = 'width:1.5rem;height:1.5rem;border-radius:50%;border:1px solid #0002;' +
+        'margin:0 .2rem;padding:0;cursor:pointer;background:' + c;
+      s.onclick = () => { kl.value = c; };
+      swatches.appendChild(s);
+    });
+  kleur.appendChild(swatches);
+  kaart.insertBefore(kleur, knop);
+
+  const stijl = el('div');
+  stijl.appendChild(el('h2', {}, T('Stijl van de overdenkingen')));
+  stijl.appendChild(el('p', {className: 'sub'},
+    T('Bepaal de toon en de lengte van de overdenkingen die de AI schrijft.')));
+  stijl.appendChild(el('label', {htmlFor: 'toon'}, T('Toon')));
+  const tn = el('select', {id: 'toon'});
+  [['warm', T('Warm en pastoraal')], ['nuchter', T('Nuchter en bijbelgetrouw')],
+   ['toegankelijk', T('Eigentijds en toegankelijk')], ['verdiepend', T('Theologisch verdiepend')]]
+    .forEach(o => tn.appendChild(el('option', {value: o[0]}, o[1])));
+  tn.value = mij.toon || 'warm'; stijl.appendChild(tn);
+  stijl.appendChild(el('label', {htmlFor: 'lengte'}, T('Lengte')));
+  const ln = el('select', {id: 'lengte'});
+  [['kort', T('Kort')], ['middel', T('Gemiddeld')], ['lang', T('Uitgebreid')]]
+    .forEach(o => ln.appendChild(el('option', {value: o[0]}, o[1])));
+  ln.value = mij.lengte || 'middel'; stijl.appendChild(ln);
+  kaart.insertBefore(stijl, knop);
   basisPane.appendChild(kaart);
   document.getElementById('kanaal').addEventListener('change', () => knop.click());
+
+  // --- Logo van de kerk ---
+  const logoKaart = el('div', {className: 'kaart'});
+  logoKaart.appendChild(el('h2', {}, T('Logo')));
+  logoKaart.appendChild(el('p', {className: 'sub'},
+    T('Upload het logo van je kerk. Het verschijnt bovenaan de mails en op de inschrijfpagina. PNG, JPG, WEBP, GIF of SVG, maximaal 500 kB.')));
+  const logoPrev = el('img', {id: 'logoPrev'});
+  logoPrev.style.cssText = 'max-height:64px;max-width:220px;display:none;margin:.4rem 0';
+  logoKaart.appendChild(logoPrev);
+  const logoRemove = el('button', {}, T('Logo verwijderen'));
+  logoRemove.style.cssText = 'margin-left:.5rem;background:#8a8a80';
+  function toonLogo() {
+    if (mij.heeft_logo) {
+      logoPrev.src = '/logo/' + mij.id + '?t=' + Date.now();
+      logoPrev.style.display = 'block'; logoRemove.style.display = '';
+    } else {
+      logoPrev.style.display = 'none'; logoRemove.style.display = 'none';
+    }
+  }
+  const logoIn = el('input', {id: 'logofile', type: 'file',
+    accept: 'image/png,image/jpeg,image/webp,image/gif,image/svg+xml'});
+  logoKaart.appendChild(logoIn);
+  const logoKnop = el('button', {}, T('Logo opslaan'));
+  logoKnop.onclick = async () => {
+    const f = logoIn.files[0];
+    if (!f) { toon('fout', T('Kies eerst een afbeelding.')); return; }
+    try {
+      const fd = new FormData(); fd.append('file', f);
+      const r = await fetch('/api/admin/logo', {method: 'POST', body: fd});
+      if (!r.ok) throw new Error(await fouttekst(r, T('Uploaden mislukt.')));
+      mij.heeft_logo = true; toonLogo(); toon('ok', T('Logo opgeslagen.'));
+    } catch (er) { toon('fout', er.message); }
+  };
+  logoKaart.appendChild(logoKnop);
+  logoRemove.onclick = async () => {
+    try {
+      const r = await fetch('/api/admin/logo', {method: 'DELETE'});
+      if (!r.ok) throw new Error();
+      mij.heeft_logo = false; toonLogo(); toon('ok', T('Logo verwijderd.'));
+    } catch (er) { toon('fout', T('Verwijderen mislukt.')); }
+  };
+  logoKaart.appendChild(logoRemove);
+  toonLogo();
+  basisPane.appendChild(logoKaart);
 
   // --- Eigen preek uploaden ---
   const up = el('div', {className: 'kaart'});
