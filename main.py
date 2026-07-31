@@ -35,6 +35,7 @@ import audio
 import db as database
 import kerkdienstgemist
 import kerkomroep
+import bijbeltekst
 import render
 import store
 import supadata
@@ -408,6 +409,10 @@ def verwerk_en_bewaar(url, herverwerk=False, meld=None, bijbel=None):
     else:
         data, tekst, meta, ondertitel, transcript_ruw = _proces_youtube(url, meld, bijbel)
 
+    # 2a. Exacte Bijbeltekst aanvullen uit lokale vertaaldata (indien van toepassing).
+    bijbeltekst.verrijk_dagen(data, bijbel or {})
+    tekst = render.naar_tekst(data)
+
     # 2b. Opgeschoonde, volledige preektekst (aparte AI-stap; niet fataal).
     preek_schoon = ""
     try:
@@ -435,6 +440,7 @@ def verwerk_tekst_en_bewaar(video_id, tekst, titel_hint=None, volledige_dienst=F
     data = verwerk_preek(tekst, volledige_dienst=volledige_dienst, **(bijbel or {}))
     if titel_hint and not data.get("titel"):
         data["titel"] = titel_hint
+    bijbeltekst.verrijk_dagen(data, bijbel or {})
     rendered = render.naar_tekst(data)
     payload = {
         "data": data, "tekst": rendered,
@@ -466,6 +472,10 @@ def hergenereer_dag_en_bewaar(video_id, dag_index, bijbel=None):
     dagen = data.get("dagen") or []
     if not (0 <= dag_index < len(dagen)):
         raise ValueError("Ongeldige dag.")
+    # Exacte Bijbeltekst aanvullen (alleen deze nieuwe dag; de rest bleef ongewijzigd).
+    bijbeltekst.verrijk_dag(
+        nieuwe_dag, opties.get("vertaling"), opties.get("citaat_volledig", True)
+    )
     # Bestaande sleutels behouden, alleen de gegenereerde velden vervangen.
     dagen[dag_index].update({k: v for k, v in nieuwe_dag.items() if v})
     tekst = render.naar_tekst(data)

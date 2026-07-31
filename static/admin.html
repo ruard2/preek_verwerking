@@ -369,7 +369,7 @@ function toonDashboard(mij) {
   bijbel.appendChild(el('label', {htmlFor: 'bijbelvertaling'}, T('Vertaling')));
   const bv = el('select', {id: 'bijbelvertaling'});
   bv.appendChild(el('option', {value: 'vrij'}, T('Automatisch (publiek domein)')));
-  [['🇳🇱 Nederlands', [['nbv21', 'NBV21'], ['hsv', 'Herziene Statenvertaling (HSV)']]],
+  [['🇳🇱 Nederlands', [['nbv21', 'NBV21'], ['hsv', 'Herziene Statenvertaling (HSV)'], ['bgt', 'Bijbel in Gewone Taal (BGT)']]],
    ['🇿🇦 Afrikaans', [['afr1953', 'Afrikaans 1953']]],
    ['🇬🇧 English', [['kjv', 'King James Version (KJV)'], ['esv', 'English Standard Version (ESV)'], ['niv', 'New International Version (NIV)']]]]
     .forEach(g => {

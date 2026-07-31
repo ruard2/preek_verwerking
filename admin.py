@@ -429,7 +429,7 @@ def kanaal(body: KanaalBody, request: Request, db=Depends(get_db)):
         body.communicatie_taal, "nl", allow_auto=False
     )
     kerk.citaat_volledig = bool(body.citaat_volledig)
-    _vertalingen = {"vrij", "nbv21", "hsv", "afr1953", "kjv", "esv", "niv"}
+    _vertalingen = {"vrij", "nbv21", "hsv", "bgt", "afr1953", "kjv", "esv", "niv"}
     kerk.bijbelvertaling = (
         body.bijbelvertaling if body.bijbelvertaling in _vertalingen else "vrij"
     )

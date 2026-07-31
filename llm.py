@@ -212,11 +212,23 @@ _VERTALINGEN = {
 }
 
 
+# Vertalingen waarvoor de exacte tekst lokaal wordt opgezocht (bijbeltekst.py):
+# het model geeft dan ALLEEN de verwijzing, wij vullen de verstekst aan.
+_LOKALE_VERTALINGEN = {"nbv21", "hsv", "bgt", "afr1953"}
+
+
 def _bijbel_instructie(citaat_volledig, vertaling):
     if not citaat_volledig:
         return (
             '\nBIJBELTEKST-INSTRUCTIE: zet in het veld "bijbeltekst" ALLEEN de '
             "verwijzing (bijbelboek hoofdstuk:vers), zónder de verstekst.\n"
+        )
+    if vertaling in _LOKALE_VERTALINGEN:
+        return (
+            '\nBIJBELTEKST-INSTRUCTIE: zet in het veld "bijbeltekst" ALLEEN de '
+            "verwijzing (bijbelboek hoofdstuk:vers) van precies ÉÉN kernvers, in de "
+            "taal van de overdenking. De exacte verstekst wordt automatisch "
+            "toegevoegd; schrijf de verstekst dus NIET zelf.\n"
         )
     if vertaling in _VERTALINGEN:
         naam, kort = _VERTALINGEN[vertaling]
