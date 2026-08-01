@@ -261,6 +261,67 @@ def community_tools_update_user(
     return {"ok": True}
 
 
+@router.post("/api/community-tools/v1/organizations/{organization_id}/users")
+def community_tools_invite_user(
+    organization_id: str, body: dict, request: Request,
+    authorization: str | None = Header(default=None), db=Depends(get_db),
+):
+    kerk = _management_church(db, organization_id, authorization)
+    name = str(body.get("name") or "").strip()
+    email = str(body.get("email") or "").strip().lower()
+    role = str(body.get("role") or "")
+    if not name or not email:
+        raise HTTPException(400, "Naam en e-mail zijn verplicht.")
+    if role == "subscriber":
+        try:
+            record, _ = subscribers.maak_inschrijver(db, kerk.id, name, email)
+        except subscribers.InschrijfFout as exc:
+            raise HTTPException(400, str(exc))
+        _send_subscriber_invitation(kerk, record, request)
+        return {"id": f"subscriber:{record.id}"}
+    if role == "editor":
+        if db.scalar(select(Medebeheerder).where(Medebeheerder.email == email)):
+            raise HTTPException(409, "Dit e-mailadres is al in gebruik.")
+        token = secrets.token_urlsafe(24)
+        record = Medebeheerder(kerk_id=kerk.id, naam=name, email=email, token=token)
+        db.add(record); db.commit()
+        _send_editor_invitation(kerk, record, request)
+        return {"id": f"co-admin:{record.id}"}
+    raise HTTPException(400, "Ongeldige rol.")
+
+
+@router.post("/api/community-tools/v1/organizations/{organization_id}/users/{managed_user_id}/resend")
+def community_tools_resend_invitation(
+    organization_id: str, managed_user_id: str, request: Request,
+    authorization: str | None = Header(default=None), db=Depends(get_db),
+):
+    kerk = _management_church(db, organization_id, authorization)
+    soort, _, raw_id = managed_user_id.partition(":")
+    record_id = int(raw_id) if raw_id.isdigit() else 0
+    if soort == "subscriber":
+        record = db.get(Subscriber, record_id)
+        if not record or record.kerk_id != kerk.id: raise HTTPException(404, "Niet gevonden.")
+        if not record.bevestig_token:
+            record.bevestig_token = secrets.token_urlsafe(24); record.bevestigd = False; db.commit()
+        _send_subscriber_invitation(kerk, record, request)
+    elif soort == "co-admin":
+        record = db.get(Medebeheerder, record_id)
+        if not record or record.kerk_id != kerk.id: raise HTTPException(404, "Niet gevonden.")
+        record.token = secrets.token_urlsafe(24); db.commit(); _send_editor_invitation(kerk, record, request)
+    else: raise HTTPException(400, "Dit account heeft geen uitnodiging.")
+    return {"ok": True}
+
+
+def _send_subscriber_invitation(kerk, record, request):
+    link = f"{_basis_url(request)}/api/inschrijven/bevestig?token={record.bevestig_token}"
+    brevo.verzend(record.email, f"Uitnodiging van {kerk.naam}", f'<p>Je bent uitgenodigd voor AfterSermon.</p><p><a href="{link}">Uitnodiging accepteren</a></p>', tekst=f"Uitnodiging accepteren: {link}")
+
+
+def _send_editor_invitation(kerk, record, request):
+    link = f"{_basis_url(request)}/admin?uitnodiging={record.token}"
+    brevo.verzend(record.email, f"Je bent uitgenodigd als beheerder van {kerk.naam}", f'<p><a href="{link}">Account instellen</a></p>', tekst=f"Account instellen: {link}")
+
+
 @router.delete("/api/community-tools/v1/organizations/{organization_id}/users/{managed_user_id}")
 def community_tools_remove_user(
     organization_id: str,
