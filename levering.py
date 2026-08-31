@@ -27,6 +27,31 @@ def _dag_blok(L, dag, nummer, accent="#2c5f2d"):
     )
 
 
+def _nabespreking_blok(L, nabespreking, accent):
+    """HTML voor de nabespreekvragen (hoofd/hart/handen) in de mail."""
+    uit = (
+        f'<h3 style="color:{accent};margin:1.4em 0 .3em">{escape(L["nabespreking"])}</h3>'
+    )
+    for cat in ("hoofd", "hart", "handen"):
+        vragen = (nabespreking or {}).get(cat) or []
+        if not vragen:
+            continue
+        uit += (
+            f'<p style="color:#6b6b64;font-size:12px;text-transform:uppercase;'
+            f'letter-spacing:.05em;margin:.7em 0 .1em">{escape(L[cat])}</p><ul style="margin:.2em 0">'
+        )
+        uit += "".join(f'<li style="margin:.2em 0">{escape(v)}</li>' for v in vragen)
+        uit += "</ul>"
+    return uit
+
+
+def _transcript_blok(L, transcript, accent):
+    """HTML voor de volledige preektekst in de mail (alinea's)."""
+    alineas = [a.strip() for a in (transcript or "").split("\n") if a.strip()]
+    kop = f'<h3 style="color:{accent};margin:1.4em 0 .3em">{escape(L["transcript"])}</h3>'
+    return kop + "".join(f'<p style="margin:.5em 0">{escape(a)}</p>' for a in alineas)
+
+
 def bouw_email(data, kerk_naam, base_url, voorkeur_token, alleen_dag=None,
                communicatie_taal="nl", ai_disclaimer=True, logo_url=None,
                accent="#2c5f2d"):
@@ -57,13 +82,20 @@ def bouw_email(data, kerk_naam, base_url, voorkeur_token, alleen_dag=None,
     else:
         onderwerp = titel
         body = kop
-        body += (
-            f'<p style="color:#6b6b64;font-size:12px;text-transform:uppercase;'
-            f'letter-spacing:.05em;margin:1em 0 .1em">{escape(L["samenvatting"])}</p>'
-            f'<p>{escape(data.get("samenvatting", ""))}</p>'
-        )
-        for i, dag in enumerate(dagen):
-            body += _dag_blok(L, dag, i + 1, accent)
+        typen = render.gekozen_typen(data)
+        if ("dagstukjes" in typen or "preeksamenvatting" in typen) and data.get("samenvatting"):
+            body += (
+                f'<p style="color:#6b6b64;font-size:12px;text-transform:uppercase;'
+                f'letter-spacing:.05em;margin:1em 0 .1em">{escape(L["samenvatting"])}</p>'
+                f'<p>{escape(data.get("samenvatting", ""))}</p>'
+            )
+        if "dagstukjes" in typen:
+            for i, dag in enumerate(dagen):
+                body += _dag_blok(L, dag, i + 1, accent)
+        if "nabespreking" in typen and data.get("nabespreking"):
+            body += _nabespreking_blok(L, data["nabespreking"], accent)
+        if "preektranscript" in typen and data.get("preektranscript"):
+            body += _transcript_blok(L, data["preektranscript"], accent)
 
     afmeld = f"{base_url}/afmelden?token={voorkeur_token}"
     voorkeur = f"{base_url}/voorkeuren?token={voorkeur_token}"

@@ -224,7 +224,10 @@ def bezorg_kerk(db, kerk, base_url, nu_lokaal=None):
             import main  # lui verwerken: nu pas transcript + AI
 
             try:
-                main.verwerk_en_bewaar(uit.url, bijbel=main.bijbel_van_kerk(kerk))
+                main.verwerk_en_bewaar(
+                    uit.url, bijbel=main.bijbel_van_kerk(kerk),
+                    uitvoer_typen=main.uitvoer_van_kerk(kerk),
+                )
             except Exception:  # noqa: BLE001
                 traceback.print_exc()
                 continue

@@ -35,6 +35,11 @@ LABELS = {
         "week": "Weekboekje bij de preek",
         "liturgie": "Liturgie",
         "preek": "Preek",
+        "nabespreking": "Vragen voor nabespreking",
+        "hoofd": "Hoofd — begrijpen en doordenken",
+        "hart": "Hart — persoonlijk en innerlijk",
+        "handen": "Handen — doen en leven",
+        "transcript": "Preektranscript",
     },
     "en": {
         "bijbelgedeelte": "Scripture",
@@ -48,6 +53,11 @@ LABELS = {
         "week": "Weekly devotional",
         "liturgie": "Order of service",
         "preek": "Sermon",
+        "nabespreking": "Questions for discussion",
+        "hoofd": "Head — understand and reflect",
+        "hart": "Heart — personal and inward",
+        "handen": "Hands — living it out",
+        "transcript": "Sermon transcript",
     },
     "af": {
         "bijbelgedeelte": "Skrifgedeelte",
@@ -61,8 +71,24 @@ LABELS = {
         "week": "Weeklikse oordenking",
         "liturgie": "Liturgie",
         "preek": "Preek",
+        "nabespreking": "Vrae vir nabespreking",
+        "hoofd": "Kop — verstaan en deurdink",
+        "hart": "Hart — persoonlik en innerlik",
+        "handen": "Hande — doen en leef",
+        "transcript": "Preektranskripsie",
     },
 }
+
+
+UITVOER_TYPEN = ("dagstukjes", "preeksamenvatting", "preektranscript", "nabespreking")
+
+
+def gekozen_typen(data):
+    """Welke uitvoer(en) dit resultaat bevat; terugval op dagstukjes (oud gedrag)."""
+    typen = data.get("uitvoer_typen")
+    if isinstance(typen, list) and typen:
+        return [t for t in typen if t in UITVOER_TYPEN] or ["dagstukjes"]
+    return ["dagstukjes"]
 
 
 def labels(taal):
@@ -83,29 +109,56 @@ def pas_bewerking_toe(data, velden):
                     if d.get(kk) is not None:
                         dagen[i][kk] = d[kk]
         data["dagen"] = dagen
+    if velden.get("preektranscript") is not None:
+        data["preektranscript"] = velden["preektranscript"]
+    if isinstance(velden.get("nabespreking"), dict):
+        nb = data.get("nabespreking") or {}
+        for cat in ("hoofd", "hart", "handen"):
+            if isinstance(velden["nabespreking"].get(cat), list):
+                nb[cat] = [str(v).strip() for v in velden["nabespreking"][cat] if str(v).strip()]
+        data["nabespreking"] = nb
     return data
 
 
 def naar_tekst(data):
-    """Platte, kopieerbare tekstversie (voor de kopieerknop / terugval)."""
+    """Platte, kopieerbare tekstversie (voor de kopieerknop / terugval).
+
+    Toont alleen de door de kerk gekozen uitvoer(en): dagstukjes, samenvatting,
+    nabespreking en/of preektranscript.
+    """
     L = labels(data.get("taal"))
+    typen = gekozen_typen(data)
     r = [data.get("titel", ""), ""]
     if data.get("bijbelgedeelte"):
         r.append(f"{L['bijbelgedeelte']}: {data['bijbelgedeelte']}")
     if data.get("voorganger"):
         r.append(f"{L['voorganger']}: {data['voorganger']}")
-    r += ["", L["samenvatting"], data.get("samenvatting", ""), ""]
-    for i, dag in enumerate(data.get("dagen", []), 1):
-        r.append(f"{L['dag']} {i} – {dag.get('titel', '')}")
-        r.append(L["bijbeltekst"])
-        r.append(dag.get("bijbeltekst", ""))
-        r.append(L["gedachte"])
-        r.append(dag.get("gedachte", ""))
-        r.append(L["vraag"])
-        r.append(dag.get("vraag_volwassenen", ""))
-        r.append(L["vraag_kinderen"])
-        r.append(dag.get("vraag_kinderen", ""))
+    if ("dagstukjes" in typen or "preeksamenvatting" in typen) and data.get("samenvatting"):
+        r += ["", L["samenvatting"], data.get("samenvatting", "")]
+    if "dagstukjes" in typen:
         r.append("")
+        for i, dag in enumerate(data.get("dagen", []), 1):
+            r.append(f"{L['dag']} {i} – {dag.get('titel', '')}")
+            r.append(L["bijbeltekst"])
+            r.append(dag.get("bijbeltekst", ""))
+            r.append(L["gedachte"])
+            r.append(dag.get("gedachte", ""))
+            r.append(L["vraag"])
+            r.append(dag.get("vraag_volwassenen", ""))
+            r.append(L["vraag_kinderen"])
+            r.append(dag.get("vraag_kinderen", ""))
+            r.append("")
+    if "nabespreking" in typen and data.get("nabespreking"):
+        r += ["", L["nabespreking"], ""]
+        for cat in ("hoofd", "hart", "handen"):
+            vragen = (data["nabespreking"] or {}).get(cat) or []
+            if vragen:
+                r.append(L[cat])
+                for v in vragen:
+                    r.append(f"- {v}")
+                r.append("")
+    if "preektranscript" in typen and data.get("preektranscript"):
+        r += ["", L["transcript"], "", data["preektranscript"]]
     if data.get("liturgie"):
         r += ["", L["liturgie"], data["liturgie"]]
     return "\n".join(r).strip()
@@ -175,23 +228,42 @@ def naar_pdf(data, ondertitel=None):
     flow.append(Spacer(1, 6))
     flow.append(HRFlowable(width="100%", thickness=1.2,
                            color=colors.HexColor("#2c5f2d")))
-    flow.append(_p(L["samenvatting"], s["kop"]))
-    flow.append(_p(data.get("samenvatting", ""), s["tekst"]))
+    typen = gekozen_typen(data)
+    if ("dagstukjes" in typen or "preeksamenvatting" in typen) and data.get("samenvatting"):
+        flow.append(_p(L["samenvatting"], s["kop"]))
+        flow.append(_p(data.get("samenvatting", ""), s["tekst"]))
 
-    for i, dag in enumerate(data.get("dagen", []), 1):
-        blok = [
-            _p(f"{L['dag']} {i} – {dag.get('titel', '')}", s["kop"]),
-            _p(L["bijbeltekst"], s["label"]),
-            _p(dag.get("bijbeltekst", ""), s["citaat"]),
-            _p(L["gedachte"], s["label"]),
-            _p(dag.get("gedachte", ""), s["tekst"]),
-            _p(L["vraag"], s["label"]),
-            _p(dag.get("vraag_volwassenen", ""), s["tekst"]),
-            _p(L["vraag_kinderen"], s["label"]),
-            _p(dag.get("vraag_kinderen", ""), s["tekst"]),
-        ]
-        # Houd een daggedeelte zoveel mogelijk bij elkaar op één pagina.
-        flow.append(KeepTogether(blok))
+    if "dagstukjes" in typen:
+        for i, dag in enumerate(data.get("dagen", []), 1):
+            blok = [
+                _p(f"{L['dag']} {i} – {dag.get('titel', '')}", s["kop"]),
+                _p(L["bijbeltekst"], s["label"]),
+                _p(dag.get("bijbeltekst", ""), s["citaat"]),
+                _p(L["gedachte"], s["label"]),
+                _p(dag.get("gedachte", ""), s["tekst"]),
+                _p(L["vraag"], s["label"]),
+                _p(dag.get("vraag_volwassenen", ""), s["tekst"]),
+                _p(L["vraag_kinderen"], s["label"]),
+                _p(dag.get("vraag_kinderen", ""), s["tekst"]),
+            ]
+            # Houd een daggedeelte zoveel mogelijk bij elkaar op één pagina.
+            flow.append(KeepTogether(blok))
+
+    if "nabespreking" in typen and data.get("nabespreking"):
+        flow.append(_p(L["nabespreking"], s["kop"]))
+        for cat in ("hoofd", "hart", "handen"):
+            vragen = (data["nabespreking"] or {}).get(cat) or []
+            if not vragen:
+                continue
+            flow.append(_p(L[cat], s["label"]))
+            for v in vragen:
+                flow.append(_p(f"• {v}", s["tekst"]))
+
+    if "preektranscript" in typen and data.get("preektranscript"):
+        flow.append(_p(L["transcript"], s["kop"]))
+        for a in re.split(r"\n\s*\n", data["preektranscript"]):
+            if a.strip():
+                flow.append(_p(a.strip(), s["tekst"]))
 
     if data.get("liturgie"):
         flow.append(_p(L["liturgie"], s["kop"]))

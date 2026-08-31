@@ -414,6 +414,7 @@ class KanaalBody(BaseModel):
     accentkleur: str = "#2c5f2d"
     toon: str = "warm"
     lengte: str = "middel"
+    uitvoer_typen: list[str] = ["dagstukjes"]
 
 
 class InschrijverBody(BaseModel):
@@ -561,6 +562,7 @@ def mij(request: Request, db=Depends(get_db)):
         "accentkleur": kerk.accentkleur or "#2c5f2d",
         "toon": kerk.toon or "warm",
         "lengte": kerk.lengte or "middel",
+        "uitvoer_typen": (kerk.uitvoer_typen or "dagstukjes").split(","),
     }
 
 
@@ -588,6 +590,9 @@ def kanaal(body: KanaalBody, request: Request, db=Depends(get_db)):
     kerk.accentkleur = kleur if re.fullmatch(r"#[0-9a-fA-F]{6}", kleur) else "#2c5f2d"
     kerk.toon = body.toon if body.toon in {"warm", "nuchter", "toegankelijk", "verdiepend"} else "warm"
     kerk.lengte = body.lengte if body.lengte in {"kort", "middel", "lang"} else "middel"
+    _uitvoer = [t for t in (body.uitvoer_typen or [])
+                if t in {"dagstukjes", "preeksamenvatting", "preektranscript", "nabespreking"}]
+    kerk.uitvoer_typen = ",".join(_uitvoer) if _uitvoer else "dagstukjes"
     db.commit()
     return {"ok": True, "kanaal_url": kerk.kanaal_url}
 
@@ -891,6 +896,7 @@ async def upload_preek(
             video_id, tekst, titel_hint=file.filename,
             volledige_dienst=audio_mod.is_audio(file.filename),
             bijbel=main.bijbel_van_kerk(kerk),
+            uitvoer_typen=main.uitvoer_van_kerk(kerk),
         )
     except Exception as fout:  # noqa: BLE001
         raise HTTPException(502, f"Verwerken lukte niet: {fout}")
@@ -1155,7 +1161,8 @@ def uitzending_verwerk(body: dict, db=Depends(get_db)):
 
         try:
             main.verwerk_en_bewaar(
-                uit.url, bijbel=main.bijbel_van_kerk(db.get(Church, uit.kerk_id))
+                uit.url, bijbel=main.bijbel_van_kerk(db.get(Church, uit.kerk_id)),
+                uitvoer_typen=main.uitvoer_van_kerk(db.get(Church, uit.kerk_id)),
             )
         except Exception as fout:  # noqa: BLE001
             raise HTTPException(502, f"Verwerken lukte niet: {fout}")
@@ -1184,6 +1191,22 @@ def uitzending_hergenereer_dag(body: dict, db=Depends(get_db)):
         raise HTTPException(400, str(fout))
     except Exception as fout:  # noqa: BLE001
         raise HTTPException(502, f"Opnieuw genereren lukte niet: {fout}")
+    return {"ok": True, "data": _met_labels(r["data"]), "tekst": r.get("tekst", "")}
+
+
+@router.post("/api/uitzending/nabespreking")
+def uitzending_nabespreking(body: dict, db=Depends(get_db)):
+    """Genereer (of vernieuw) de nabespreekvragen voor deze dienst."""
+    import main
+    uit = _uit_op_token(db, (body or {}).get("token", ""))
+    if not uit:
+        raise HTTPException(404, "Onbekende of verlopen link.")
+    try:
+        r = main.hergenereer_nabespreking_en_bewaar(uit.video_id)
+    except ValueError as fout:
+        raise HTTPException(400, str(fout))
+    except Exception as fout:  # noqa: BLE001
+        raise HTTPException(502, f"Nabespreking maken lukte niet: {fout}")
     return {"ok": True, "data": _met_labels(r["data"]), "tekst": r.get("tekst", "")}
 
 
@@ -1216,6 +1239,7 @@ async def uitzending_upload(
             uit.video_id, tekst, titel_hint=uit.titel,
             volledige_dienst=audio_mod.is_audio(file.filename),
             bijbel=main.bijbel_van_kerk(db.get(Church, uit.kerk_id)),
+            uitvoer_typen=main.uitvoer_van_kerk(db.get(Church, uit.kerk_id)),
         )
     except Exception as fout:  # noqa: BLE001
         raise HTTPException(502, f"Verwerken lukte niet: {fout}")

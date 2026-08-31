@@ -456,6 +456,158 @@ def hergenereer_dag(data, dag_index, bron="", toon="warm", lengte="middel",
     return dag
 
 
+_NABESPREKING_PROMPT = """\
+Je stelt vragen op voor de NABESPREKING van een preek, bedoeld voor een kring,
+gesprekskring of gezin. Je ontvangt de geschreven (opgeschoonde) preek en het
+Bijbelgedeelte. Maak op grond DAARVAN vragen die passen bij deze specifieke preek
+en dit Bijbelgedeelte.
+
+Doel: de boodschap laten LANDEN en VERDIEPEN — niet overhoren, niet de preek
+herhalen, en geen feitenvragen ('wat zei de dominee over ...'). De vragen mogen
+open, eerlijk en soms confronterend zijn, en nodigen uit tot echt gesprek.
+
+Maak precies 15 vragen, verdeeld over drie categorieën (5 per categorie):
+
+* "hoofd" — begrijpen en doordenken: wat betekent dit Bijbelgedeelte en deze
+  boodschap, welke waarheid over God/mens/genade komt naar voren, welke vragen of
+  spanningen roept het op om verder over na te denken.
+* "hart" — persoonlijk en innerlijk: wat doet dit met je, waar raakt het je
+  verlangen, angst, geloof of weerstand, hoe verhoudt het zich tot je relatie met
+  God en met anderen.
+* "handen" — doen en leven: hoe ziet dit er deze week concreet uit in je leven,
+  keuzes, gewoonten en omgang met anderen; concreet en toepasbaar, geen clichés.
+
+Eisen:
+* Schrijf in dezelfde taal als de preek.
+* Elke vraag staat op zichzelf en is één zin (soms twee), zonder nummering.
+* Vermijd herhaling tussen de vragen en tussen de categorieën.
+* Verwijs waar passend naar het Bijbelgedeelte, maar maak er geen quiz van.
+
+Uitvoer: UITSLUITEND geldig JSON, exact deze vorm (sleutels in het Nederlands):
+{"hoofd": ["...","...","...","...","..."],
+ "hart": ["...","...","...","...","..."],
+ "handen": ["...","...","...","...","..."]}
+"""
+
+
+_BASIS_PROMPT = """\
+Je ontvangt een (ruwe) transcriptie van een christelijke preek. Maak eerst intern
+een betrouwbare, opgeschoonde versie en lever daarna UITSLUITEND de kernonderdelen
+hieronder — GEEN daggedeelten, overdenkingen of vragen.
+
+Opschonen: behoud inhoud, boodschap, argumentatie en voorbeelden; verander de
+theologische strekking niet; verwijder tijdcodes, herhalingen en versprekingen;
+herstel namen van Bijbelboeken en personen; voeg niets toe; maak onzekerheden niet
+stilzwijgend zeker.
+
+Lever: (1) de taal, (2) een titel, (3) het centrale Bijbelgedeelte, (4) de
+voorganger of null, (5) een samenvatting van 150–200 woorden die de centrale
+boodschap, de opbouw/gedachtegang en wat de preek van de hoorder vraagt weergeeft.
+
+Uitvoer UITSLUITEND als geldig JSON, met exact deze Nederlandse sleutels (vertaal
+de sleutels nooit):
+{"taal":"<ISO-code>","titel":"...","bijbelgedeelte":"...","voorganger":"... of null","samenvatting":"..."}
+"""
+
+
+def maak_basis(transcript, welkom=None, taal_hint=None, extra_context=None,
+               volledige_dienst=False):
+    """Lichte verwerking zonder daggedeelten: titel, bijbelgedeelte, samenvatting.
+
+    Gebruikt wanneer de kerk géén dagstukjes wil (dan slaan we de dure 7-daagse
+    generatie over). Geeft dezelfde basisvelden als verwerk_preek, met dagen=[].
+    """
+    if not os.environ.get("OPENAI_API_KEY"):
+        raise RuntimeError("OPENAI_API_KEY is niet ingesteld.")
+    client = OpenAI()
+    inhoud = ""
+    if volledige_dienst:
+        inhoud += VOLLEDIGE_DIENST_INSTRUCTIE
+    if extra_context:
+        inhoud += (
+            "\nBekende gegevens uit de liturgie (betrouwbaar; neem over, verzin "
+            "niets anders):\n" + extra_context + "\n"
+        )
+    if taal_hint:
+        inhoud += (
+            f"\nDe preek is in de taal met code '{taal_hint}'. Schrijf de uitvoer "
+            "in die taal.\n"
+        )
+    if welkom:
+        inhoud += (
+            "\n--- FRAGMENT WELKOMSTWOORD (alleen voor de naam van de "
+            "voorganger) ---\n" + welkom + "\n"
+        )
+    kop = "VOLLEDIGE DIENST" if volledige_dienst else "PREEK"
+    inhoud += f"\n--- TRANSCRIPTIE VAN DE {kop} ---\n" + transcript
+    antwoord = client.chat.completions.create(
+        model=MODEL,
+        response_format={"type": "json_object"},
+        messages=[
+            {"role": "system", "content": _BASIS_PROMPT},
+            {"role": "user", "content": inhoud},
+        ],
+    )
+    ruw = antwoord.choices[0].message.content
+    try:
+        data = json.loads(ruw)
+    except (json.JSONDecodeError, TypeError) as fout:
+        raise RuntimeError(f"Ongeldig JSON-antwoord van het model: {fout}") from None
+    if not isinstance(data, dict):
+        raise RuntimeError("Het model gaf geen bruikbare basis terug.")
+    normaliseer(data)
+    data.setdefault("dagen", [])
+    if taal_hint and not data.get("taal"):
+        data["taal"] = taal_hint
+    return data
+
+
+def maak_nabespreking(bron, bijbelgedeelte=None, titel=None, samenvatting=None,
+                      taal_hint=None):
+    """Maak 15 nabespreekvragen (hoofd/hart/handen) op grond van de preektekst.
+
+    Geeft {"hoofd": [5], "hart": [5], "handen": [5]}. Werpt een fout bij een
+    ongeldig antwoord.
+    """
+    if not os.environ.get("OPENAI_API_KEY"):
+        raise RuntimeError("OPENAI_API_KEY is niet ingesteld.")
+    if not (bron or samenvatting or "").strip():
+        raise ValueError("Geen preektekst beschikbaar voor de nabespreking.")
+    client = OpenAI()
+    inhoud = ""
+    if taal_hint:
+        inhoud += f"De preek is in de taal met code '{taal_hint}'. Schrijf de vragen in díé taal.\n"
+    if titel:
+        inhoud += f"Titel: {titel}\n"
+    if bijbelgedeelte:
+        inhoud += f"Bijbelgedeelte: {bijbelgedeelte}\n"
+    if samenvatting:
+        inhoud += f"Samenvatting: {samenvatting}\n"
+    inhoud += "\n--- GESCHREVEN PREEK ---\n" + (bron or samenvatting)[:16000]
+    antwoord = client.chat.completions.create(
+        model=MODEL,
+        response_format={"type": "json_object"},
+        messages=[
+            {"role": "system", "content": _NABESPREKING_PROMPT},
+            {"role": "user", "content": inhoud},
+        ],
+    )
+    ruw = antwoord.choices[0].message.content
+    try:
+        obj = json.loads(ruw)
+    except (json.JSONDecodeError, TypeError) as fout:
+        raise RuntimeError(f"Ongeldig JSON-antwoord van het model: {fout}") from None
+    if not isinstance(obj, dict):
+        raise RuntimeError("Het model gaf geen bruikbare nabespreking terug.")
+    uit = {}
+    for cat in ("hoofd", "hart", "handen"):
+        rij = obj.get(cat)
+        uit[cat] = [str(v).strip() for v in rij if str(v).strip()] if isinstance(rij, list) else []
+    if not any(uit.values()):
+        raise RuntimeError("Het model gaf geen bruikbare nabespreking terug.")
+    return uit
+
+
 def _valideer(data, taal_hint):
     if not isinstance(data, dict):
         raise RuntimeError("Het model gaf geen bruikbare preekverwerking terug.")

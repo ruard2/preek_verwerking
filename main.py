@@ -42,7 +42,9 @@ import supadata
 import transcript as ts
 from audio import transcribeer_preek
 from llm import verwerk_preek
+from llm import maak_basis as llm_maak_basis
 from llm import hergenereer_dag as llm_hergenereer_dag
+from llm import maak_nabespreking as llm_maak_nabespreking
 from llm import normaliseer as llm_normaliseer
 from llm import schoon_transcript as llm_schoon_transcript
 from transcript import (
@@ -232,10 +234,20 @@ def _verrijk_datums_via_supadata(diensten, maximum=10):
                 d["gepland"] = True
 
 
-def _proces_kerkdienstgemist(url, meld, bijbel=None):
+def _context_uit_opname(o):
+    """Bouw de extra-contextregels (bijbelgedeelte/voorganger) uit een opname-dict."""
+    context = []
+    if o.get("bijbelgedeelte"):
+        context.append(f"Bijbelgedeelte (preektekst): {o['bijbelgedeelte']}")
+    if o.get("voorganger"):
+        context.append(f"Voorganger: {o['voorganger']}")
+    return "\n".join(context) or None
+
+
+def _transcribeer_kerkdienstgemist(url, meld):
     """Kerkdienstgemist: alleen het preekgedeelte transcriberen via OpenAI.
 
-    Geeft (data, tekst, meta, ondertitel) terug.
+    Geeft een uniforme bron_info dict terug (transcript + context, geen AI-generatie).
     """
     meld("Opname-informatie ophalen (Kerkdienstgemist)...")
     o = kerkdienstgemist.haal_opname(url)
@@ -247,77 +259,45 @@ def _proces_kerkdienstgemist(url, meld, bijbel=None):
     transcript = audio.transcribeer_hls(
         o["hls_url"], o["sermon_start"], o["duur"], voortgang=meld
     )
-
-    context = []
-    if o.get("bijbelgedeelte"):
-        context.append(f"Bijbelgedeelte (preektekst): {o['bijbelgedeelte']}")
-    if o.get("voorganger"):
-        context.append(f"Voorganger: {o['voorganger']}")
-
-    meld("Verwerken met AI — dit kan enkele minuten duren...")
-    data = verwerk_preek(
-        transcript, taal_hint="nl", extra_context="\n".join(context) or None,
-        **(bijbel or {})
-    )
-    # Liturgie altijd meebewaren (Kerkdienstgemist levert die; YouTube niet).
-    if o.get("liturgie"):
-        data["liturgie"] = o["liturgie"]
-    tekst = render.naar_tekst(data)
-    meta = {
-        "titel": o["titel"],
-        "voorganger": o.get("voorganger"),
-        "duur_minuten": preek_min,
-        "transcriptie_bron": "Kerkdienstgemist (audio via OpenAI)",
+    return {
+        "transcript": transcript, "taal_hint": "nl", "welkom": None,
+        "extra_context": _context_uit_opname(o), "volledige_dienst": False,
+        "liturgie": o.get("liturgie"), "ondertitel": o["titel"],
+        "meta": {
+            "titel": o["titel"], "voorganger": o.get("voorganger"),
+            "duur_minuten": preek_min,
+            "transcriptie_bron": "Kerkdienstgemist (audio via OpenAI)",
+        },
     }
-    return data, tekst, meta, o["titel"], transcript
 
 
-def _proces_audio_bron(o, bronnaam, meld):
-    """Generiek: een hele preek-mp3 transcriberen en verwerken.
-
-    `o` bevat mp3_url, duur, titel en optioneel voorganger/bijbelgedeelte/liturgie.
-    Gebruikt voor Kerkomroep en SermonAudio (geen preek-markering in de audio).
-    """
+def _transcribeer_audio_bron(o, bronnaam, meld):
+    """Generiek: een hele preek-mp3 transcriberen (Kerkomroep e.d.)."""
     meld(
         f"Audio ophalen en transcriberen met OpenAI (±{round((o.get('duur') or 0)/60)} "
         "min) — dit kan enkele minuten duren..."
     )
     transcript = audio.transcribeer_audio(o["mp3_url"], o.get("duur"), voortgang=meld)
-
-    context = []
-    if o.get("bijbelgedeelte"):
-        context.append(f"Bijbelgedeelte (preektekst): {o['bijbelgedeelte']}")
-    if o.get("voorganger"):
-        context.append(f"Voorganger: {o['voorganger']}")
-
-    meld("Verwerken met AI — dit kan enkele minuten duren...")
-    data = verwerk_preek(
-        transcript, extra_context="\n".join(context) or None, volledige_dienst=True,
-        **(bijbel or {})
-    )
-    if o.get("liturgie"):
-        data["liturgie"] = o["liturgie"]
-    tekst = render.naar_tekst(data)
-    meta = {
-        "titel": o["titel"],
-        "voorganger": o.get("voorganger"),
-        "duur_minuten": round((o.get("duur") or 0) / 60),
-        "transcriptie_bron": f"{bronnaam} (audio via OpenAI)",
+    return {
+        "transcript": transcript, "taal_hint": None, "welkom": None,
+        "extra_context": _context_uit_opname(o), "volledige_dienst": True,
+        "liturgie": o.get("liturgie"), "ondertitel": o["titel"],
+        "meta": {
+            "titel": o["titel"], "voorganger": o.get("voorganger"),
+            "duur_minuten": round((o.get("duur") or 0) / 60),
+            "transcriptie_bron": f"{bronnaam} (audio via OpenAI)",
+        },
     }
-    return data, tekst, meta, o["titel"], transcript
 
 
-def _proces_kerkomroep(url, meld, bijbel=None):
+def _transcribeer_kerkomroep(url, meld):
     """Kerkomroep: de hele dienst-mp3 transcriberen (geen preek-markering)."""
     meld("Uitzending ophalen (Kerkomroep)...")
-    return _proces_audio_bron(kerkomroep.haal_opname(url), "Kerkomroep", meld)
+    return _transcribeer_audio_bron(kerkomroep.haal_opname(url), "Kerkomroep", meld)
 
 
-def _proces_youtube(url, meld, bijbel=None):
-    """YouTube: transcriptbron kiezen (Supadata gehost / yt-dlp lokaal).
-
-    Geeft (data, tekst, meta, ondertitel) terug.
-    """
+def _transcribeer_youtube(url, meld):
+    """YouTube: transcriptbron kiezen (Supadata gehost / yt-dlp lokaal)."""
     if supadata.beschikbaar():
         entries, taal = supadata.haal_transcript(url, voortgang=meld)
         titel = _titel_uit_cache(url) or "YouTube-dienst"
@@ -349,12 +329,44 @@ def _proces_youtube(url, meld, bijbel=None):
                 transcript = seg["ondertitel_tekst"]
                 bron = "ondertitels (audio niet beschikbaar)"
     meta["transcriptie_bron"] = bron
+    meld(gevonden + f"Bron: {bron}.")
+    return {
+        "transcript": transcript, "taal_hint": taal_hint, "welkom": seg["welkom"],
+        "extra_context": None, "volledige_dienst": False, "liturgie": None,
+        "ondertitel": meta.get("titel"), "meta": meta,
+    }
 
-    meld(gevonden + f"Bron: {bron}. Verwerken met AI — dit kan enkele "
-         "minuten duren...")
-    data = verwerk_preek(transcript, seg["welkom"], taal_hint=taal_hint, **(bijbel or {}))
-    tekst = render.naar_tekst(data)
-    return data, tekst, meta, meta.get("titel"), transcript
+
+def _transcribeer_bron(url, is_kdg, is_ko, meld):
+    """Kies de juiste transcriptiebron en geef een uniforme bron_info dict terug."""
+    if is_kdg:
+        return _transcribeer_kerkdienstgemist(url, meld)
+    if is_ko:
+        return _transcribeer_kerkomroep(url, meld)
+    return _transcribeer_youtube(url, meld)
+
+
+def _genereer_basis(bron_info, bijbel, typen, meld):
+    """Maak de basis (dagstukjes via verwerk_preek, of een lichte basis zonder dagen).
+
+    Zo slaan we de dure 7-daagse generatie over als de kerk geen dagstukjes wil.
+    """
+    transcript = bron_info["transcript"]
+    gemeen = dict(
+        welkom=bron_info.get("welkom"), taal_hint=bron_info.get("taal_hint"),
+        extra_context=bron_info.get("extra_context"),
+        volledige_dienst=bron_info.get("volledige_dienst", False),
+    )
+    if "dagstukjes" in typen:
+        meld("Weekboekje maken met AI — dit kan enkele minuten duren...")
+        data = verwerk_preek(transcript, **gemeen, **(bijbel or {}))
+        bijbeltekst.verrijk_dagen(data, bijbel or {})
+    else:
+        meld("Kernpunten van de preek samenvatten...")
+        data = llm_maak_basis(transcript, **gemeen)
+    if bron_info.get("liturgie"):
+        data["liturgie"] = bron_info["liturgie"]
+    return data
 
 
 def bijbel_van_kerk(kerk):
@@ -374,7 +386,49 @@ def bijbel_van_kerk(kerk):
     }
 
 
-def verwerk_en_bewaar(url, herverwerk=False, meld=None, bijbel=None):
+_UITVOER_GELDIG = ("dagstukjes", "preeksamenvatting", "preektranscript", "nabespreking")
+
+
+def parse_uitvoer(waarde):
+    """Normaliseer een komma-string of lijst naar een geldige lijst uitvoertypen."""
+    if isinstance(waarde, str):
+        waarde = waarde.split(",")
+    gekozen = [str(t).strip() for t in (waarde or []) if str(t).strip() in _UITVOER_GELDIG]
+    return gekozen or ["dagstukjes"]
+
+
+def uitvoer_van_kerk(kerk):
+    """Welke uitvoer(en) een kerk maakt; terugval op dagstukjes."""
+    if kerk is None:
+        return ["dagstukjes"]
+    return parse_uitvoer(getattr(kerk, "uitvoer_typen", "") or "dagstukjes")
+
+
+def _pas_uitvoer_toe(data, uitvoer_typen, preek_schoon, transcript_ruw, meld):
+    """Vul `data` aan met de gekozen uitvoer: transcript en/of nabespreking.
+
+    Dagstukjes en samenvatting zitten al in `data`; hier voegen we de extra
+    producten toe. Fouten bij de nabespreking zijn niet fataal.
+    """
+    typen = parse_uitvoer(uitvoer_typen)
+    data["uitvoer_typen"] = typen
+    bron = (preek_schoon or "").strip() or (transcript_ruw or "").strip()
+    if "preektranscript" in typen:
+        data["preektranscript"] = bron
+    if "nabespreking" in typen:
+        try:
+            meld("Nabespreekvragen opstellen...")
+            data["nabespreking"] = llm_maak_nabespreking(
+                bron, bijbelgedeelte=data.get("bijbelgedeelte"),
+                titel=data.get("titel"), samenvatting=data.get("samenvatting"),
+                taal_hint=data.get("taal"),
+            )
+        except Exception:  # noqa: BLE001 — zonder nabespreking gaan we gewoon door
+            data.setdefault("nabespreking", {})
+    return data
+
+
+def verwerk_en_bewaar(url, herverwerk=False, meld=None, bijbel=None, uitvoer_typen=None):
     """Verwerk een dienst (of laad uit cache) en bewaar het resultaat.
 
     Herbruikbaar vanuit de interactieve taak én de automatisering. `bijbel` is een
@@ -391,56 +445,92 @@ def verwerk_en_bewaar(url, herverwerk=False, meld=None, bijbel=None):
     else:
         vid = _video_id(url)
 
-    # 1. Al eerder verwerkt? Dan uit de cache (met sleutel-normalisatie).
-    if vid and not herverwerk:
-        bewaard = store.resultaat_ophalen(vid)
-        if bewaard and bewaard.get("data"):
-            data = llm_normaliseer(bewaard["data"])
-            tekst = render.naar_tekst(data)
-            payload = {**bewaard, "data": data, "tekst": tekst}
-            store.resultaat_opslaan(vid, payload)
-            return {"video_id": vid, "uit_cache": True, **payload}
+    # Eventueel eerder opgeslagen resultaat (voor de cache én — belangrijker — om het
+    # transcript te hergebruiken zodat we NOOIT twee keer downloaden/transcriberen).
+    bewaard = store.resultaat_ophalen(vid) if vid else None
 
-    # 2. Verwerken via de juiste bron.
-    if is_kdg:
-        data, tekst, meta, ondertitel, transcript_ruw = _proces_kerkdienstgemist(url, meld, bijbel)
-    elif is_ko:
-        data, tekst, meta, ondertitel, transcript_ruw = _proces_kerkomroep(url, meld, bijbel)
+    # 1. Volledig resultaat in cache? Dan direct terug (geen hergeneratie).
+    if bewaard and bewaard.get("data") and not herverwerk:
+        data = llm_normaliseer(bewaard["data"])
+        tekst = render.naar_tekst(data)
+        payload = {**bewaard, "data": data, "tekst": tekst}
+        store.resultaat_opslaan(vid, payload)
+        return {"video_id": vid, "uit_cache": True, **payload}
+
+    typen = parse_uitvoer(uitvoer_typen)
+
+    # 2. Transcript: downloaden/transcriberen gebeurt HOOGSTENS ÉÉN KEER. Is er al een
+    #    transcript opgeslagen, dan hergebruiken we dat (ook bij herverwerken en bij het
+    #    toevoegen van een uitvoer) — nooit opnieuw luisteren.
+    preek_schoon = ""
+    if bewaard and bewaard.get("transcript_ruw"):
+        transcript_ruw = bewaard["transcript_ruw"]
+        opgeslagen_data = bewaard.get("data") or {}
+        bron_info = {
+            "transcript": transcript_ruw,
+            "taal_hint": opgeslagen_data.get("taal"),
+            "welkom": None, "extra_context": None,
+            "volledige_dienst": is_ko,
+            "liturgie": opgeslagen_data.get("liturgie"),
+            "ondertitel": bewaard.get("ondertitel"),
+            "meta": bewaard.get("meta") or {},
+            **(bewaard.get("bron_info") or {}),  # opgeslagen hints hebben voorrang
+        }
+        bron_info["transcript"] = transcript_ruw
+        preek_schoon = bewaard.get("preek_schoon") or ""
+        meld("Bestaand transcript hergebruiken (niet opnieuw transcriberen)...")
     else:
-        data, tekst, meta, ondertitel, transcript_ruw = _proces_youtube(url, meld, bijbel)
+        bron_info = _transcribeer_bron(url, is_kdg, is_ko, meld)
+        transcript_ruw = bron_info["transcript"]
+    meta = bron_info["meta"]
+    ondertitel = bron_info.get("ondertitel")
 
-    # 2a. Exacte Bijbeltekst aanvullen uit lokale vertaaldata (indien van toepassing).
-    bijbeltekst.verrijk_dagen(data, bijbel or {})
+    # 3. Basis genereren: dagstukjes (verwerk_preek) óf een lichte basis zonder dagen.
+    data = _genereer_basis(bron_info, bijbel, typen, meld)
+
+    # 4. Opgeschoonde, herbruikbare preektekst — ook één keer: hergebruik indien aanwezig.
+    if not preek_schoon:
+        try:
+            meld("Volledige preektekst opschonen...")
+            preek_schoon = llm_schoon_transcript(transcript_ruw, data.get("taal"))
+        except Exception:  # noqa: BLE001 — zonder schone preek gaan we gewoon door
+            preek_schoon = ""
+
+    # 5. Alleen de gekozen extra uitvoer(en) maken (transcript, nabespreking).
+    _pas_uitvoer_toe(data, uitvoer_typen, preek_schoon, transcript_ruw, meld)
     tekst = render.naar_tekst(data)
 
-    # 2b. Opgeschoonde, volledige preektekst (aparte AI-stap; niet fataal).
-    preek_schoon = ""
-    try:
-        meld("Volledige preektekst opschonen...")
-        preek_schoon = llm_schoon_transcript(transcript_ruw, data.get("taal"))
-    except Exception:  # noqa: BLE001 — zonder schone preek gaan we gewoon door
-        preek_schoon = ""
-
+    # De brongegevens (zonder de grote transcript-tekst) meebewaren voor trouwe
+    # hergeneratie zonder opnieuw te transcriberen.
+    bron_bewaar = {k: v for k, v in bron_info.items() if k != "transcript"}
     payload = {
         "data": data, "tekst": tekst, "meta": meta, "ondertitel": ondertitel,
         "transcript_ruw": transcript_ruw, "preek_schoon": preek_schoon,
+        "bron_info": bron_bewaar,
     }
     if vid:
         store.resultaat_opslaan(vid, payload)
     return {"video_id": vid, "uit_cache": False, **payload}
 
 
-def verwerk_tekst_en_bewaar(video_id, tekst, titel_hint=None, volledige_dienst=False, bijbel=None):
+def verwerk_tekst_en_bewaar(video_id, tekst, titel_hint=None, volledige_dienst=False,
+                            bijbel=None, uitvoer_typen=None):
     """Verwerk een aangeleverde preektekst of dienst-transcript en bewaar het.
 
     Bij een document (preekmanuscript) is de tekst de preek zelf. Bij audio van
     een volledige dienst (volledige_dienst=True) moet het model zelf het
     preekgedeelte eruit halen.
     """
-    data = verwerk_preek(tekst, volledige_dienst=volledige_dienst, **(bijbel or {}))
+    typen = parse_uitvoer(uitvoer_typen)
+    if "dagstukjes" in typen:
+        data = verwerk_preek(tekst, volledige_dienst=volledige_dienst, **(bijbel or {}))
+        bijbeltekst.verrijk_dagen(data, bijbel or {})
+    else:
+        data = llm_maak_basis(tekst, volledige_dienst=volledige_dienst)
     if titel_hint and not data.get("titel"):
         data["titel"] = titel_hint
-    bijbeltekst.verrijk_dagen(data, bijbel or {})
+    # Bij upload is de aangeleverde tekst zelf de (geschreven) preek.
+    _pas_uitvoer_toe(data, typen, tekst, tekst, lambda _s: None)
     rendered = render.naar_tekst(data)
     payload = {
         "data": data, "tekst": rendered,
@@ -478,6 +568,27 @@ def hergenereer_dag_en_bewaar(video_id, dag_index, bijbel=None):
     )
     # Bestaande sleutels behouden, alleen de gegenereerde velden vervangen.
     dagen[dag_index].update({k: v for k, v in nieuwe_dag.items() if v})
+    tekst = render.naar_tekst(data)
+    payload = {**bewaard, "data": data, "tekst": tekst}
+    store.resultaat_opslaan(video_id, payload)
+    return {"video_id": video_id, **payload}
+
+
+def hergenereer_nabespreking_en_bewaar(video_id):
+    """Genereer de nabespreekvragen (opnieuw) voor een verwerkte dienst en bewaar."""
+    bewaard = store.resultaat_ophalen(video_id)
+    if not bewaard or not bewaard.get("data"):
+        raise ValueError("Deze dienst is nog niet verwerkt.")
+    data = llm_normaliseer(bewaard["data"])
+    bron = bewaard.get("preek_schoon") or bewaard.get("transcript_ruw") or ""
+    data["nabespreking"] = llm_maak_nabespreking(
+        bron, bijbelgedeelte=data.get("bijbelgedeelte"), titel=data.get("titel"),
+        samenvatting=data.get("samenvatting"), taal_hint=data.get("taal"),
+    )
+    typen = parse_uitvoer(data.get("uitvoer_typen"))
+    if "nabespreking" not in typen:
+        typen.append("nabespreking")
+    data["uitvoer_typen"] = typen
     tekst = render.naar_tekst(data)
     payload = {**bewaard, "data": data, "tekst": tekst}
     store.resultaat_opslaan(video_id, payload)

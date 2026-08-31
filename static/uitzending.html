@@ -190,6 +190,54 @@ function bouw(u) {
     refs.dagen.push({titel: t.i, bijbeltekst: bt.i, gedachte: g.i, vraag_volwassenen: vv.i, vraag_kinderen: vk.i});
   });
 
+  // Vragen voor nabespreking (hoofd/hart/handen)
+  refs.nabespreking = null;
+  if ((d.uitvoer_typen || []).includes('nabespreking') || d.nabespreking) {
+    const nk = el('div', 'kaart');
+    nk.appendChild(el('div', 'label', L.nabespreking || 'Vragen voor nabespreking'));
+    const houder = el('div');
+    const genknop = el('button', 'grijs',
+      d.nabespreking ? T('Vernieuw nabespreekvragen') : T('Genereer nabespreekvragen'));
+    genknop.type = 'button';
+    const catLabels = {hoofd: L.hoofd || 'Hoofd', hart: L.hart || 'Hart', handen: L.handen || 'Handen'};
+    function toonNabespreking(nb) {
+      houder.innerHTML = '';
+      refs.nabespreking = {hoofd: [], hart: [], handen: []};
+      ['hoofd', 'hart', 'handen'].forEach(cat => {
+        houder.appendChild(el('div', 'label', catLabels[cat]));
+        (nb[cat] || []).forEach((v, i) => {
+          const f = veld(String(i + 1), v, true, 2);
+          houder.appendChild(f.w);
+          refs.nabespreking[cat].push(f.i);
+        });
+      });
+    }
+    if (d.nabespreking) toonNabespreking(d.nabespreking);
+    genknop.onclick = async () => {
+      genknop.disabled = true; const orig = genknop.textContent; genknop.textContent = T('Bezig…'); toon('', '');
+      try {
+        const r = await fetch('/api/uitzending/nabespreking', {method: 'POST',
+          headers: {'Content-Type': 'application/json'}, body: JSON.stringify({token})});
+        if (!r.ok) throw new Error(await fout(r));
+        const res = await r.json();
+        toonNabespreking(res.data.nabespreking || {});
+        genknop.textContent = T('Vernieuw nabespreekvragen');
+        toon('ok', T('Nabespreekvragen gemaakt.'));
+      } catch (f) { toon('fout', f.message); genknop.textContent = orig; }
+      finally { genknop.disabled = false; }
+    };
+    nk.appendChild(genknop); nk.appendChild(houder);
+    inhoud.appendChild(nk);
+  }
+
+  // Preektranscript
+  refs.preektranscript = null;
+  if ((d.uitvoer_typen || []).includes('preektranscript') || d.preektranscript) {
+    const tk = el('div', 'kaart');
+    const tf = veld(L.transcript || 'Preektranscript', d.preektranscript || '', true, 12);
+    tk.appendChild(tf.w); inhoud.appendChild(tk); refs.preektranscript = tf.i;
+  }
+
   if (d.liturgie) {
     const k = el('div', 'kaart');
     const lit = veld(L.liturgie || 'Liturgie', d.liturgie, true, 8);
@@ -205,6 +253,11 @@ function bouw(u) {
           gedachte: r.gedachte.value, vraag_volwassenen: r.vraag_volwassenen.value,
           vraag_kinderen: r.vraag_kinderen.value}))};
       if (refs.liturgie) velden.liturgie = refs.liturgie.value;
+      if (refs.preektranscript) velden.preektranscript = refs.preektranscript.value;
+      if (refs.nabespreking) velden.nabespreking = {
+        hoofd: refs.nabespreking.hoofd.map(i => i.value),
+        hart: refs.nabespreking.hart.map(i => i.value),
+        handen: refs.nabespreking.handen.map(i => i.value)};
       const r = await fetch('/api/uitzending/bewerk', {method: 'POST', headers: {'Content-Type':'application/json'},
         body: JSON.stringify({token, velden})});
       if (!r.ok) throw new Error(await fout(r));

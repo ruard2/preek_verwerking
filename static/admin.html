@@ -327,9 +327,13 @@ function toonDashboard(mij) {
         citaat_volledig: document.getElementById('citaat_volledig').value !== 'ref',
         bijbelvertaling: val('bijbelvertaling'),
         accentkleur: val('accentkleur'),
-        toon: val('toon'), lengte: val('lengte')
+        toon: val('toon'), lengte: val('lengte'),
+        uitvoer_typen: Array.from(document.querySelectorAll('.uitvoer-optie')).filter(c => c.checked).map(c => c.value)
       });
-      if (mij) { mij.accentkleur = val('accentkleur'); mij.toon = val('toon'); mij.lengte = val('lengte'); }
+      if (mij) {
+        mij.accentkleur = val('accentkleur'); mij.toon = val('toon'); mij.lengte = val('lengte');
+        mij.uitvoer_typen = Array.from(document.querySelectorAll('.uitvoer-optie')).filter(c => c.checked).map(c => c.value);
+      }
       mij.kanaal_url = kanaalUrl;
       toon('ok', kanaalUrl
         ? 'Instellingen opgeslagen. Het kanaal wordt nu direct gescand.'
@@ -417,6 +421,24 @@ function toonDashboard(mij) {
     .forEach(o => ln.appendChild(el('option', {value: o[0]}, o[1])));
   ln.value = mij.lengte || 'middel'; stijl.appendChild(ln);
   kaart.insertBefore(stijl, knop);
+
+  const uitvoer = el('div');
+  uitvoer.appendChild(el('h2', {}, T('Wat maakt AfterSermon van de preek?')));
+  uitvoer.appendChild(el('p', {className: 'sub'},
+    T('Kies één of meer uitvoeren. De standaard is dagstukjes.')));
+  const gekozenUit = mij.uitvoer_typen || ['dagstukjes'];
+  [['dagstukjes', T('Dagstukjes (weekboekje met 7 dagen)')],
+   ['preeksamenvatting', T('Preeksamenvatting')],
+   ['preektranscript', T('Preektranscript (volledige preektekst)')],
+   ['nabespreking', T('Vragen voor nabespreking (hoofd, hart, handen)')]]
+    .forEach(o => {
+      const rij = el('div', {className: 'rij'}); rij.style.marginTop = '.3rem';
+      const chk = el('input', {type: 'checkbox', id: 'uit_' + o[0], checked: gekozenUit.includes(o[0])});
+      chk.className = 'uitvoer-optie'; chk.value = o[0];
+      rij.append(chk, el('label', {htmlFor: 'uit_' + o[0]}, o[1]));
+      uitvoer.appendChild(rij);
+    });
+  kaart.insertBefore(uitvoer, knop);
   basisPane.appendChild(kaart);
   document.getElementById('kanaal').addEventListener('change', () => knop.click());
 

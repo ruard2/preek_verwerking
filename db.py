@@ -94,6 +94,9 @@ class Church(Base):
     # Kwaliteitsknoppen voor de overdenkingen: toon en lengte.
     toon: Mapped[str] = mapped_column(String(20), default="warm")
     lengte: Mapped[str] = mapped_column(String(20), default="middel")
+    # Welke uitvoer(en) de kerk maakt, komma-gescheiden. Keuze uit:
+    # dagstukjes, preeksamenvatting, preektranscript, nabespreking.
+    uitvoer_typen: Mapped[str] = mapped_column(String(120), default="dagstukjes")
 
     aangemaakt: Mapped[DateTime] = mapped_column(DateTime, server_default=func.now())
 
