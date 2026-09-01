@@ -24,6 +24,10 @@ import urllib.request
 
 BASE = os.environ.get("SUPADATA_BASE", "https://api.supadata.ai/v1")
 OFFSET_DELER = float(os.environ.get("SUPADATA_OFFSET_DELER", "1000"))
+# Video's > 20 min verwerkt Supadata asynchroon (HTTP 202 + jobId); we pollen tot
+# de transcriptie klaar is. Een lange preek kan minuten duren — ruim budget nemen.
+JOB_TIMEOUT = float(os.environ.get("SUPADATA_JOB_TIMEOUT", "900"))  # seconden
+POLL_INTERVAL = float(os.environ.get("SUPADATA_POLL_INTERVAL", "5"))  # seconden
 # Aantal recente video's dat de fallback-kanaallijst ophaalt. Elke video kost
 # één API-call (de batch-endpoint zit niet in de gratis tier), dus beperkt.
 KANAAL_MAX = int(os.environ.get("SUPADATA_KANAAL_MAX", "20"))
@@ -170,13 +174,16 @@ def haal_transcript(url, taal=None, voortgang=None):
         params["lang"] = taal
     data = _get("transcript", params)
 
-    # Langere video's kunnen asynchroon verwerkt worden: dan komt er een jobId
-    # terug die we pollen tot de transcriptie klaar is.
+    # Video's > 20 min: Supadata antwoordt met HTTP 202 + {"jobId": ...}. We pollen
+    # /transcript/{jobId} tot status "completed" (dan zit "content" erbij). Zolang de
+    # job "queued"/"active" is komt er alléén een status-veld terug; dat is normaal.
     job = data.get("jobId") or data.get("id")
     if job and "content" not in data and "transcript" not in data:
-        for _ in range(60):
-            time.sleep(3)
-            meld("Wachten op de transcriptie (Supadata)...")
+        verstreken = 0.0
+        status = ""
+        while verstreken < JOB_TIMEOUT:
+            time.sleep(POLL_INTERVAL)
+            verstreken += POLL_INTERVAL
             data = _get(f"transcript/{job}", None)
             status = str(data.get("status", "")).lower()
             if "content" in data or "transcript" in data or status in (
@@ -184,18 +191,25 @@ def haal_transcript(url, taal=None, voortgang=None):
             ):
                 break
             if status in ("failed", "error", "errored"):
-                raise RuntimeError(
-                    "Supadata kon de transcriptie niet maken: "
-                    + str(data.get("error", "onbekende fout"))
-                )
+                fout = data.get("error") or "onbekende fout"
+                if not isinstance(fout, str):
+                    fout = json.dumps(fout, ensure_ascii=False)
+                raise RuntimeError("Supadata kon de transcriptie niet maken: " + fout)
+            meld(f"Transcriberen bij Supadata... (±{int(verstreken)}s, status: {status or 'bezig'})")
+        else:
+            raise RuntimeError(
+                f"Supadata is na {int(JOB_TIMEOUT)}s nog bezig met transcriberen "
+                f"(status: {status or 'onbekend'}). Probeer het later opnieuw, of "
+                "verwerk deze preek via een upload (document/audio)."
+            )
 
     inhoud = data.get("content")
     if inhoud is None:
         inhoud = data.get("transcript")
     if inhoud is None:
         raise RuntimeError(
-            "Onverwacht antwoord van Supadata (geen transcriptie): "
-            + ", ".join(list(data)[:8])
+            "Onverwacht antwoord van Supadata (geen transcriptie). Velden: "
+            + (", ".join(list(data)[:8]) or "geen")
         )
 
     entries = _naar_entries(inhoud)
