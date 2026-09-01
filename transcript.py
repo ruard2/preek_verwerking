@@ -89,7 +89,7 @@ def segmenteer(entries, titel="Onbekende dienst", taal="nl"):
     if not entries:
         raise RuntimeError("Lege transcriptie ontvangen.")
 
-    delen, welkom = _vind_preekdelen(entries)
+    delen, welkom, volledige_dienst = _vind_preekdelen(entries)
     ondertitel_tekst = "\n\n[VOLGEND PREEKDEEL — hiervoor werd gezongen]\n\n".join(
         "\n".join(t for _, t in deel if t) for deel in delen
     )
@@ -113,6 +113,9 @@ def segmenteer(entries, titel="Onbekende dienst", taal="nl"):
         "welkom": welkomtekst,
         "tijden": tijden,
         "ondertitel_tekst": ondertitel_tekst,
+        # True als er geen duidelijk preekblok gevonden is en we de hele dienst
+        # teruggeven; dan moet het taalmodel zelf de preek eruit halen.
+        "volledige_dienst": volledige_dienst,
     }
 
 
@@ -354,14 +357,15 @@ def _vind_preekdelen(entries):
 
     langste = max(blokken, key=duur)
     if duur(langste) < MIN_PREEK_SECONDEN:
-        # Geen duidelijk preekblok gevonden: geef alles terug en laat het
-        # taalmodel de liturgie eromheen negeren.
+        # Geen duidelijk preekblok gevonden (bijv. ondertitels zonder
+        # muziekmarkeringen): geef alles terug én meld dat het een VOLLEDIGE
+        # dienst is, zodat het taalmodel zelf het preekgedeelte eruit haalt.
         alles = [
             (t, s)
             for t, x in entries
             if (s := ANNOTATIE_RE.sub(" ", x).strip())
         ]
-        return [alles], None
+        return [alles], None, True
 
     grens = max(MIN_DEEL_SECONDEN, MIN_DEEL_AANDEEL * duur(langste))
     delen = [b for b in blokken if duur(b) >= grens]
@@ -383,7 +387,7 @@ def _vind_preekdelen(entries):
         ),
         None,
     )
-    return delen, welkom
+    return delen, welkom, False
 
 
 MAANDEN = {

@@ -332,8 +332,11 @@ def _transcribeer_youtube(url, meld):
     meld(gevonden + f"Bron: {bron}.")
     return {
         "transcript": transcript, "taal_hint": taal_hint, "welkom": seg["welkom"],
-        "extra_context": None, "volledige_dienst": False, "liturgie": None,
-        "ondertitel": meta.get("titel"), "meta": meta,
+        "extra_context": None,
+        # Vond de segmentatie geen duidelijk preekblok? Dan is dit de hele dienst
+        # en laten we het taalmodel zelf de preek eruit halen.
+        "volledige_dienst": seg.get("volledige_dienst", False),
+        "liturgie": None, "ondertitel": meta.get("titel"), "meta": meta,
     }
 
 
