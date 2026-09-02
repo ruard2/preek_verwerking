@@ -318,3 +318,48 @@ def naar_preek_pdf(data, preek_tekst, ondertitel=None):
         flow.append(_p(a, s["tekst"]))
     doc.build(flow)
     return buf.getvalue()
+
+
+GROEPSLABELS = {
+    "terughalen": "Terughalen",
+    "verdiepen": "Verdiepen",
+    "landen": "Laten landen",
+    "handen": "Handen en voeten",
+}
+
+
+def groepsvragen_naar_pdf(data, ondertitel=None):
+    """PDF met gespreksvragen voor groepen (per categorie genummerd)."""
+    L = labels(data.get("taal"))
+    s = _stijlen()
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buf, pagesize=A4,
+        leftMargin=2.2 * cm, rightMargin=2.2 * cm,
+        topMargin=2 * cm, bottomMargin=2 * cm,
+        title=f"{data.get('titel', '')} - gespreksvragen",
+    )
+    flow = [_p(data.get("titel", ""), s["titel"])]
+    gv = data.get("groepsvragen") or {}
+    onder = []
+    if data.get("bijbelgedeelte"):
+        onder.append(f"{L['bijbelgedeelte']}: {data['bijbelgedeelte']}")
+    if data.get("voorganger"):
+        onder.append(f"{L['voorganger']}: {data['voorganger']}")
+    if gv.get("leeftijd"):
+        onder.append(f"Leeftijd: {gv['leeftijd']}")
+    if ondertitel:
+        onder.append(ondertitel)
+    for regel in onder:
+        flow.append(_p(regel, s["onder"]))
+    flow.append(Spacer(1, 6))
+    flow.append(HRFlowable(width="100%", thickness=1.2,
+                           color=colors.HexColor("#2c5f2d")))
+    for cat, lijst in (gv.get("vragen") or {}).items():
+        if not lijst:
+            continue
+        flow.append(_p(GROEPSLABELS.get(cat, cat), s["kop"]))
+        for i, v in enumerate(lijst, 1):
+            flow.append(_p(f"{i}. {v}", s["tekst"]))
+    doc.build(flow)
+    return buf.getvalue()

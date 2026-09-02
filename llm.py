@@ -608,6 +608,102 @@ def maak_nabespreking(bron, bijbelgedeelte=None, titel=None, samenvatting=None,
     return uit
 
 
+# Categorieën voor groepsvragen (optie 3), met een strikte doelomschrijving.
+GROEPSCATEGORIEEN = {
+    "terughalen": "Terughalen — help de groep zich te herinneren wat er in de preek "
+                  "werd gezegd (de kernboodschap en hoofdlijn, geen triviale details).",
+    "verdiepen": "Verdiepen — laat de groep het Bijbelgedeelte én de boodschap dieper "
+                 "doordenken: betekenis, spanningen, wat het zegt over God, mens en genade.",
+    "landen": "Laten landen — help de boodschap persoonlijk en emotioneel te laten "
+              "landen: wat raakt je, waar zit verlangen, weerstand, angst of geloof.",
+    "handen": "Handen en voeten — maak het concreet en toepasbaar: hoe ziet dit er deze "
+              "week uit in keuzes, gewoonten en de omgang met anderen. Geen clichés.",
+}
+
+
+def _verdeel(aantal, n):
+    """Verdeel `aantal` vragen zo gelijk mogelijk over `n` categorieën."""
+    basis, rest = divmod(max(aantal, 0), max(n, 1))
+    return [basis + (1 if i < rest else 0) for i in range(n)]
+
+
+def maak_groepsvragen(bron, categorieen, aantal=10, leeftijd=None, bijbelgedeelte=None,
+                      titel=None, samenvatting=None, taal_hint=None):
+    """Maak gespreksvragen voor groepen, strikt op grond van de preek + Bijbelgedeelte.
+
+    `categorieen`: lijst uit GROEPSCATEGORIEEN (volgorde bepaalt de weergave).
+    `aantal`: totaal aantal vragen, verdeeld over de gekozen categorieën.
+    Geeft {categorie: [vragen]} voor de gekozen categorieën.
+    """
+    if not os.environ.get("OPENAI_API_KEY"):
+        raise RuntimeError("OPENAI_API_KEY is niet ingesteld.")
+    cats = [c for c in (categorieen or []) if c in GROEPSCATEGORIEEN]
+    if not cats:
+        raise ValueError("Kies minstens één soort vragen.")
+    if not (bron or samenvatting or "").strip():
+        raise ValueError("Geen preektekst beschikbaar voor de vragen.")
+    per_cat = dict(zip(cats, _verdeel(aantal, len(cats))))
+
+    doelen = "\n".join(f"* {GROEPSCATEGORIEEN[c]} — maak hiervan precies {per_cat[c]} vraag/vragen "
+                       f'(sleutel "{c}").' for c in cats)
+    systeem = (
+        "Je stelt vragen op voor een GROEPSGESPREK (kring, gemeente of gezin) over een "
+        "preek. Je krijgt de geschreven preek en het Bijbelgedeelte.\n\n"
+        "STRIKTE REGELS:\n"
+        "* Baseer de vragen UITSLUITEND op de aangeleverde preek en het Bijbelgedeelte. "
+        "Verzin geen feiten, citaten, gebeurtenissen of toepassingen die daar niet in staan.\n"
+        "* Blijf dicht bij de boodschap en de accenten van de preek; geen algemene vroomheid.\n"
+        "* Elke vraag is open (niet met ja/nee te beantwoorden) en nodigt uit tot gesprek.\n"
+        "* Vermijd herhaling tussen de vragen en tussen de categorieën.\n"
+        "* Bij onzekerheid: stel liever een voorzichtige, open vraag dan iets te beweren.\n\n"
+        "Maak per categorie exact het gevraagde aantal:\n" + doelen +
+        "\n\nUitvoer UITSLUITEND als geldig JSON, met exact deze sleutels: "
+        + ", ".join(f'"{c}"' for c in cats) +
+        " — elk een lijst met de gevraagde aantallen vragen."
+    )
+    inhoud = ""
+    if taal_hint:
+        inhoud += f"Schrijf de vragen in de taal met code '{taal_hint}'.\n"
+    if leeftijd:
+        inhoud += f"Pas taal, toon en voorbeelden aan op de leeftijdsgroep: {leeftijd}.\n"
+    if titel:
+        inhoud += f"Titel: {titel}\n"
+    if bijbelgedeelte:
+        inhoud += f"Bijbelgedeelte: {bijbelgedeelte}\n"
+    if samenvatting:
+        inhoud += f"Samenvatting: {samenvatting}\n"
+    inhoud += "\n--- GESCHREVEN PREEK ---\n" + (bron or samenvatting)[:16000]
+
+    antwoord = client_chat(systeem, inhoud)
+    try:
+        obj = json.loads(antwoord)
+    except (json.JSONDecodeError, TypeError) as fout:
+        raise RuntimeError(f"Ongeldig JSON-antwoord van het model: {fout}") from None
+    if not isinstance(obj, dict):
+        raise RuntimeError("Het model gaf geen bruikbare groepsvragen terug.")
+    uit = {}
+    for c in cats:
+        rij = obj.get(c)
+        uit[c] = [str(v).strip() for v in rij if str(v).strip()] if isinstance(rij, list) else []
+    if not any(uit.values()):
+        raise RuntimeError("Het model gaf geen bruikbare groepsvragen terug.")
+    return uit
+
+
+def client_chat(systeem, inhoud):
+    """Kleine helper: één JSON-chatcompletion en geef de ruwe tekst terug."""
+    client = OpenAI()
+    antwoord = client.chat.completions.create(
+        model=MODEL,
+        response_format={"type": "json_object"},
+        messages=[
+            {"role": "system", "content": systeem},
+            {"role": "user", "content": inhoud},
+        ],
+    )
+    return antwoord.choices[0].message.content
+
+
 def _valideer(data, taal_hint):
     if not isinstance(data, dict):
         raise RuntimeError("Het model gaf geen bruikbare preekverwerking terug.")

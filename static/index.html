@@ -485,7 +485,7 @@ function toonKeuze(res) {
   rij.appendChild(b2);
 
   const b3 = el('button', 'klein', '3 · Vragen voor groepen…');
-  b3.disabled = true; b3.title = 'Wordt binnenkort toegevoegd';
+  b3.addEventListener('click', () => toonGroepsvragenForm(res));
   rij.appendChild(b3);
 
   const b4 = el('button', 'klein', '4 · Dagstukjes met vragen');
@@ -517,6 +517,105 @@ async function genereerUitvoer(videoId, wat, knop, alleenDownload) {
   } catch (e) {
     alert(e.message); knop.textContent = orig; knop.disabled = false;
   }
+}
+
+const GROEPS_CATS = [
+  ['terughalen', 'Vragen om de preek terug te halen'],
+  ['verdiepen', 'Verdiepende vragen over tekst en preek'],
+  ['landen', 'Vragen om tekst en preek te laten landen'],
+  ['handen', 'Vragen/opdrachten om handen en voeten te geven'],
+];
+const GROEPS_LABEL = {terughalen: 'Terughalen', verdiepen: 'Verdiepen',
+  landen: 'Laten landen', handen: 'Handen en voeten'};
+
+function laadGroepsOpties() {
+  try { return JSON.parse(localStorage.getItem('groepsvragen_opties')) || {}; }
+  catch (e) { return {}; }
+}
+function bewaarGroepsOpties(o) {
+  try { localStorage.setItem('groepsvragen_opties', JSON.stringify(o)); } catch (e) {}
+}
+
+function toonGroepsvragenForm(res) {
+  const opg = laadGroepsOpties();
+  resultaatEl.innerHTML = '';
+  const balk = el('div', 'balk');
+  const terug = el('button', 'klein', '← Terug');
+  terug.addEventListener('click', () => toonResultaat({resultaat: {...res, voorbereid: true}}));
+  balk.appendChild(terug);
+  resultaatEl.appendChild(balk);
+
+  const kaart = el('div', 'kaart');
+  kaart.appendChild(el('h4', null, 'Vragen voor groepen'));
+  kaart.appendChild(el('p', 'samenvatting',
+    'De vragen blijven strikt bij de preek en het Bijbelgedeelte — geen verzonnen inhoud.'));
+
+  kaart.appendChild(el('div', 'label', 'Leeftijd'));
+  const leeftijd = document.createElement('select');
+  ['Volwassenen', 'Jongeren (16-25)', 'Tieners (12-16)', 'Kinderen (6-12)', 'Alle leeftijden']
+    .forEach(x => { const o = document.createElement('option'); o.value = x; o.textContent = x; leeftijd.appendChild(o); });
+  leeftijd.value = opg.leeftijd || 'Volwassenen';
+  kaart.appendChild(leeftijd);
+
+  kaart.appendChild(el('div', 'label', 'Aantal vragen'));
+  const aantal = document.createElement('select');
+  [5, 10, 15, 20].forEach(n => { const o = document.createElement('option'); o.value = n; o.textContent = n; aantal.appendChild(o); });
+  aantal.value = String(opg.aantal || 10);
+  kaart.appendChild(aantal);
+
+  kaart.appendChild(el('div', 'label', 'Soorten vragen'));
+  const gekozen = opg.categorieen || ['verdiepen', 'landen', 'handen'];
+  const checks = {};
+  GROEPS_CATS.forEach(([key, label]) => {
+    const rij = el('div'); rij.style.margin = '.25rem 0';
+    const chk = document.createElement('input'); chk.type = 'checkbox'; chk.id = 'gv_' + key;
+    chk.checked = gekozen.includes(key); checks[key] = chk;
+    const lab = el('label', null, ' ' + label); lab.htmlFor = 'gv_' + key;
+    rij.appendChild(chk); rij.appendChild(lab); kaart.appendChild(rij);
+  });
+
+  const knop = el('button', 'klein primair', 'Genereer vragen');
+  knop.style.marginTop = '.9rem';
+  knop.addEventListener('click', async () => {
+    const categorieen = Object.keys(checks).filter(k => checks[k].checked);
+    if (!categorieen.length) { alert('Kies minstens één soort vragen.'); return; }
+    const opties = {leeftijd: leeftijd.value, aantal: +aantal.value, categorieen};
+    bewaarGroepsOpties(opties);
+    const t = knop.textContent; knop.disabled = true; knop.textContent = 'Bezig met genereren…';
+    try {
+      const r = await fetch('/api/groepsvragen/' + res.video_id, {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(opties),
+      });
+      if (!r.ok) throw new Error(await fouttekst(r, 'Genereren mislukt.'));
+      const out = await r.json();
+      toonGroepsvragen(res, out.groepsvragen);
+    } catch (e) { alert(e.message); knop.disabled = false; knop.textContent = t; }
+  });
+  kaart.appendChild(knop);
+  resultaatEl.appendChild(kaart);
+}
+
+function toonGroepsvragen(res, vragen) {
+  resultaatEl.innerHTML = '';
+  const balk = el('div', 'balk');
+  const terug = el('button', 'klein', '← Terug');
+  terug.addEventListener('click', () => toonResultaat({resultaat: {...res, voorbereid: true}}));
+  balk.appendChild(terug);
+  const rechts = el('div', 'rechts');
+  const dl = el('a', 'klein primair', 'Download PDF');
+  dl.href = '/api/groepsvragen/' + res.video_id + '.pdf'; dl.style.textDecoration = 'none';
+  rechts.appendChild(dl); balk.appendChild(rechts);
+  resultaatEl.appendChild(balk);
+
+  Object.keys(vragen || {}).forEach(cat => {
+    const lijst = vragen[cat] || [];
+    if (!lijst.length) return;
+    const k = el('div', 'kaart');
+    k.appendChild(el('h4', null, GROEPS_LABEL[cat] || cat));
+    lijst.forEach((v, i) => k.appendChild(el('p', null, (i + 1) + '. ' + v)));
+    resultaatEl.appendChild(k);
+  });
 }
 
 function _veld(labelTekst, waarde, multiline) {

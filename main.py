@@ -46,6 +46,7 @@ from llm import verwerk_preek
 from llm import maak_basis as llm_maak_basis
 from llm import hergenereer_dag as llm_hergenereer_dag
 from llm import maak_nabespreking as llm_maak_nabespreking
+from llm import maak_groepsvragen as llm_maak_groepsvragen
 from llm import normaliseer as llm_normaliseer
 from llm import schoon_transcript as llm_schoon_transcript
 from transcript import (
@@ -663,6 +664,32 @@ def genereer_en_bewaar(video_id, wat, bijbel=None):
     return {"video_id": video_id, "data": data, "tekst": tekst}
 
 
+def genereer_groepsvragen_en_bewaar(video_id, opties):
+    """Maak op aanvraag gespreksvragen voor groepen uit het opgeslagen transcript."""
+    bewaard = store.resultaat_ophalen(video_id)
+    bron = (bewaard or {}).get("preek_schoon") or (bewaard or {}).get("transcript_ruw")
+    if not bron:
+        raise ValueError("Deze dienst is nog niet voorbereid (geen transcript).")
+    data = dict(bewaard.get("data") or {})
+    data.pop("voorbereid", None)
+    vragen = llm_maak_groepsvragen(
+        bron, categorieen=opties.get("categorieen") or [],
+        aantal=int(opties.get("aantal") or 10),
+        leeftijd=(opties.get("leeftijd") or None),
+        bijbelgedeelte=data.get("bijbelgedeelte"), titel=data.get("titel"),
+        samenvatting=data.get("samenvatting"), taal_hint=data.get("taal"),
+    )
+    data["groepsvragen"] = {
+        "vragen": vragen,
+        "leeftijd": opties.get("leeftijd") or "",
+        "aantal": int(opties.get("aantal") or 10),
+        "categorieen": list(vragen.keys()),
+    }
+    tekst = render.naar_tekst(data)
+    store.resultaat_opslaan(video_id, {**bewaard, "data": data, "tekst": tekst})
+    return {"video_id": video_id, "data": data, "tekst": tekst, "groepsvragen": vragen}
+
+
 def _voer_taak_uit(taak_id, url):
     taak = taken[taak_id]
 
@@ -811,6 +838,29 @@ def genereer(video_id: str, body: dict):
     except Exception as fout:  # noqa: BLE001
         raise HTTPException(502, f"Genereren lukte niet: {fout}")
     return {"data": _met_labels(r["data"]), "tekst": r["tekst"], "video_id": video_id}
+
+
+@app.post("/api/groepsvragen/{video_id}")
+def groepsvragen(video_id: str, body: dict):
+    """Gespreksvragen voor groepen (optie 3): leeftijd, aantal en soorten vragen."""
+    try:
+        r = genereer_groepsvragen_en_bewaar(video_id, body or {})
+    except ValueError as fout:
+        raise HTTPException(400, str(fout))
+    except Exception as fout:  # noqa: BLE001
+        raise HTTPException(502, f"Vragen maken lukte niet: {fout}")
+    return {"data": _met_labels(r["data"]), "groepsvragen": r["groepsvragen"],
+            "video_id": video_id}
+
+
+@app.get("/api/groepsvragen/{video_id}.pdf")
+def groepsvragen_pdf(video_id: str):
+    bewaard = _ophalen_of_404(video_id)
+    data = bewaard["data"]
+    if not (data.get("groepsvragen") or {}).get("vragen"):
+        raise HTTPException(404, "Er zijn nog geen groepsvragen gegenereerd.")
+    inhoud = render.groepsvragen_naar_pdf(data, ondertitel=bewaard.get("ondertitel"))
+    return _bestand(inhoud, "application/pdf", _bestandsnaam(data, "-groepsvragen", "pdf"))
 
 
 @app.post("/api/bewerk/{video_id}")
