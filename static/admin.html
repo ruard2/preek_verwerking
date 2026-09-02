@@ -17,10 +17,22 @@
   }
   * { box-sizing: border-box; }
   body {
-    font-family: Georgia, 'Times New Roman', serif; max-width: 34rem;
+    font-family: Georgia, 'Times New Roman', serif; max-width: 40rem;
     margin: 0 auto; padding: 2.5rem 1.25rem 4rem; line-height: 1.6;
     background: var(--bg); color: var(--tekst);
   }
+  .icoonbalk { display: flex; gap: .5rem; justify-content: flex-end; margin: .4rem 0 1.4rem; }
+  .icoonknop { width: 44px !important; height: 44px !important; display: grid !important;
+    place-items: center; margin: 0 !important; padding: 0 !important; box-shadow: none !important;
+    background: var(--kaart) !important; color: var(--groen) !important;
+    border: 1px solid var(--rand) !important; border-radius: .6rem !important; }
+  .icoonknop:hover { background: #eef4f0 !important; }
+  .icoonknop.actief { background: var(--groen) !important; color: #fff !important; }
+  .aanlever-of { display: flex; align-items: center; gap: .8rem; color: var(--grijs);
+    font-size: .8rem; text-transform: uppercase; letter-spacing: .08em; margin: 1.6rem 0 1rem; }
+  .aanlever-of::before, .aanlever-of::after { content: ''; flex: 1; height: 1px; background: var(--rand); }
+  .stap { margin: 0 0 1.7rem; }
+  .stap-merk { display: block; margin-bottom: .1rem; }
   h1 { font-size: 1.6rem; margin: 0 0 .3rem; color: var(--groen); }
   h2 { font-size: 1.15rem; margin: 1.6rem 0 .6rem; }
   .sub { color: var(--grijs); margin-top: 0; font-size: .95rem; }
@@ -41,7 +53,7 @@
   button.link {
     background: none; color: var(--groen); padding: 0; margin: .8rem 0 0; text-decoration: underline;
   }
-  .kaart { background: var(--kaart); border: 1px solid var(--rand); border-radius: .7rem; padding: 1.3rem 1.4rem; margin-top: 1rem; }
+  .kaart { background: var(--kaart); border: 1px solid var(--rand); border-radius: .8rem; padding: 1.7rem 1.8rem; margin-top: 1.2rem; }
   .tabs { display: flex; gap: .5rem; margin-top: 1rem; }
   .tabs button { margin: 0; background: var(--kaart); color: var(--tekst); border: 1px solid var(--rand); }
   .tabs button.actief { background: var(--groen); color: #fff; border-color: var(--groen); }
@@ -597,27 +609,31 @@ function toonDashboard(mij) {
   instelPane.appendChild(opslaanBalk);
 
   const panesNew = [berichtenPane, instelPane, analysePane];
-  const mkIcon = (txt, titel) => {
+  const ICOON_SVG = {
+    home: '<path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v9.5h13V10"/>',
+    analyse: '<path d="M4 20h16"/><rect x="5" y="12" width="3.2" height="6" rx="1"/><rect x="10.4" y="8" width="3.2" height="10" rx="1"/><rect x="15.8" y="5" width="3.2" height="13" rx="1"/>',
+    instel: '<line x1="4" y1="8" x2="20" y2="8"/><circle cx="9" cy="8" r="2.3"/><line x1="4" y1="16" x2="20" y2="16"/><circle cx="15" cy="16" r="2.3"/>',
+  };
+  const mkIcon = (naam, titel) => {
     const b = el('button', {type: 'button', title: titel, ariaLabel: titel});
-    b.textContent = txt;
-    b.style.cssText = 'width:40px;height:40px;font-size:1.15rem;line-height:1;border:1px solid var(--rand,#e2e2dd);border-radius:.5rem;background:var(--kaart,#fff);cursor:pointer';
+    b.className = 'icoonknop';
+    b.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+      'stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">' + ICOON_SVG[naam] + '</svg>';
     return b;
   };
-  const homeBtn = mkIcon('⌂', T('Overzicht'));
-  const analyseBtn = mkIcon('📊', T('Analyse'));
-  const instelBtn = mkIcon('⚙', T('Instellingen'));
+  const homeBtn = mkIcon('home', T('Overzicht'));
+  const analyseBtn = mkIcon('analyse', T('Analyse'));
+  const instelBtn = mkIcon('instel', T('Instellingen'));
   function toonHoofd(id, actiefBtn) {
     panesNew.forEach(p => p.classList.toggle('actief', p.id === id));
-    [homeBtn, analyseBtn, instelBtn].forEach(b =>
-      b.style.borderColor = b === actiefBtn ? 'var(--groen,#2c5f2d)' : 'var(--rand,#e2e2dd)');
+    [homeBtn, analyseBtn, instelBtn].forEach(b => b.classList.toggle('actief', b === actiefBtn));
   }
   homeBtn.onclick = () => toonHoofd('tab-berichten', homeBtn);
   analyseBtn.onclick = () => { toonHoofd('tab-analyse', analyseBtn); laadAnalyse(); };
   instelBtn.onclick = () => toonHoofd('tab-instel', instelBtn);
   // Snelkoppeling vanaf het hoofdscherm naar de verzendlijst-tab (5e sub-tab).
   window._naarVerzendlijst = () => { instelBtn.onclick(); if (subnav.children[4]) subnav.children[4].click(); };
-  const iconbalk = el('div');
-  iconbalk.style.cssText = 'display:flex;gap:.4rem;justify-content:flex-end;margin-bottom:.8rem';
+  const iconbalk = el('div', {className: 'icoonbalk'});
   iconbalk.append(homeBtn, analyseBtn, instelBtn);
 
   basisPane.remove(); ledenPane.remove();
@@ -648,24 +664,32 @@ function bouwHoofdscherm(mij, pane) {
   const start = el('div', {className: 'kaart'});
   start.appendChild(el('h2', {}, T('Aan de slag')));
 
-  const stap1 = el('div'); stap1.style.margin = '.4rem 0 1rem';
-  const merk1 = el('b', {}, '○ ' + T('Preek aanleveren')); merk1.style.color = 'var(--grijs)';
+  const stap1 = el('div', {className: 'stap'});
+  const merk1 = el('b', {className: 'stap-merk'}, '○ ' + T('Preek aanleveren'));
+  merk1.style.color = 'var(--grijs)';
   stap1.appendChild(merk1);
   stap1.appendChild(el('div', {className: 'sub'},
-    T('Plak een YouTube-, Kerkdienstgemist- of Kerkomroep-link, of upload je preek.')));
-  const linkrij = el('div'); linkrij.style.cssText = 'display:flex;gap:.5rem;margin:.5rem 0;flex-wrap:wrap';
-  const linkveld = el('input', {placeholder: 'https://...'}); linkveld.style.flex = '1 1 15rem';
+    T('Plak een link van een preek of een kanaal — of upload je preek als bestand.')));
+
+  const linkrij = el('div'); linkrij.style.cssText = 'display:flex;gap:.6rem;margin:.9rem 0 .2rem;flex-wrap:wrap';
+  const linkveld = el('input', {placeholder: 'https://…'}); linkveld.style.cssText = 'flex:1 1 18rem';
   const verwerkKnop = el('button', {}, T('Verwerk'));
   linkrij.append(linkveld, verwerkKnop); stap1.appendChild(linkrij);
-  const uprij = el('div'); uprij.style.cssText = 'display:flex;gap:.5rem;align-items:center;flex-wrap:wrap';
+
+  stap1.appendChild(el('div', {className: 'aanlever-of'}, T('of')));
+
+  const uprij = el('div'); uprij.style.cssText = 'display:flex;gap:.6rem;align-items:center;flex-wrap:wrap';
   const upIn = el('input', {type: 'file', accept: '.pdf,.docx,.txt,.mp3,.m4a,.wav,.ogg'});
-  const upKnop = el('button', {className: 'grijs'}, T('Upload'));
+  upIn.style.cssText = 'flex:1 1 16rem';
+  const upKnop = el('button', {className: 'secundair'}, T('Upload'));
   uprij.append(upIn, upKnop); stap1.appendChild(uprij);
-  const status = el('p', {className: 'sub'}); stap1.appendChild(status);
+
+  const status = el('p', {className: 'sub'}); status.style.marginTop = '.9rem'; stap1.appendChild(status);
   start.appendChild(stap1);
 
-  const stap2 = el('div'); stap2.style.margin = '.4rem 0';
-  const merk2 = el('b', {}, '○ ' + T('Inschrijvers')); merk2.style.color = 'var(--grijs)';
+  const stap2 = el('div', {className: 'stap'});
+  const merk2 = el('b', {className: 'stap-merk'}, '○ ' + T('Inschrijvers'));
+  merk2.style.color = 'var(--grijs)';
   stap2.appendChild(merk2);
   stap2.appendChild(el('div', {className: 'sub'},
     T('Deel je inschrijflink of QR-code zodat gemeenteleden zich aanmelden.')));
@@ -689,6 +713,7 @@ function bouwHoofdscherm(mij, pane) {
     hs_toonKeuze(houder, videoId, heeftPreek);
   };
   verwerkKnop.onclick = () => hs_verwerkLink(linkveld.value.trim(), status, houder, klaar);
+  linkveld.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); verwerkKnop.click(); } });
   upKnop.onclick = () => hs_uploadPreek(upIn.files[0], status, klaar);
 }
 
