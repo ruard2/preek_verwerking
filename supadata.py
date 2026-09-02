@@ -30,10 +30,13 @@ OFFSET_DELER = float(os.environ.get("SUPADATA_OFFSET_DELER", "1000"))
 # Video's > 20 min verwerkt Supadata asynchroon (HTTP 202 + jobId); we pollen tot
 # de transcriptie klaar is. Een lange preek kan minuten duren — ruim budget nemen.
 JOB_TIMEOUT = float(os.environ.get("SUPADATA_JOB_TIMEOUT", "900"))  # seconden
-POLL_INTERVAL = float(os.environ.get("SUPADATA_POLL_INTERVAL", "5"))  # seconden
+POLL_INTERVAL = float(os.environ.get("SUPADATA_POLL_INTERVAL", "10"))  # seconden (poll = 0 credits)
 # native = alleen bestaande ondertitels, auto = ondertitels of anders AI-genereren,
 # generate = altijd AI-transcriptie uit de audio.
 MODE = os.environ.get("SUPADATA_MODE", "auto")
+# Minder tekens dan dit is geen bruikbare preek (bijv. een lege captiontrack met
+# alleen ruis) -> dan proberen we 'generate' en anders een nette foutmelding.
+MIN_TRANSCRIPT_TEKENS = int(os.environ.get("SUPADATA_MIN_TEKENS", "200"))
 # Aantal recente video's dat de fallback-kanaallijst ophaalt. Elke video kost
 # één API-call (de batch-endpoint zit niet in de gratis tier), dus beperkt.
 KANAAL_MAX = int(os.environ.get("SUPADATA_KANAAL_MAX", "20"))
@@ -235,19 +238,23 @@ def haal_transcript(url, taal=None, voortgang=None):
         if i > 0:
             meld("Geen bruikbare ondertitels; transcript uit de audio genereren...")
         entries, lang, data = _transcript_eenmalig(url, taal, meld, mode)
-        laatste = (data, mode)
-        if entries:
+        tekens = sum(len(t) for _, t in entries)
+        laatste = (data, mode, tekens)
+        # Een paar losse woorden (bijv. een lege livestream-captiontrack met alleen
+        # ruis) is geen bruikbaar transcript: dan liever de audio laten genereren.
+        if tekens >= MIN_TRANSCRIPT_TEKENS:
             return entries, lang
 
-    data, mode = laatste
+    data, mode, tekens = laatste
     _log.warning(
-        "Supadata lege transcriptie (modi=%s): response-velden=%s, snippet=%s",
-        modi, list(data)[:8], repr(data.get("content") or data.get("transcript"))[:400],
+        "Supadata onbruikbaar transcript (modi=%s, %d tekens): response-velden=%s, snippet=%s",
+        modi, tekens, list(data)[:8], repr(data.get("content") or data.get("transcript"))[:400],
     )
     raise RuntimeError(
-        "Supadata gaf een lege transcriptie terug. Deze dienst heeft (nog) geen "
-        "bruikbare ondertitels én kon niet uit de audio worden getranscribeerd. "
-        "Probeer een andere dienst, of upload de preek als document of audio."
+        "Supadata gaf geen bruikbaar transcript terug (bijna leeg). Deze dienst "
+        "heeft (nog) geen bruikbare ondertitels; op de gratis Supadata-tier kan de "
+        "audio bovendien niet zelf worden getranscribeerd. Probeer een andere "
+        "dienst, of upload de preek als document of audio."
     )
 
 

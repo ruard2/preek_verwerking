@@ -41,6 +41,7 @@ import store
 import supadata
 import transcript as ts
 from audio import transcribeer_preek
+from audio import transcribeer_hele_video
 from llm import verwerk_preek
 from llm import maak_basis as llm_maak_basis
 from llm import hergenereer_dag as llm_hergenereer_dag
@@ -297,46 +298,78 @@ def _transcribeer_kerkomroep(url, meld):
 
 
 def _transcribeer_youtube(url, meld):
-    """YouTube: transcriptbron kiezen (Supadata gehost / yt-dlp lokaal)."""
-    if supadata.beschikbaar():
-        entries, taal = supadata.haal_transcript(url, voortgang=meld)
-        titel = _titel_uit_cache(url) or "YouTube-dienst"
-        meld("Preekgedeelte zoeken...")
-        seg = ts.segmenteer(entries, titel=titel, taal=taal or "nl")
-        taal_hint = taal
-    else:
-        seg = haal_preek_segmentatie(url, voortgang=meld)
-        taal_hint = (seg["meta"].get("taal") or "nl").split("-")[0]
+    """YouTube-transcriptbron kiezen.
 
+    Met een residentiële proxy (YTDLP_PROXY) is onze eigen yt-dlp+Whisper-route
+    het goedkoopst (~$0,25/preek i.p.v. Supadata-credits); Supadata blijft de
+    automatische terugval. Zonder proxy: Supadata indien beschikbaar, anders
+    yt-dlp (dat op een geblokkeerd datacenter-IP kan falen).
+    """
+    if ts.proxy_actief() or not supadata.beschikbaar():
+        try:
+            return _youtube_via_ytdlp(url, meld)
+        except Exception as fout:  # noqa: BLE001
+            if not supadata.beschikbaar():
+                raise
+            meld(f"Eigen download lukte niet ({fout}); terugval op Supadata...")
+    return _youtube_via_supadata(url, meld)
+
+
+def _youtube_via_supadata(url, meld):
+    """YouTube-transcript via Supadata (ondertitels of AI-transcriptie aan hun kant)."""
+    entries, taal = supadata.haal_transcript(url, voortgang=meld)
+    titel = _titel_uit_cache(url) or "YouTube-dienst"
+    meld("Preekgedeelte zoeken...")
+    seg = ts.segmenteer(entries, titel=titel, taal=taal or "nl")
     meta = seg["meta"]
-    delen = f", {meta['delen']} delen" if meta.get("delen", 1) > 1 else ""
-    gevonden = (
-        f"Preek gevonden ({meta['preek_start']}–{meta['preek_einde']}"
-        f"{delen}, ±{meta['duur_minuten']} min). "
-    )
-
-    transcript = seg["ondertitel_tekst"]
-    if supadata.beschikbaar():
-        bron = "YouTube-ondertitels via Supadata"
-    else:
-        bron = "ondertitels"
-        if provider_bereikbaar():
-            try:
-                meld(gevonden + "Audio ophalen en transcriberen...")
-                transcript = transcribeer_preek(url, seg["tijden"], voortgang=meld)
-                bron = "audio (OpenAI-transcriptie)"
-            except Exception:  # noqa: BLE001 — terugval op ondertitels
-                transcript = seg["ondertitel_tekst"]
-                bron = "ondertitels (audio niet beschikbaar)"
-    meta["transcriptie_bron"] = bron
-    meld(gevonden + f"Bron: {bron}.")
+    meta["transcriptie_bron"] = "YouTube-ondertitels via Supadata"
     return {
-        "transcript": transcript, "taal_hint": taal_hint, "welkom": seg["welkom"],
-        "extra_context": None,
-        # Vond de segmentatie geen duidelijk preekblok? Dan is dit de hele dienst
-        # en laten we het taalmodel zelf de preek eruit halen.
+        "transcript": seg["ondertitel_tekst"], "taal_hint": taal,
+        "welkom": seg["welkom"], "extra_context": None,
         "volledige_dienst": seg.get("volledige_dienst", False),
         "liturgie": None, "ondertitel": meta.get("titel"), "meta": meta,
+    }
+
+
+def _youtube_via_ytdlp(url, meld):
+    """YouTube-transcript via onze eigen yt-dlp-download + Whisper (residentiële proxy).
+
+    Eerst proberen we de preek af te bakenen via de ondertitels (dan transcriberen
+    we alleen het preekdeel). Lukt dat niet (geen/lege ondertitels bij livestreams),
+    dan transcriberen we de hele audio en haalt het taalmodel zelf de preek eruit.
+    """
+    seg = None
+    try:
+        seg = haal_preek_segmentatie(url, voortgang=meld)
+    except Exception:  # noqa: BLE001 — geen bruikbare ondertitels: dan de hele audio
+        seg = None
+
+    if seg and seg.get("tijden") and not seg.get("volledige_dienst"):
+        meta = seg["meta"]
+        delen = f", {meta['delen']} delen" if meta.get("delen", 1) > 1 else ""
+        meld(
+            f"Preek gevonden ({meta['preek_start']}–{meta['preek_einde']}{delen}). "
+            "Preekaudio ophalen en transcriberen (OpenAI, via eigen proxy)..."
+        )
+        transcript = transcribeer_preek(url, seg["tijden"], voortgang=meld)
+        meta["transcriptie_bron"] = "audio via proxy (OpenAI)"
+        return {
+            "transcript": transcript,
+            "taal_hint": (meta.get("taal") or "nl").split("-")[0],
+            "welkom": seg.get("welkom"), "extra_context": None,
+            "volledige_dienst": False, "liturgie": None,
+            "ondertitel": meta.get("titel"), "meta": meta,
+        }
+
+    # Geen bruikbare ondertitels: hele audio transcriberen, AI haalt de preek eruit.
+    meld("Hele audio ophalen en transcriberen (OpenAI, via eigen proxy)...")
+    transcript = transcribeer_hele_video(url, voortgang=meld)
+    titel = _titel_uit_cache(url) or "YouTube-dienst"
+    return {
+        "transcript": transcript, "taal_hint": None, "welkom": None,
+        "extra_context": None, "volledige_dienst": True, "liturgie": None,
+        "ondertitel": titel,
+        "meta": {"titel": titel, "transcriptie_bron": "audio via proxy (OpenAI, hele dienst)"},
     }
 
 

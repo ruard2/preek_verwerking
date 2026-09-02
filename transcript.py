@@ -238,6 +238,17 @@ def provider_bereikbaar():
         return False
 
 
+def proxy_actief():
+    """Is er een (residentiële) YouTube-proxy ingesteld?"""
+    return bool(os.environ.get("YTDLP_PROXY"))
+
+
+def download_mogelijk():
+    """Kan yt-dlp audio downloaden? Ja met een residentiële proxy (die de IP-
+    blokkade omzeilt) óf met een bereikbare PO-token-provider."""
+    return proxy_actief() or provider_bereikbaar()
+
+
 def _haal_info(url):
     with yt_dlp.YoutubeDL(_basis_opties()) as ydl:
         return ydl.extract_info(url, download=False)

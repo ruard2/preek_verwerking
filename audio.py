@@ -208,9 +208,10 @@ def transcribeer_preek(url, tijden, voortgang=None):
         if voortgang:
             voortgang(stap)
 
-    if not ts.provider_bereikbaar():
+    if not ts.download_mogelijk():
         raise RuntimeError(
-            "PO-token-provider niet bereikbaar; audio-transcriptie niet mogelijk."
+            "Geen residentiële proxy (YTDLP_PROXY) of PO-token-provider; "
+            "audio-transcriptie niet mogelijk."
         )
     if not os.environ.get("OPENAI_API_KEY"):
         raise RuntimeError("OPENAI_API_KEY is niet ingesteld.")
@@ -242,3 +243,50 @@ def transcribeer_preek(url, tijden, voortgang=None):
         " ".join(teksten[i]).strip() for i in range(len(tijden))
     ]
     return DEEL_MARKERING.join(d for d in resultaat_delen if d)
+
+
+def transcribeer_hele_video(url, voortgang=None):
+    """Download de hele video-audio (via yt-dlp/proxy) en transcribeer die volledig.
+
+    Voor YouTube zonder bruikbare ondertitels (bijv. livestreams). Het taalmodel
+    haalt daarna zelf het preekgedeelte eruit (volledige_dienst=True). Geeft de
+    volledige transcripttekst terug.
+    """
+
+    def meld(stap):
+        if voortgang:
+            voortgang(stap)
+
+    if not ts.download_mogelijk():
+        raise RuntimeError(
+            "Geen residentiële proxy (YTDLP_PROXY) of PO-token-provider; "
+            "audio-transcriptie niet mogelijk."
+        )
+    if not os.environ.get("OPENAI_API_KEY"):
+        raise RuntimeError("OPENAI_API_KEY is niet ingesteld.")
+
+    client = OpenAI()
+    ffmpeg = _ffmpeg()
+    with tempfile.TemporaryDirectory() as tmp:
+        meld("Audio van de dienst downloaden...")
+        bron = _download_audio(url, tmp)
+        duur = _duur_van(ffmpeg, bron)
+        stukken = []
+        if duur:
+            begin = 0
+            while begin < duur:
+                stop = min(begin + MAX_DEEL_SECONDEN, duur)
+                pad = os.path.join(tmp, f"deel_{begin}.mp3")
+                _knip(ffmpeg, bron, begin, stop, pad)
+                stukken.append(pad)
+                begin = stop
+        else:  # onbekende duur: alles in één keer (mono 32k blijft ruim onder de limiet)
+            pad = os.path.join(tmp, "deel_0.mp3")
+            _knip(ffmpeg, bron, 0, 24 * 3600, pad)
+            stukken.append(pad)
+
+        teksten = []
+        for i, pad in enumerate(stukken):
+            meld(f"Audio transcriberen ({i + 1}/{len(stukken)})...")
+            teksten.append(_transcribeer_bestand(client, pad))
+    return " ".join(t for t in teksten if t).strip()

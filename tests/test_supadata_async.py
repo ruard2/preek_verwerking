@@ -27,6 +27,7 @@ def test_async_polling_haalt_transcript_op():
     with pytest.MonkeyPatch.context() as mp:
         mp.setattr(supadata, "_get", nep_get)
         mp.setattr(supadata.time, "sleep", lambda *_: None)
+        mp.setattr(supadata, "MIN_TRANSCRIPT_TEKENS", 5)
         entries, taal = supadata.haal_transcript("https://youtu.be/x")
 
     assert entries == [(0, "Hallo gemeente")]
@@ -76,10 +77,46 @@ def test_lege_auto_valt_terug_op_generate():
         mp.setattr(supadata, "_get", nep_get)
         mp.setattr(supadata.time, "sleep", lambda *_: None)
         mp.setattr(supadata, "MODE", "auto")
+        mp.setattr(supadata, "MIN_TRANSCRIPT_TEKENS", 5)
         entries, taal = supadata.haal_transcript("https://youtu.be/x")
 
     assert entries == [(0, "Preek uit audio")]
     assert taal == "nl"
+
+
+def test_te_kort_fragment_valt_terug_op_generate():
+    """Een paar losse woorden (lege captiontrack met ruis) telt óók als onbruikbaar."""
+    lang = "Vandaag lezen we uit Johannes drie. " * 10  # ruim > drempel
+
+    def nep_get(pad, params, _herkansing=True):
+        if pad == "transcript":
+            if params.get("mode") == "auto":
+                return {"content": [{"text": "there is one", "offset": 0}], "lang": "en"}
+            return {"content": [{"text": lang, "offset": 0}], "lang": "nl"}
+        return {}
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(supadata, "_get", nep_get)
+        mp.setattr(supadata.time, "sleep", lambda *_: None)
+        mp.setattr(supadata, "MODE", "auto")
+        entries, taal = supadata.haal_transcript("https://youtu.be/x")
+
+    assert entries == [(0, lang.strip())]     # het te korte fragment is genegeerd
+    assert taal == "nl"
+
+
+def test_overal_te_kort_geeft_nette_fout():
+    def nep_get(pad, params, _herkansing=True):
+        if pad == "transcript":
+            return {"content": [{"text": "there is one", "offset": 0}], "lang": "en"}
+        return {}
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(supadata, "_get", nep_get)
+        mp.setattr(supadata.time, "sleep", lambda *_: None)
+        mp.setattr(supadata, "MODE", "auto")
+        with pytest.raises(RuntimeError, match="geen bruikbaar transcript"):
+            supadata.haal_transcript("https://youtu.be/x")
 
 
 def test_async_failed_geeft_fout():
