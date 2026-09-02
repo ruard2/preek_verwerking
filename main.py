@@ -449,7 +449,8 @@ def _pas_uitvoer_toe(data, uitvoer_typen, preek_schoon, transcript_ruw, meld):
     return data
 
 
-def verwerk_en_bewaar(url, herverwerk=False, meld=None, bijbel=None, uitvoer_typen=None):
+def verwerk_en_bewaar(url, herverwerk=False, meld=None, bijbel=None, uitvoer_typen=None,
+                      alleen_transcript=False):
     """Verwerk een dienst (of laad uit cache) en bewaar het resultaat.
 
     Herbruikbaar vanuit de interactieve taak én de automatisering. `bijbel` is een
@@ -508,8 +509,20 @@ def verwerk_en_bewaar(url, herverwerk=False, meld=None, bijbel=None, uitvoer_typ
     meta = bron_info["meta"]
     ondertitel = bron_info.get("ondertitel")
 
-    # 3. Basis genereren: dagstukjes (verwerk_preek) óf een lichte basis zonder dagen.
-    data = _genereer_basis(bron_info, bijbel, typen, meld)
+    # 3. Basis genereren — of, bij alleen_transcript, NIETS genereren (bespaart AI-
+    #    kosten). Dan alleen transcript + opschonen; de gebruiker kiest later per
+    #    uitvoer wat er gemaakt wordt (zie genereer_en_bewaar).
+    if alleen_transcript:
+        data = {
+            "taal": bron_info.get("taal_hint"),
+            "titel": (meta.get("titel") or ondertitel or "Preek"),
+            "bijbelgedeelte": "", "voorganger": None, "samenvatting": "", "dagen": [],
+            "voorbereid": True,  # transcript klaar, nog niets gegenereerd
+        }
+        if bron_info.get("liturgie"):
+            data["liturgie"] = bron_info["liturgie"]
+    else:
+        data = _genereer_basis(bron_info, bijbel, typen, meld)
 
     # 4. Opgeschoonde, herbruikbare preektekst — ook één keer: hergebruik indien aanwezig.
     if not preek_schoon:
@@ -520,7 +533,8 @@ def verwerk_en_bewaar(url, herverwerk=False, meld=None, bijbel=None, uitvoer_typ
             preek_schoon = ""
 
     # 5. Alleen de gekozen extra uitvoer(en) maken (transcript, nabespreking).
-    _pas_uitvoer_toe(data, uitvoer_typen, preek_schoon, transcript_ruw, meld)
+    if not alleen_transcript:
+        _pas_uitvoer_toe(data, uitvoer_typen, preek_schoon, transcript_ruw, meld)
     tekst = render.naar_tekst(data)
 
     # De brongegevens (zonder de grote transcript-tekst) meebewaren voor trouwe
@@ -618,6 +632,37 @@ def hergenereer_nabespreking_en_bewaar(video_id):
     return {"video_id": video_id, **payload}
 
 
+def genereer_en_bewaar(video_id, wat, bijbel=None):
+    """Genereer op AANVRAAG één uitvoer uit het opgeslagen transcript, zonder opnieuw
+    te transcriberen. Zo draait de AI alleen voor wat de gebruiker echt kiest.
+
+    `wat`: 'samenvatting' (titel/bijbelgedeelte/samenvatting) of 'dagstukjes' (het
+    volledige weekboekje met 7 dagen). Werkt het opgeslagen resultaat bij.
+    """
+    bewaard = store.resultaat_ophalen(video_id)
+    bron = (bewaard or {}).get("preek_schoon") or (bewaard or {}).get("transcript_ruw")
+    if not bron:
+        raise ValueError("Deze dienst is nog niet voorbereid (geen transcript).")
+    volledig = bool((bewaard.get("bron_info") or {}).get("volledige_dienst"))
+    data = dict(bewaard.get("data") or {})
+    data.pop("voorbereid", None)
+    if wat == "dagstukjes":
+        gegenereerd = verwerk_preek(bron, volledige_dienst=volledig, **(bijbel or {}))
+        bijbeltekst.verrijk_dagen(gegenereerd, bijbel or {})
+        data = gegenereerd
+    elif wat == "samenvatting":
+        basis = llm_maak_basis(bron, volledige_dienst=volledig)
+        for k in ("taal", "titel", "bijbelgedeelte", "voorganger", "samenvatting"):
+            if basis.get(k):
+                data[k] = basis[k]
+        data.setdefault("dagen", [])
+    else:
+        raise ValueError("Onbekende uitvoer.")
+    tekst = render.naar_tekst(data)
+    store.resultaat_opslaan(video_id, {**bewaard, "data": data, "tekst": tekst})
+    return {"video_id": video_id, "data": data, "tekst": tekst}
+
+
 def _voer_taak_uit(taak_id, url):
     taak = taken[taak_id]
 
@@ -625,12 +670,17 @@ def _voer_taak_uit(taak_id, url):
         taak["stap"] = stap
 
     try:
-        r = verwerk_en_bewaar(url, herverwerk=taak.get("_herverwerk"), meld=meld)
+        # De interactieve tool transcribeert + schoont alleen op; genereren gebeurt
+        # daarna op aanvraag (de gebruiker kiest zelf) — dat bespaart AI-kosten.
+        r = verwerk_en_bewaar(
+            url, herverwerk=taak.get("_herverwerk"), meld=meld, alleen_transcript=True
+        )
         taak["meta"] = r["meta"]
         taak["resultaat"] = {
             "data": _met_labels(r["data"]),
             "tekst": r["tekst"],
             "video_id": r["video_id"],
+            "voorbereid": bool(r["data"].get("voorbereid")),
             "heeft_preek": bool(r.get("preek_schoon")),
             "heeft_ruw": bool((r.get("transcript_ruw") or "").strip()),
         }
@@ -745,6 +795,22 @@ def _ophalen_of_404(video_id):
 
 DAG_VELDEN = ("titel", "bijbeltekst", "gedachte", "vraag_volwassenen",
               "vraag_kinderen")
+
+
+@app.post("/api/genereer/{video_id}")
+def genereer(video_id: str, body: dict):
+    """Genereer op aanvraag één uitvoer uit het opgeslagen transcript (geen AI tenzij
+    de gebruiker hier expliciet om vraagt). `wat`: 'samenvatting' of 'dagstukjes'."""
+    wat = (body or {}).get("wat", "")
+    if wat not in ("samenvatting", "dagstukjes"):
+        raise HTTPException(400, "Kies 'samenvatting' of 'dagstukjes'.")
+    try:
+        r = genereer_en_bewaar(video_id, wat)
+    except ValueError as fout:
+        raise HTTPException(400, str(fout))
+    except Exception as fout:  # noqa: BLE001
+        raise HTTPException(502, f"Genereren lukte niet: {fout}")
+    return {"data": _met_labels(r["data"]), "tekst": r["tekst"], "video_id": video_id}
 
 
 @app.post("/api/bewerk/{video_id}")

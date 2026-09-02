@@ -103,7 +103,10 @@
     padding-left: .8rem; margin: .1rem 0;
   }
   .kaart p { margin: .1rem 0; }
-  .vraag { background: var(--groen-licht); border-radius: .4rem; padding: .5rem .7rem; }
+  .vraag { background: var(--soft, #eaf3ea); color: var(--tekst, #23231f);
+    border-radius: .4rem; padding: .5rem .7rem; }
+  .keuze { display: flex; flex-wrap: wrap; gap: .6rem; margin-top: 1rem; }
+  .keuze .klein { font-size: 1rem; padding: .7rem 1.1rem; }
   .samenvatting { font-size: 1.02rem; }
   .bewerkveld {
     width: 100%; box-sizing: border-box; font-family: inherit; font-size: 1rem;
@@ -350,6 +353,8 @@ function toonResultaat(taak) {
   const res = taak.resultaat || (huidigResultaat = huidigResultaat || {});
   if (taak.resultaat) huidigResultaat = taak.resultaat;
   const data = res.data;
+  // Voorbereid = transcript klaar, nog niets gegenereerd -> toon het keuzescherm.
+  const nogKiezen = !!res.voorbereid && !(data && data.dagen && data.dagen.length);
   resultaatEl.innerHTML = '';
 
   const balk = el('div', 'balk');
@@ -360,7 +365,7 @@ function toonResultaat(taak) {
   });
   balk.appendChild(terug);
   const rechts = el('div', 'rechts');
-  if (data) {
+  if (data && !nogKiezen) {
     const bewerk = el('button', 'klein', '✎ Bewerken');
     bewerk.addEventListener('click', () => toonBewerken());
     rechts.appendChild(bewerk);
@@ -371,13 +376,13 @@ function toonResultaat(taak) {
     kopieer.textContent = 'Gekopieerd ✓';
     setTimeout(() => kopieer.textContent = 'Kopieer tekst', 2000);
   });
-  rechts.appendChild(kopieer);
+  if (!nogKiezen) rechts.appendChild(kopieer);
   const dl = (tekst, href) => {
     const a = el('a', 'klein', tekst);
     a.href = href; a.style.textDecoration = 'none';
     rechts.appendChild(a);
   };
-  if (res.video_id) {
+  if (res.video_id && !nogKiezen) {
     dl('Weekboekje (PDF)', '/api/pdf/' + res.video_id);
     if (res.heeft_preek) {
       dl('Preek (PDF)', '/api/preek/' + res.video_id + '.pdf');
@@ -407,6 +412,8 @@ function toonResultaat(taak) {
   }
   balk.appendChild(rechts);
   resultaatEl.appendChild(balk);
+
+  if (nogKiezen) { toonKeuze(res); return; }
 
   if (!data) {
     const pre = el('pre'); pre.style.whiteSpace = 'pre-wrap';
@@ -454,6 +461,61 @@ function toonResultaat(taak) {
     pre.textContent = data.liturgie;
     det.appendChild(pre);
     resultaatEl.appendChild(det);
+  }
+}
+
+// Keuzescherm: transcript is klaar, gebruiker kiest wat ermee gebeurt (spaart AI-kosten).
+function toonKeuze(res) {
+  const d = res.data || {};
+  const kaart = el('div', 'kaart');
+  kaart.appendChild(el('h4', null, d.titel || 'Preek'));
+  kaart.appendChild(el('p', 'samenvatting',
+    'Het transcript is klaar. Wat wil je hiermee? Er wordt pas AI gebruikt als je iets kiest.'));
+  const rij = el('div', 'keuze');
+
+  if (res.heeft_preek) {
+    const b1 = el('a', 'klein primair', '1 · Preektekst (PDF)');
+    b1.href = '/api/preek/' + res.video_id + '.pdf';
+    b1.style.textDecoration = 'none';
+    rij.appendChild(b1);
+  }
+
+  const b2 = el('button', 'klein', '2 · Samenvatting (PDF)');
+  b2.addEventListener('click', () => genereerUitvoer(res.video_id, 'samenvatting', b2, true));
+  rij.appendChild(b2);
+
+  const b3 = el('button', 'klein', '3 · Vragen voor groepen…');
+  b3.disabled = true; b3.title = 'Wordt binnenkort toegevoegd';
+  rij.appendChild(b3);
+
+  const b4 = el('button', 'klein', '4 · Dagstukjes met vragen');
+  b4.addEventListener('click', () => genereerUitvoer(res.video_id, 'dagstukjes', b4, false));
+  rij.appendChild(b4);
+
+  kaart.appendChild(rij);
+  resultaatEl.appendChild(kaart);
+}
+
+async function genereerUitvoer(videoId, wat, knop, alleenDownload) {
+  const orig = knop.textContent;
+  knop.disabled = true; knop.textContent = 'Bezig met genereren…';
+  try {
+    const r = await fetch('/api/genereer/' + videoId, {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({wat}),
+    });
+    if (!r.ok) throw new Error(await fouttekst(r, 'Genereren mislukt.'));
+    const res = await r.json();
+    if (alleenDownload) {
+      window.location.href = '/api/pdf/' + videoId;   // direct de PDF downloaden
+      knop.textContent = orig; knop.disabled = false;
+    } else {
+      huidigResultaat = {...(huidigResultaat || {}), data: res.data, tekst: res.tekst,
+        video_id: videoId, voorbereid: false, heeft_preek: true, heeft_ruw: true};
+      toonResultaat({resultaat: huidigResultaat});
+    }
+  } catch (e) {
+    alert(e.message); knop.textContent = orig; knop.disabled = false;
   }
 }
 
