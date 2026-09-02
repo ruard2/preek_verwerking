@@ -74,6 +74,14 @@ def _download_audio(url, map_):
             # en pas als laatste redmiddel een gecombineerd formaat.
             "format": "bestaudio[ext=m4a]/bestaudio[vcodec=none]/bestaudio/best",
             "outtmpl": os.path.join(map_, "audio.%(ext)s"),
+            # Residentiële proxy's zijn traag en haperen: ruime timeout + veel
+            # herpogingen, zodat een korte stilval de download niet laat mislukken
+            # (anders viel hij terug op Supadata).
+            "socket_timeout": int(os.environ.get("YTDLP_SOCKET_TIMEOUT", "120")),
+            "retries": int(os.environ.get("YTDLP_RETRIES", "20")),
+            "fragment_retries": int(os.environ.get("YTDLP_RETRIES", "20")),
+            "file_access_retries": 10,
+            "continuedl": True,
         }
     )
     with yt_dlp.YoutubeDL(opties) as ydl:

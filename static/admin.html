@@ -671,18 +671,24 @@ function bouwHoofdscherm(mij, pane) {
   stap1.appendChild(el('div', {className: 'sub'},
     T('Plak een link van een preek of een kanaal — of upload je preek als bestand.')));
 
+  const aanleverBox = el('div');
   const linkrij = el('div'); linkrij.style.cssText = 'display:flex;gap:.6rem;margin:.9rem 0 .2rem;flex-wrap:wrap';
   const linkveld = el('input', {placeholder: 'https://…'}); linkveld.style.cssText = 'flex:1 1 18rem';
   const verwerkKnop = el('button', {}, T('Verwerk'));
-  linkrij.append(linkveld, verwerkKnop); stap1.appendChild(linkrij);
+  linkrij.append(linkveld, verwerkKnop); aanleverBox.appendChild(linkrij);
 
-  stap1.appendChild(el('div', {className: 'aanlever-of'}, T('of')));
+  aanleverBox.appendChild(el('div', {className: 'aanlever-of'}, T('of')));
 
   const uprij = el('div'); uprij.style.cssText = 'display:flex;gap:.6rem;align-items:center;flex-wrap:wrap';
   const upIn = el('input', {type: 'file', accept: '.pdf,.docx,.txt,.mp3,.m4a,.wav,.ogg'});
   upIn.style.cssText = 'flex:1 1 16rem';
   const upKnop = el('button', {className: 'secundair'}, T('Upload'));
-  uprij.append(upIn, upKnop); stap1.appendChild(uprij);
+  uprij.append(upIn, upKnop); aanleverBox.appendChild(uprij);
+
+  const tip = el('p', {className: 'sub'}); tip.style.marginTop = '.9rem';
+  tip.innerHTML = '💡 ' + T('Verwerken duurt even. Zet bij Instellingen „automatisch versturen” aan, dan staan de preken van afgelopen zondag al klaar als je inlogt.');
+  aanleverBox.appendChild(tip);
+  stap1.appendChild(aanleverBox);
 
   const status = el('p', {className: 'sub'}); status.style.marginTop = '.9rem'; stap1.appendChild(status);
   start.appendChild(stap1);
@@ -712,68 +718,92 @@ function bouwHoofdscherm(mij, pane) {
     status.textContent = '';
     hs_toonKeuze(houder, videoId, heeftPreek);
   };
-  verwerkKnop.onclick = () => hs_verwerkLink(linkveld.value.trim(), status, houder, klaar);
+  verwerkKnop.onclick = () => hs_verwerkLink(linkveld.value.trim(), status, houder, klaar, aanleverBox);
   linkveld.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); verwerkKnop.click(); } });
-  upKnop.onclick = () => hs_uploadPreek(upIn.files[0], status, klaar);
+  upKnop.onclick = () => hs_uploadPreek(upIn.files[0], status, klaar, aanleverBox);
 }
 
-async function hs_verwerkLink(url, status, houder, klaar) {
+// Datum (YYYY-MM-DD) van de meest recente zondag t/m vandaag (afgelopen zondag).
+function hs_laatsteZondag() {
+  const d = new Date(); d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() - d.getDay());  // getDay(): 0=zondag
+  return d.toISOString().slice(0, 10);
+}
+
+async function hs_verwerkLink(url, status, houder, klaar, aanleverBox) {
   const T = s => AfterSermonI18n.text(s);
   if (!url) { status.textContent = T('Plak eerst een link.'); return; }
   houder.innerHTML = ''; status.textContent = T('Link controleren…');
   try {
     const k = await fetch('/api/kanaal?url=' + encodeURIComponent(url)).then(r => r.ok ? r.json() : Promise.reject(r));
-    if (k.soort === 'lijst') { hs_toonDiensten(k.diensten || [], status, houder, klaar); return; }
-    hs_startVerwerken(k.url || url, status, klaar);
+    if (k.soort === 'lijst') {
+      // Kanaal: alleen de dienst(en) van AFGELOPEN ZONDAG (op datum, niet op volgorde).
+      const zondag = hs_laatsteZondag();
+      let diensten = (k.diensten || []).filter(d => d.datum === zondag);
+      let opmerking = '';
+      if (!diensten.length) {
+        diensten = (k.diensten || []).filter(d => d.datum && d.datum <= new Date().toISOString().slice(0, 10))
+          .sort((a, b) => (b.datum || '').localeCompare(a.datum || '')).slice(0, 6);
+        opmerking = T('Geen dienst van afgelopen zondag gevonden — kies er zelf een.');
+      }
+      if (aanleverBox) aanleverBox.hidden = true;
+      hs_toonDiensten(diensten, status, houder, klaar, aanleverBox, opmerking);
+      return;
+    }
+    if (aanleverBox) aanleverBox.hidden = true;
+    hs_startVerwerken(k.url || url, status, klaar, aanleverBox);
   } catch (e) {
     let m = T('Kon de link niet lezen.');
     if (e && typeof e.json === 'function') { try { m = await fouttekst(e, m); } catch (_) {} }
     else if (e && e.message) m = e.message;
     status.textContent = m;
+    if (aanleverBox) aanleverBox.hidden = false;
   }
 }
 
-function hs_toonDiensten(diensten, status, houder, klaar) {
+function hs_toonDiensten(diensten, status, houder, klaar, aanleverBox, opmerking) {
   const T = s => AfterSermonI18n.text(s);
-  status.textContent = T('Kies een dienst:');
+  status.textContent = '';
   houder.innerHTML = '';
   const kaart = el('div', {className: 'kaart'});
-  kaart.appendChild(el('h2', {}, T('Diensten')));
-  if (!diensten.length) kaart.appendChild(el('p', {className: 'sub'}, T('Geen recente diensten gevonden.')));
+  kaart.appendChild(el('h2', {}, T('Kies de dienst')));
+  if (opmerking) kaart.appendChild(el('p', {className: 'sub'}, opmerking));
+  if (!diensten.length) kaart.appendChild(el('p', {className: 'sub'}, T('Geen diensten gevonden.')));
   diensten.forEach(d => {
-    const b = el('button', {className: 'grijs'}, (d.datum ? d.datum + ' · ' : '') + (d.titel || d.label || 'Dienst'));
-    b.style.cssText = 'display:block;width:100%;text-align:left;margin:.3rem 0';
-    b.onclick = () => { houder.innerHTML = ''; hs_startVerwerken(d.url, status, klaar); };
+    const b = el('button', {className: 'secundair'}, (d.datum ? d.datum + ' · ' : '') + (d.titel || d.label || 'Dienst'));
+    b.style.cssText = 'display:block;width:100%;text-align:left;margin:.35rem 0';
+    b.onclick = () => { houder.innerHTML = ''; hs_startVerwerken(d.url, status, klaar, aanleverBox); };
     kaart.appendChild(b);
   });
   houder.appendChild(kaart);
 }
 
-async function hs_startVerwerken(url, status, klaar) {
+async function hs_startVerwerken(url, status, klaar, aanleverBox) {
   const T = s => AfterSermonI18n.text(s);
   status.textContent = T('Verwerken… (dit kan enkele minuten duren)');
   try {
     const r = await fetch('/api/verwerk', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({url})});
     if (!r.ok) throw new Error(await fouttekst(r, T('Verwerken mislukt.')));
     const {taak_id} = await r.json();
-    hs_volgTaak(taak_id, status, klaar);
-  } catch (e) { status.textContent = e.message; }
+    hs_volgTaak(taak_id, status, klaar, aanleverBox);
+  } catch (e) { status.textContent = e.message; if (aanleverBox) aanleverBox.hidden = false; }
 }
 
-async function hs_volgTaak(taakId, status, klaar) {
+async function hs_volgTaak(taakId, status, klaar, aanleverBox) {
   while (true) {
     await new Promise(r => setTimeout(r, 2500));
     let t;
     try { t = await fetch('/api/status/' + taakId).then(r => r.json()); } catch (e) { continue; }
-    if (t.status === 'fout') { status.textContent = t.fout || 'Er ging iets mis.'; return; }
+    if (t.status === 'fout') { status.textContent = t.fout || 'Er ging iets mis.'; if (aanleverBox) aanleverBox.hidden = false; return; }
     if (t.status === 'klaar') { klaar(t.resultaat.video_id, t.resultaat.heeft_preek); return; }
     if (t.stap) status.textContent = t.stap;
   }
 }
 
-async function hs_uploadPreek(file, status, klaar) {
+async function hs_uploadPreek(file, status, klaar, aanleverBox) {
   const T = s => AfterSermonI18n.text(s);
   if (!file) { status.textContent = T('Kies eerst een bestand.'); return; }
+  if (aanleverBox) aanleverBox.hidden = true;
   status.textContent = T('Verwerken… (dit kan enkele minuten duren)');
   try {
     const fd = new FormData(); fd.append('file', file);
@@ -781,7 +811,7 @@ async function hs_uploadPreek(file, status, klaar) {
     if (!r.ok) throw new Error(await fouttekst(r, T('Uploaden mislukt.')));
     const d = await r.json();
     klaar(d.video_id, true);
-  } catch (e) { status.textContent = e.message; }
+  } catch (e) { status.textContent = e.message; if (aanleverBox) aanleverBox.hidden = false; }
 }
 
 function hs_toonKeuze(houder, videoId, heeftPreek) {
