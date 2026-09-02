@@ -266,7 +266,7 @@ function toonDashboard(mij) {
       r.appendChild(el('div', {className: 'sub'}, uitleg));
       c.appendChild(r);
     });
-    basisPane.insertBefore(c, basisPane.firstChild);
+    berichtenPane.insertBefore(c, berichtenPane.firstChild);
   })();
 
   const kaart = el('div', {className: 'kaart wide'});
@@ -327,12 +327,10 @@ function toonDashboard(mij) {
         citaat_volledig: document.getElementById('citaat_volledig').value !== 'ref',
         bijbelvertaling: val('bijbelvertaling'),
         accentkleur: val('accentkleur'),
-        toon: val('toon'), lengte: val('lengte'),
-        uitvoer_typen: Array.from(document.querySelectorAll('.uitvoer-optie')).filter(c => c.checked).map(c => c.value)
+        toon: val('toon'), lengte: val('lengte')
       });
       if (mij) {
         mij.accentkleur = val('accentkleur'); mij.toon = val('toon'); mij.lengte = val('lengte');
-        mij.uitvoer_typen = Array.from(document.querySelectorAll('.uitvoer-optie')).filter(c => c.checked).map(c => c.value);
       }
       mij.kanaal_url = kanaalUrl;
       toon('ok', kanaalUrl
@@ -422,23 +420,6 @@ function toonDashboard(mij) {
   ln.value = mij.lengte || 'middel'; stijl.appendChild(ln);
   kaart.insertBefore(stijl, knop);
 
-  const uitvoer = el('div');
-  uitvoer.appendChild(el('h2', {}, T('Wat maakt AfterSermon van de preek?')));
-  uitvoer.appendChild(el('p', {className: 'sub'},
-    T('Kies één of meer uitvoeren. De standaard is dagstukjes.')));
-  const gekozenUit = mij.uitvoer_typen || ['dagstukjes'];
-  [['dagstukjes', T('Dagstukjes (weekboekje met 7 dagen)')],
-   ['preeksamenvatting', T('Preeksamenvatting')],
-   ['preektranscript', T('Preektranscript (volledige preektekst)')],
-   ['nabespreking', T('Vragen voor nabespreking (hoofd, hart, handen)')]]
-    .forEach(o => {
-      const rij = el('div', {className: 'rij'}); rij.style.marginTop = '.3rem';
-      const chk = el('input', {type: 'checkbox', id: 'uit_' + o[0], checked: gekozenUit.includes(o[0])});
-      chk.className = 'uitvoer-optie'; chk.value = o[0];
-      rij.append(chk, el('label', {htmlFor: 'uit_' + o[0]}, o[1]));
-      uitvoer.appendChild(rij);
-    });
-  kaart.insertBefore(uitvoer, knop);
   basisPane.appendChild(kaart);
   document.getElementById('kanaal').addEventListener('change', () => knop.click());
 
@@ -632,6 +613,69 @@ function toonDashboard(mij) {
   deel.appendChild(qrdl);
   ledenPane.appendChild(deel);
   fetch('/api/admin/inschrijflink').then(r => r.json()).then(d => linkveld.value = d.url);
+
+  // ===== Nieuwe opzet: hoofdscherm + iconen (Instellingen, Analyse) =====
+  // We laten alle bouwcode hierboven staan en hangen de secties nu in de nieuwe
+  // shell: hoofdscherm = Berichten (preek kiezen); instellingen en analyse achter
+  // een icoon. Instellingen zelf in sub-tabs per onderdeel.
+  tabNav.remove();
+
+  const instelPane = el('section', {className: 'tab-pane', id: 'tab-instel'});
+  const subnav = el('div', {className: 'subtabs'});
+  instelPane.appendChild(subnav);
+  const subpanes = [];
+  function subtab(label, nodes) {
+    const p = el('div'); p.style.marginTop = '.6rem';
+    if (subpanes.length) p.classList.add('weg');
+    nodes.forEach(n => { if (n) p.appendChild(n); });
+    const b = el('button', {type: 'button', className: subpanes.length ? '' : 'actief'}, label);
+    b.onclick = () => {
+      subpanes.forEach(x => x.classList.add('weg')); p.classList.remove('weg');
+      [...subnav.children].forEach(x => x.classList.toggle('actief', x === b));
+    };
+    subnav.appendChild(b); subpanes.push(p); instelPane.appendChild(p);
+  }
+  subtab(T('Verzending'), [kaart]);
+  subtab(T('Merk en uiterlijk'), [kleur, logoKaart]);
+  subtab(T('Bijbel en stijl'), [bijbel, stijl]);
+  subtab(T('Talen'), [talen]);
+  subtab(T('Verzendlijst'), [stats, subs, deel]);
+  subtab(T('Beheerders'), [bh]);
+  // Eén opslaan-knop onderaan; leest alle velden, ook uit verborgen sub-tabs.
+  const opslaanBalk = el('div'); opslaanBalk.style.marginTop = '1rem';
+  opslaanBalk.appendChild(knop);
+  instelPane.appendChild(opslaanBalk);
+
+  // Upload van een eigen preek hoort op het hoofdscherm.
+  berichtenPane.appendChild(up);
+
+  const panesNew = [berichtenPane, instelPane, analysePane];
+  const mkIcon = (txt, titel) => {
+    const b = el('button', {type: 'button', title: titel, ariaLabel: titel});
+    b.textContent = txt;
+    b.style.cssText = 'width:40px;height:40px;font-size:1.15rem;line-height:1;border:1px solid var(--rand,#e2e2dd);border-radius:.5rem;background:var(--kaart,#fff);cursor:pointer';
+    return b;
+  };
+  const homeBtn = mkIcon('⌂', T('Overzicht'));
+  const analyseBtn = mkIcon('📊', T('Analyse'));
+  const instelBtn = mkIcon('⚙', T('Instellingen'));
+  function toonHoofd(id, actiefBtn) {
+    panesNew.forEach(p => p.classList.toggle('actief', p.id === id));
+    [homeBtn, analyseBtn, instelBtn].forEach(b =>
+      b.style.borderColor = b === actiefBtn ? 'var(--groen,#2c5f2d)' : 'var(--rand,#e2e2dd)');
+  }
+  homeBtn.onclick = () => { toonHoofd('tab-berichten', homeBtn); if (mij.kanaal_url) laadKanaalDiensten(mij.kanaal_url); };
+  analyseBtn.onclick = () => { toonHoofd('tab-analyse', analyseBtn); laadAnalyse(); };
+  instelBtn.onclick = () => toonHoofd('tab-instel', instelBtn);
+  const iconbalk = el('div');
+  iconbalk.style.cssText = 'display:flex;gap:.4rem;justify-content:flex-end;margin-bottom:.8rem';
+  iconbalk.append(homeBtn, analyseBtn, instelBtn);
+
+  basisPane.remove(); ledenPane.remove();
+  berichtenPane.classList.add('actief');
+  inhoud.insertBefore(iconbalk, berichtenPane);
+  inhoud.appendChild(instelPane);
+  toonHoofd('tab-berichten', homeBtn);
 
   const uit = el('button', {className: 'link'}, 'Uitloggen');
   uit.onclick = async () => { await post('/api/admin/logout'); location.href = '/'; };
