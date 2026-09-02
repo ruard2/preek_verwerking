@@ -244,30 +244,8 @@ function toonDashboard(mij) {
   analysePane.appendChild(el('div',{className:'kaart',id:'analyse-kaart'},T('Laden…')));
   window._analysePane = analysePane;
 
-  // Onboarding-checklist (verdwijnt zodra alles is ingesteld).
-  (async () => {
-    const subs = await fetch('/api/admin/inschrijvers').then(r => r.json()).catch(() => []);
-    const bevestigd = Array.isArray(subs) ? subs.filter(s => s.bevestigd).length : 0;
-    const stappen = [
-      [!!mij.kanaal_url, T('Kanaal ingesteld'),
-        T('Zet je YouTube-, Kerkdienstgemist- of Kerkomroep-kanaal bij Basisinstellingen (of upload je preek bij Berichten).')],
-      [bevestigd > 0, bevestigd + ' ' + T('bevestigde inschrijver(s)'),
-        T('Deel je inschrijflink of QR-code (tab Verzendlijst) zodat gemeenteleden zich aanmelden.')],
-    ];
-    if (stappen.every(s => s[0])) return;
-    const c = el('div', {className: 'kaart'});
-    c.appendChild(el('h2', {}, T('Aan de slag')));
-    c.appendChild(el('p', {className: 'sub'}, T('Nog een paar stappen tot je eerste overdenkingen uitgaan:')));
-    stappen.forEach(([ok, titel, uitleg]) => {
-      const r = el('div'); r.style.margin = '.6rem 0';
-      const b = el('b', {}, (ok ? '✓ ' : '○ ') + titel);
-      b.style.color = ok ? 'var(--groen)' : 'var(--grijs)';
-      r.appendChild(b);
-      r.appendChild(el('div', {className: 'sub'}, uitleg));
-      c.appendChild(r);
-    });
-    berichtenPane.insertBefore(c, berichtenPane.firstChild);
-  })();
+  // (Het hoofdscherm — 'Aan de slag' + preek aanleveren + de 4 knoppen — wordt
+  //  onderaan gebouwd door bouwHoofdscherm.)
 
   const kaart = el('div', {className: 'kaart wide'});
   kaart.appendChild(el('div',{className:'eyebrow'},'Overzicht'));
@@ -529,36 +507,8 @@ function toonDashboard(mij) {
   ledenPane.appendChild(bh);
   laadBeheerders();
 
-  // --- Diensten & verzending ---
-  const auto = el('div', {className: 'kaart berichten-kaart'});
-  auto.appendChild(el('div',{className:'eyebrow'},'Berichten'));
-  auto.appendChild(el('h2', {}, 'Overdenkingen beheren'));
-  auto.appendChild(el('p', {className: 'sub'},
-    'De laatste vier weken worden automatisch uit je opgeslagen kanaal geladen. Open een dienst om de overdenking te verwerken of te bewerken.'));
-  const berichtTabs = el('div',{className:'subtabs'});
-  const wachtTab=el('button',{type:'button',className:'actief'},'Te versturen');
-  const klaarTab=el('button',{type:'button'},'Reeds verstuurd');
-  berichtTabs.append(wachtTab,klaarTab); auto.appendChild(berichtTabs);
-  const wachtLijst=el('div',{id:'uitz-wacht'});
-  const klaarLijst=el('div',{id:'uitz-klaar',className:'weg'});
-  wachtTab.onclick=()=>{wachtTab.className='actief';klaarTab.className='';wachtLijst.classList.remove('weg');klaarLijst.classList.add('weg');};
-  klaarTab.onclick=()=>{klaarTab.className='actief';wachtTab.className='';klaarLijst.classList.remove('weg');wachtLijst.classList.add('weg');};
-  const scanKnop = el('button', {className: 'secundair', type:'button'}, 'Kanaal nu vernieuwen');
-  scanKnop.id = 'scanKnop';
-  scanKnop.onclick = () => startScan();
-  auto.appendChild(scanKnop);
-  auto.appendChild(el('p', {id: 'scanStatus', className: 'sub'}, ''));
-  auto.append(wachtLijst,klaarLijst);
-  berichtenPane.appendChild(auto);
-  // (De losse 'Eigen preek uploaden'-kaart is bewust weggelaten: upload zit per
-  // dienst onder 'Openen & bewerken'.)
-  // (Testverzending zit nu op de beoordeel-pagina, vlak vóór goedkeuren/versturen.)
-  laadUitzendingen();
-  if (mij.kanaal_url) {
-    // Alleen de (wekelijks gecachete) lijst tonen — NIET automatisch scannen.
-    // Scannen gebeurt wekelijks vanzelf (achtergrond) of via de knop hieronder.
-    laadKanaalDiensten(mij.kanaal_url);
-  }
+  // (Het oude 'Berichten / Overdenkingen beheren'-blok is vervangen door het
+  //  nieuwe hoofdscherm: preek aanleveren -> de 4 knoppen, zie bouwHoofdscherm.)
 
   // --- Analytics ---
   const stats = el('div', {className: 'kaart'});
@@ -646,9 +596,6 @@ function toonDashboard(mij) {
   opslaanBalk.appendChild(knop);
   instelPane.appendChild(opslaanBalk);
 
-  // Upload van een eigen preek hoort op het hoofdscherm.
-  berichtenPane.appendChild(up);
-
   const panesNew = [berichtenPane, instelPane, analysePane];
   const mkIcon = (txt, titel) => {
     const b = el('button', {type: 'button', title: titel, ariaLabel: titel});
@@ -664,9 +611,11 @@ function toonDashboard(mij) {
     [homeBtn, analyseBtn, instelBtn].forEach(b =>
       b.style.borderColor = b === actiefBtn ? 'var(--groen,#2c5f2d)' : 'var(--rand,#e2e2dd)');
   }
-  homeBtn.onclick = () => { toonHoofd('tab-berichten', homeBtn); if (mij.kanaal_url) laadKanaalDiensten(mij.kanaal_url); };
+  homeBtn.onclick = () => toonHoofd('tab-berichten', homeBtn);
   analyseBtn.onclick = () => { toonHoofd('tab-analyse', analyseBtn); laadAnalyse(); };
   instelBtn.onclick = () => toonHoofd('tab-instel', instelBtn);
+  // Snelkoppeling vanaf het hoofdscherm naar de verzendlijst-tab (5e sub-tab).
+  window._naarVerzendlijst = () => { instelBtn.onclick(); if (subnav.children[4]) subnav.children[4].click(); };
   const iconbalk = el('div');
   iconbalk.style.cssText = 'display:flex;gap:.4rem;justify-content:flex-end;margin-bottom:.8rem';
   iconbalk.append(homeBtn, analyseBtn, instelBtn);
@@ -676,10 +625,266 @@ function toonDashboard(mij) {
   inhoud.insertBefore(iconbalk, berichtenPane);
   inhoud.appendChild(instelPane);
   toonHoofd('tab-berichten', homeBtn);
+  bouwHoofdscherm(mij, berichtenPane);
 
   const uit = el('button', {className: 'link'}, 'Uitloggen');
   uit.onclick = async () => { await post('/api/admin/logout'); location.href = '/'; };
   inhoud.appendChild(uit);
+}
+
+// ===================== Hoofdscherm: preek aanleveren -> 4 knoppen =====================
+const HG_CATS = [
+  ['terughalen', 'Vragen om de preek terug te halen'],
+  ['verdiepen', 'Verdiepende vragen over tekst en preek'],
+  ['landen', 'Vragen om tekst en preek te laten landen'],
+  ['handen', 'Vragen/opdrachten om handen en voeten te geven'],
+];
+const HG_LABEL = {terughalen: 'Terughalen', verdiepen: 'Verdiepen', landen: 'Laten landen', handen: 'Handen en voeten'};
+
+function bouwHoofdscherm(mij, pane) {
+  const T = s => AfterSermonI18n.text(s);
+  pane.innerHTML = '';
+
+  const start = el('div', {className: 'kaart'});
+  start.appendChild(el('h2', {}, T('Aan de slag')));
+
+  const stap1 = el('div'); stap1.style.margin = '.4rem 0 1rem';
+  const merk1 = el('b', {}, '○ ' + T('Preek aanleveren')); merk1.style.color = 'var(--grijs)';
+  stap1.appendChild(merk1);
+  stap1.appendChild(el('div', {className: 'sub'},
+    T('Plak een YouTube-, Kerkdienstgemist- of Kerkomroep-link, of upload je preek.')));
+  const linkrij = el('div'); linkrij.style.cssText = 'display:flex;gap:.5rem;margin:.5rem 0;flex-wrap:wrap';
+  const linkveld = el('input', {placeholder: 'https://...'}); linkveld.style.flex = '1 1 15rem';
+  const verwerkKnop = el('button', {}, T('Verwerk'));
+  linkrij.append(linkveld, verwerkKnop); stap1.appendChild(linkrij);
+  const uprij = el('div'); uprij.style.cssText = 'display:flex;gap:.5rem;align-items:center;flex-wrap:wrap';
+  const upIn = el('input', {type: 'file', accept: '.pdf,.docx,.txt,.mp3,.m4a,.wav,.ogg'});
+  const upKnop = el('button', {className: 'grijs'}, T('Upload'));
+  uprij.append(upIn, upKnop); stap1.appendChild(uprij);
+  const status = el('p', {className: 'sub'}); stap1.appendChild(status);
+  start.appendChild(stap1);
+
+  const stap2 = el('div'); stap2.style.margin = '.4rem 0';
+  const merk2 = el('b', {}, '○ ' + T('Inschrijvers')); merk2.style.color = 'var(--grijs)';
+  stap2.appendChild(merk2);
+  stap2.appendChild(el('div', {className: 'sub'},
+    T('Deel je inschrijflink of QR-code zodat gemeenteleden zich aanmelden.')));
+  const naarLijst = el('button', {className: 'grijs'}, T('Inschrijflink en QR-code'));
+  naarLijst.style.marginTop = '.4rem';
+  naarLijst.onclick = () => window._naarVerzendlijst && window._naarVerzendlijst();
+  stap2.appendChild(naarLijst);
+  start.appendChild(stap2);
+  pane.appendChild(start);
+
+  const houder = el('div'); pane.appendChild(houder);
+
+  fetch('/api/admin/inschrijvers').then(r => r.json()).then(subs => {
+    const n = Array.isArray(subs) ? subs.filter(s => s.bevestigd).length : 0;
+    if (n > 0) { merk2.textContent = '✓ ' + n + ' ' + T('bevestigde inschrijver(s)'); merk2.style.color = 'var(--groen)'; }
+  }).catch(() => {});
+
+  const klaar = (videoId, heeftPreek) => {
+    merk1.textContent = '✓ ' + T('Preek aangeleverd'); merk1.style.color = 'var(--groen)';
+    status.textContent = '';
+    hs_toonKeuze(houder, videoId, heeftPreek);
+  };
+  verwerkKnop.onclick = () => hs_verwerkLink(linkveld.value.trim(), status, houder, klaar);
+  upKnop.onclick = () => hs_uploadPreek(upIn.files[0], status, klaar);
+}
+
+async function hs_verwerkLink(url, status, houder, klaar) {
+  const T = s => AfterSermonI18n.text(s);
+  if (!url) { status.textContent = T('Plak eerst een link.'); return; }
+  houder.innerHTML = ''; status.textContent = T('Link controleren…');
+  try {
+    const k = await fetch('/api/kanaal?url=' + encodeURIComponent(url)).then(r => r.ok ? r.json() : Promise.reject(r));
+    if (k.soort === 'lijst') { hs_toonDiensten(k.diensten || [], status, houder, klaar); return; }
+    hs_startVerwerken(k.url || url, status, klaar);
+  } catch (e) {
+    let m = T('Kon de link niet lezen.');
+    if (e && typeof e.json === 'function') { try { m = await fouttekst(e, m); } catch (_) {} }
+    else if (e && e.message) m = e.message;
+    status.textContent = m;
+  }
+}
+
+function hs_toonDiensten(diensten, status, houder, klaar) {
+  const T = s => AfterSermonI18n.text(s);
+  status.textContent = T('Kies een dienst:');
+  houder.innerHTML = '';
+  const kaart = el('div', {className: 'kaart'});
+  kaart.appendChild(el('h2', {}, T('Diensten')));
+  if (!diensten.length) kaart.appendChild(el('p', {className: 'sub'}, T('Geen recente diensten gevonden.')));
+  diensten.forEach(d => {
+    const b = el('button', {className: 'grijs'}, (d.datum ? d.datum + ' · ' : '') + (d.titel || d.label || 'Dienst'));
+    b.style.cssText = 'display:block;width:100%;text-align:left;margin:.3rem 0';
+    b.onclick = () => { houder.innerHTML = ''; hs_startVerwerken(d.url, status, klaar); };
+    kaart.appendChild(b);
+  });
+  houder.appendChild(kaart);
+}
+
+async function hs_startVerwerken(url, status, klaar) {
+  const T = s => AfterSermonI18n.text(s);
+  status.textContent = T('Verwerken… (dit kan enkele minuten duren)');
+  try {
+    const r = await fetch('/api/verwerk', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({url})});
+    if (!r.ok) throw new Error(await fouttekst(r, T('Verwerken mislukt.')));
+    const {taak_id} = await r.json();
+    hs_volgTaak(taak_id, status, klaar);
+  } catch (e) { status.textContent = e.message; }
+}
+
+async function hs_volgTaak(taakId, status, klaar) {
+  while (true) {
+    await new Promise(r => setTimeout(r, 2500));
+    let t;
+    try { t = await fetch('/api/status/' + taakId).then(r => r.json()); } catch (e) { continue; }
+    if (t.status === 'fout') { status.textContent = t.fout || 'Er ging iets mis.'; return; }
+    if (t.status === 'klaar') { klaar(t.resultaat.video_id, t.resultaat.heeft_preek); return; }
+    if (t.stap) status.textContent = t.stap;
+  }
+}
+
+async function hs_uploadPreek(file, status, klaar) {
+  const T = s => AfterSermonI18n.text(s);
+  if (!file) { status.textContent = T('Kies eerst een bestand.'); return; }
+  status.textContent = T('Verwerken… (dit kan enkele minuten duren)');
+  try {
+    const fd = new FormData(); fd.append('file', file);
+    const r = await fetch('/api/admin/upload', {method: 'POST', body: fd});
+    if (!r.ok) throw new Error(await fouttekst(r, T('Uploaden mislukt.')));
+    const d = await r.json();
+    klaar(d.video_id, true);
+  } catch (e) { status.textContent = e.message; }
+}
+
+function hs_toonKeuze(houder, videoId, heeftPreek) {
+  const T = s => AfterSermonI18n.text(s);
+  houder.innerHTML = '';
+  const kaart = el('div', {className: 'kaart'});
+  kaart.appendChild(el('h2', {}, T('Wat wil je met deze preek?')));
+  kaart.appendChild(el('p', {className: 'sub'}, T('Er wordt pas AI gebruikt als je iets kiest.')));
+  const rij = el('div'); rij.style.cssText = 'display:flex;flex-wrap:wrap;gap:.6rem;margin-top:.6rem';
+  if (heeftPreek) {
+    const b1 = el('a', {href: '/api/preek/' + videoId + '.pdf'}, '1 · ' + T('Preektekst (PDF)'));
+    b1.className = 'grijs'; b1.style.cssText = 'text-decoration:none;padding:.6rem 1rem;border-radius:.45rem';
+    rij.appendChild(b1);
+  }
+  const b2 = el('button', {className: 'grijs'}, '2 · ' + T('Samenvatting (PDF)'));
+  b2.onclick = () => hs_genereer(videoId, 'samenvatting', b2, true);
+  const b3 = el('button', {className: 'grijs'}, '3 · ' + T('Vragen voor groepen…'));
+  b3.onclick = () => hs_groepsForm(houder, videoId);
+  const b4 = el('button', {}, '4 · ' + T('Dagstukjes'));
+  b4.onclick = () => hs_maakDagstukjes(houder, videoId, b4);
+  rij.append(b2, b3, b4);
+  kaart.appendChild(rij);
+  houder.appendChild(kaart);
+}
+
+async function hs_genereer(videoId, wat, knop, download) {
+  const T = s => AfterSermonI18n.text(s);
+  const orig = knop.textContent; knop.disabled = true; knop.textContent = T('Bezig…');
+  try {
+    const r = await fetch('/api/genereer/' + videoId, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({wat})});
+    if (!r.ok) throw new Error(await fouttekst(r, T('Genereren mislukt.')));
+    if (download) window.location.href = '/api/pdf/' + videoId;
+  } catch (e) { toon('fout', e.message); }
+  finally { knop.disabled = false; knop.textContent = orig; }
+}
+
+async function hs_maakDagstukjes(houder, videoId, knop) {
+  const T = s => AfterSermonI18n.text(s);
+  const orig = knop.textContent; knop.disabled = true; knop.textContent = T('Bezig met genereren…');
+  try {
+    const r = await fetch('/api/genereer/' + videoId, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({wat: 'dagstukjes'})});
+    if (!r.ok) throw new Error(await fouttekst(r, T('Genereren mislukt.')));
+    hs_toonDagstukjes(houder, videoId);
+  } catch (e) { toon('fout', e.message); }
+  finally { knop.disabled = false; knop.textContent = orig; }
+}
+
+function hs_toonDagstukjes(houder, videoId) {
+  const T = s => AfterSermonI18n.text(s);
+  const kaart = el('div', {className: 'kaart'});
+  kaart.appendChild(el('h2', {}, T('Dagstukjes — naar wie?')));
+  const rij = el('div'); rij.style.cssText = 'display:flex;flex-wrap:wrap;gap:.6rem;margin:.4rem 0';
+  const verstuur = el('button', {}, T('Verstuur naar je lijst'));
+  verstuur.onclick = async () => {
+    if (!confirm(T('Het weekboekje naar alle bevestigde inschrijvers versturen?'))) return;
+    verstuur.disabled = true; verstuur.textContent = T('Versturen…');
+    try {
+      const r = await fetch('/api/admin/verstuur/' + videoId, {method: 'POST'});
+      if (!r.ok) throw new Error(await fouttekst(r, T('Versturen mislukt.')));
+      const d = await r.json();
+      verstuur.textContent = T('Verzonden naar') + ' ' + d.verzonden + ' ✓';
+    } catch (e) { toon('fout', e.message); verstuur.disabled = false; verstuur.textContent = T('Verstuur naar je lijst'); }
+  };
+  const dl = el('a', {href: '/api/pdf/' + videoId}, T('Download PDF'));
+  dl.className = 'grijs'; dl.style.cssText = 'text-decoration:none;padding:.6rem 1rem;border-radius:.45rem';
+  rij.append(verstuur, dl); kaart.appendChild(rij);
+  kaart.appendChild(el('p', {className: 'sub'},
+    T('Nog geen lijst? Deel een QR-code, mensen schrijven zich zelf in, en daarna gaan de dagstukjes automatisch elke week uit.')));
+  const beheer = el('button', {className: 'grijs'}, T('Beheer verzendlijst'));
+  beheer.onclick = () => window._naarVerzendlijst && window._naarVerzendlijst();
+  kaart.appendChild(beheer);
+  houder.appendChild(kaart);
+}
+
+function hs_groepsForm(houder, videoId) {
+  const T = s => AfterSermonI18n.text(s);
+  let opg = {}; try { opg = JSON.parse(localStorage.getItem('groepsvragen_opties')) || {}; } catch (e) {}
+  const kaart = el('div', {className: 'kaart'});
+  kaart.appendChild(el('h2', {}, T('Vragen voor groepen')));
+  kaart.appendChild(el('label', {}, T('Leeftijd')));
+  const leeftijd = el('select');
+  ['Volwassenen', 'Jongeren (16-25)', 'Tieners (12-16)', 'Kinderen (6-12)', 'Alle leeftijden']
+    .forEach(x => leeftijd.appendChild(el('option', {value: x}, x)));
+  leeftijd.value = opg.leeftijd || 'Volwassenen'; kaart.appendChild(leeftijd);
+  kaart.appendChild(el('label', {}, T('Aantal vragen')));
+  const aantal = el('select');
+  [5, 10, 15, 20].forEach(n => aantal.appendChild(el('option', {value: n}, n)));
+  aantal.value = String(opg.aantal || 10); kaart.appendChild(aantal);
+  kaart.appendChild(el('label', {}, T('Soorten vragen')));
+  const gekozen = opg.categorieen || ['verdiepen', 'landen', 'handen'];
+  const checks = {};
+  HG_CATS.forEach(([key, label]) => {
+    const r = el('div'); r.style.margin = '.2rem 0';
+    const chk = el('input', {type: 'checkbox', id: 'hg_' + key, checked: gekozen.includes(key)});
+    checks[key] = chk;
+    r.append(chk, el('label', {htmlFor: 'hg_' + key}, ' ' + T(label)));
+    kaart.appendChild(r);
+  });
+  const knop = el('button', {}, T('Genereer vragen')); knop.style.marginTop = '.7rem';
+  knop.onclick = async () => {
+    const categorieen = Object.keys(checks).filter(k => checks[k].checked);
+    if (!categorieen.length) { toon('fout', T('Kies minstens één soort vragen.')); return; }
+    const opties = {leeftijd: leeftijd.value, aantal: +aantal.value, categorieen};
+    try { localStorage.setItem('groepsvragen_opties', JSON.stringify(opties)); } catch (e) {}
+    const orig = knop.textContent; knop.disabled = true; knop.textContent = T('Bezig met genereren…');
+    try {
+      const r = await fetch('/api/groepsvragen/' + videoId, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(opties)});
+      if (!r.ok) throw new Error(await fouttekst(r, T('Genereren mislukt.')));
+      const out = await r.json();
+      hs_toonGroepsvragen(houder, videoId, out.groepsvragen);
+    } catch (e) { toon('fout', e.message); knop.disabled = false; knop.textContent = orig; }
+  };
+  kaart.appendChild(knop);
+  houder.appendChild(kaart);
+}
+
+function hs_toonGroepsvragen(houder, videoId, vragen) {
+  const T = s => AfterSermonI18n.text(s);
+  const dl = el('a', {href: '/api/groepsvragen/' + videoId + '.pdf'}, T('Download PDF'));
+  dl.className = 'grijs'; dl.style.cssText = 'display:inline-block;text-decoration:none;padding:.6rem 1rem;border-radius:.45rem;margin:.4rem 0';
+  houder.appendChild(dl);
+  Object.keys(vragen || {}).forEach(cat => {
+    const lijst = vragen[cat] || []; if (!lijst.length) return;
+    const k = el('div', {className: 'kaart'});
+    k.appendChild(el('h2', {}, HG_LABEL[cat] || cat));
+    lijst.forEach((v, i) => k.appendChild(el('p', {}, (i + 1) + '. ' + v)));
+    houder.appendChild(k);
+  });
 }
 
 let kanaalDiensten = [];
