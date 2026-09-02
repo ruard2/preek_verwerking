@@ -59,30 +59,58 @@ def test_transcript_output_hergebruikt_schone_tekst():
     assert r["data"].get("preektranscript") == "schone preek"
 
 
-def test_herverwerk_transcribeert_nooit_opnieuw():
-    """Met een opgeslagen transcript wordt er nooit opnieuw gedownload/getranscribeerd."""
-    stored = {
-        "data": {"taal": "nl", "titel": "T", "dagen": []},
+def _bron_info_gemockt():
+    return {
+        "transcript": "verse ruwe tekst", "taal_hint": "nl", "welkom": None,
+        "extra_context": None, "volledige_dienst": False, "liturgie": None,
+        "ondertitel": "T", "meta": {"titel": "T"},
+    }
+
+
+def test_uitvoer_toevoegen_hergebruikt_transcript_zonder_herverwerk():
+    """Uitvoer toevoegen (geen herverwerk, transcript al opgeslagen) transcribeert niet opnieuw."""
+    stored = {  # transcript al opgeslagen, maar nog geen 'data' -> lui verwerken
         "transcript_ruw": "eerdere ruwe tekst", "preek_schoon": "eerder schoon",
         "meta": {"titel": "T"}, "ondertitel": "T",
-        "bron_info": {"taal_hint": "nl", "welkom": None, "extra_context": None,
-                      "volledige_dienst": False, "liturgie": None,
+        "bron_info": {"taal_hint": "nl", "volledige_dienst": False,
                       "ondertitel": "T", "meta": {"titel": "T"}},
     }
     with patch.object(main, "_transcribeer_bron") as t, \
          patch.object(main, "verwerk_preek",
-                      return_value={"taal": "nl", "titel": "T", "dagen": [{"titel": "d"}]}) as vp, \
+                      return_value={"taal": "nl", "titel": "T", "dagen": [{"titel": "d"}]}), \
          patch.object(main, "llm_maak_basis", return_value={"taal": "nl", "dagen": []}), \
          patch.object(main, "llm_schoon_transcript", return_value="opnieuw schoon") as sc, \
          patch.object(main, "llm_maak_nabespreking",
                       return_value={"hoofd": ["h"], "hart": ["a"], "handen": ["n"]}), \
          patch.object(main.store, "resultaat_ophalen", return_value=stored), \
          patch.object(main.store, "resultaat_opslaan"):
+        main.verwerk_en_bewaar(
+            "https://www.youtube.com/watch?v=abcdefghijk", herverwerk=False,
+            uitvoer_typen=["dagstukjes"],
+        )
+    t.assert_not_called()   # geen herverwerk: opgeslagen transcript hergebruikt
+    sc.assert_not_called()  # opgeslagen schone tekst hergebruikt
+
+
+def test_opnieuw_verwerken_transcribeert_wel_opnieuw():
+    """'Opnieuw verwerken' (herverwerk=True) transcribeert bewust opnieuw, zodat een
+    slecht transcript vervangen kan worden door een betere bron (bijv. de proxy)."""
+    stored = {
+        "data": {"taal": "nl", "titel": "T", "dagen": []},
+        "transcript_ruw": "slecht oud transcript", "preek_schoon": "oud schoon",
+        "meta": {"titel": "T"}, "ondertitel": "T",
+    }
+    with patch.object(main, "_transcribeer_bron", return_value=_bron_info_gemockt()) as t, \
+         patch.object(main, "verwerk_preek",
+                      return_value={"taal": "nl", "titel": "T", "dagen": [{"titel": "d"}]}) as vp, \
+         patch.object(main, "llm_maak_basis", return_value={"taal": "nl", "dagen": []}), \
+         patch.object(main, "llm_schoon_transcript", return_value="nieuw schoon"), \
+         patch.object(main.store, "resultaat_ophalen", return_value=stored), \
+         patch.object(main.store, "resultaat_opslaan"):
         r = main.verwerk_en_bewaar(
             "https://www.youtube.com/watch?v=abcdefghijk", herverwerk=True,
-            uitvoer_typen=["dagstukjes", "nabespreking"],
+            uitvoer_typen=["dagstukjes"],
         )
-    t.assert_not_called()             # NOOIT opnieuw transcriberen/downloaden
-    sc.assert_not_called()            # opgeslagen schone tekst hergebruikt
-    assert vp.call_count == 1         # wél opnieuw genereren (herverwerk)
-    assert r["data"].get("nabespreking")
+    t.assert_called_once()            # WÉL opnieuw transcriberen
+    assert vp.call_count == 1
+    assert r["transcript_ruw"] == "verse ruwe tekst"   # nieuw transcript, niet het oude

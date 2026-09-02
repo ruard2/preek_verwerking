@@ -189,7 +189,9 @@ def _lijst_youtube(kanaal_url):
         if supadata.beschikbaar():
             return supadata.lijst_kanaal(kanaal_url)
         raise
-    if supadata.beschikbaar():
+    # Datums aanvullen via Supadata alleen als er GÉÉN proxy is; met een proxy werkt
+    # yt-dlp en willen we Supadata (en de credits) helemaal niet meer aanraken.
+    if supadata.beschikbaar() and not ts.proxy_actief():
         _verrijk_datums_via_supadata(diensten)
     return diensten
 
@@ -334,36 +336,19 @@ def _youtube_via_supadata(url, meld):
 def _youtube_via_ytdlp(url, meld):
     """YouTube-transcript via onze eigen yt-dlp-download + Whisper (residentiële proxy).
 
-    Eerst proberen we de preek af te bakenen via de ondertitels (dan transcriberen
-    we alleen het preekdeel). Lukt dat niet (geen/lege ondertitels bij livestreams),
-    dan transcriberen we de hele audio en haalt het taalmodel zelf de preek eruit.
+    We vertrouwen NIET op de (bij livestreams onbetrouwbare) auto-ondertitels om de
+    preek af te bakenen — dat gaf lege/verkeerde vensters. In plaats daarvan
+    transcriberen we de hele audio en haalt het taalmodel zelf het preekgedeelte
+    eruit (volledige_dienst=True). Bij te weinig tekst werpen we een fout, zodat de
+    aanroeper kan terugvallen (i.p.v. een onbruikbaar mini-transcript door te geven).
     """
-    seg = None
-    try:
-        seg = haal_preek_segmentatie(url, voortgang=meld)
-    except Exception:  # noqa: BLE001 — geen bruikbare ondertitels: dan de hele audio
-        seg = None
-
-    if seg and seg.get("tijden") and not seg.get("volledige_dienst"):
-        meta = seg["meta"]
-        delen = f", {meta['delen']} delen" if meta.get("delen", 1) > 1 else ""
-        meld(
-            f"Preek gevonden ({meta['preek_start']}–{meta['preek_einde']}{delen}). "
-            "Preekaudio ophalen en transcriberen (OpenAI, via eigen proxy)..."
-        )
-        transcript = transcribeer_preek(url, seg["tijden"], voortgang=meld)
-        meta["transcriptie_bron"] = "audio via proxy (OpenAI)"
-        return {
-            "transcript": transcript,
-            "taal_hint": (meta.get("taal") or "nl").split("-")[0],
-            "welkom": seg.get("welkom"), "extra_context": None,
-            "volledige_dienst": False, "liturgie": None,
-            "ondertitel": meta.get("titel"), "meta": meta,
-        }
-
-    # Geen bruikbare ondertitels: hele audio transcriberen, AI haalt de preek eruit.
-    meld("Hele audio ophalen en transcriberen (OpenAI, via eigen proxy)...")
+    meld("Audio ophalen en transcriberen (OpenAI, via eigen proxy)...")
     transcript = transcribeer_hele_video(url, voortgang=meld)
+    if len((transcript or "").strip()) < 200:
+        raise RuntimeError(
+            "De audio-transcriptie leverde te weinig tekst op (download mislukt of "
+            "geen spraak)."
+        )
     titel = _titel_uit_cache(url) or "YouTube-dienst"
     return {
         "transcript": transcript, "taal_hint": None, "welkom": None,
@@ -495,11 +480,13 @@ def verwerk_en_bewaar(url, herverwerk=False, meld=None, bijbel=None, uitvoer_typ
 
     typen = parse_uitvoer(uitvoer_typen)
 
-    # 2. Transcript: downloaden/transcriberen gebeurt HOOGSTENS ÉÉN KEER. Is er al een
-    #    transcript opgeslagen, dan hergebruiken we dat (ook bij herverwerken en bij het
-    #    toevoegen van een uitvoer) — nooit opnieuw luisteren.
+    # 2. Transcript: automatisch downloaden/transcriberen gebeurt HOOGSTENS ÉÉN KEER.
+    #    Is er al een transcript opgeslagen, dan hergebruiken we dat (bij het toevoegen
+    #    van een uitvoer, lui verwerken, enz.) — nooit ongevraagd opnieuw luisteren.
+    #    Bij een BEWUSTE 'Opnieuw verwerken' (herverwerk=True) transcriberen we wél
+    #    opnieuw — zo kun je een slecht transcript vervangen door een betere bron.
     preek_schoon = ""
-    if bewaard and bewaard.get("transcript_ruw"):
+    if bewaard and bewaard.get("transcript_ruw") and not herverwerk:
         transcript_ruw = bewaard["transcript_ruw"]
         opgeslagen_data = bewaard.get("data") or {}
         bron_info = {

@@ -69,7 +69,10 @@ def _download_audio(url, map_):
     opties.update(
         {
             "skip_download": False,
-            "format": "bestaudio/best",
+            # Alleen audio (klein + snel via de proxy, scheelt bandbreedte/kosten):
+            # m4a (itag 140, ~128 kbps) als eerste keus, anders elke audio-only stream,
+            # en pas als laatste redmiddel een gecombineerd formaat.
+            "format": "bestaudio[ext=m4a]/bestaudio[vcodec=none]/bestaudio/best",
             "outtmpl": os.path.join(map_, "audio.%(ext)s"),
         }
     )
