@@ -636,6 +636,23 @@ def recente_preken(request: Request, db=Depends(get_db)):
             "klaar": bool(bewaard and (bewaard.get("transcript_ruw") or "").strip()),
             "heeft_preek": bool(bewaard and bewaard.get("preek_schoon")),
         })
+    # Login-freshness: is auto-verwerken aan en staat er (nog) niets, start dan op de
+    # achtergrond een scan + voorverwerking (niet wachten op de trage tick).
+    if kerk.auto_verwerken and kerk.kanaal_url and not uitz:
+        base = _basis_url(request)
+        kerk_id = kerk.id
+
+        def _bg():
+            d = SessionLocal()
+            try:
+                k = d.get(Church, kerk_id)
+                automatisering.scan_kerk(d, k, base)
+                automatisering.preverwerk_kerk(d, k, base)
+            except Exception:  # noqa: BLE001
+                d.rollback()
+            finally:
+                d.close()
+        threading.Thread(target=_bg, daemon=True).start()
     return {"zondag": str(zondag), "auto_verwerken": bool(kerk.auto_verwerken), "preken": preken}
 
 
@@ -920,11 +937,12 @@ async def upload_preek(
 
     video_id = "upload_" + secrets.token_hex(8)
     try:
+        # Alleen transcriberen/opslaan — genereren gebeurt op aanvraag (de 4 knoppen),
+        # zodat de AI niet onnodig draait bij het uploaden.
         data = main.verwerk_tekst_en_bewaar(
             video_id, tekst, titel_hint=file.filename,
             volledige_dienst=audio_mod.is_audio(file.filename),
-            bijbel=main.bijbel_van_kerk(kerk),
-            uitvoer_typen=main.uitvoer_van_kerk(kerk),
+            alleen_transcript=True,
         )
     except Exception as fout:  # noqa: BLE001
         raise HTTPException(502, f"Verwerken lukte niet: {fout}")

@@ -552,15 +552,19 @@ def verwerk_en_bewaar(url, herverwerk=False, meld=None, bijbel=None, uitvoer_typ
 
 
 def verwerk_tekst_en_bewaar(video_id, tekst, titel_hint=None, volledige_dienst=False,
-                            bijbel=None, uitvoer_typen=None):
+                            bijbel=None, uitvoer_typen=None, alleen_transcript=False):
     """Verwerk een aangeleverde preektekst of dienst-transcript en bewaar het.
 
     Bij een document (preekmanuscript) is de tekst de preek zelf. Bij audio van
     een volledige dienst (volledige_dienst=True) moet het model zelf het
-    preekgedeelte eruit halen.
+    preekgedeelte eruit halen. Met alleen_transcript=True wordt er niets
+    gegenereerd (alleen opgeslagen), zodat de gebruiker daarna zelf kiest.
     """
     typen = parse_uitvoer(uitvoer_typen)
-    if "dagstukjes" in typen:
+    if alleen_transcript:
+        data = {"taal": None, "titel": (titel_hint or "Preek"), "bijbelgedeelte": "",
+                "voorganger": None, "samenvatting": "", "dagen": [], "voorbereid": True}
+    elif "dagstukjes" in typen:
         data = verwerk_preek(tekst, volledige_dienst=volledige_dienst, **(bijbel or {}))
         bijbeltekst.verrijk_dagen(data, bijbel or {})
     else:
@@ -568,7 +572,8 @@ def verwerk_tekst_en_bewaar(video_id, tekst, titel_hint=None, volledige_dienst=F
     if titel_hint and not data.get("titel"):
         data["titel"] = titel_hint
     # Bij upload is de aangeleverde tekst zelf de (geschreven) preek.
-    _pas_uitvoer_toe(data, typen, tekst, tekst, lambda _s: None)
+    if not alleen_transcript:
+        _pas_uitvoer_toe(data, typen, tekst, tekst, lambda _s: None)
     rendered = render.naar_tekst(data)
     payload = {
         "data": data, "tekst": rendered,
