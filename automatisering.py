@@ -176,6 +176,39 @@ def scan_kerk(db, kerk, base_url, nu_lokaal=None, vernieuw=False):
     return verwerkt
 
 
+def preverwerk_kerk(db, kerk, base_url, nu_lokaal=None):
+    """Transcribeer (achtergrond) de dienst(en) van afgelopen zondag vast, zodat ze
+    klaarstaan als de beheerder inlogt. Alleen transcript + opschonen; het genereren
+    van dagstukjes/samenvatting/vragen gebeurt pas op aanvraag. Idempotent: al
+    verwerkte diensten worden overgeslagen (hun transcript zit al in de opslag)."""
+    if not kerk.auto_verwerken:
+        return 0
+    import main
+    nu_lokaal = nu_lokaal or _nu_lokaal(kerk)
+    vandaag = nu_lokaal.date()
+    zondag = vandaag - timedelta(days=(vandaag.weekday() + 1) % 7)  # meest recente zondag
+    uitzendingen = db.scalars(
+        select(Uitzending).where(
+            Uitzending.kerk_id == kerk.id, Uitzending.datum == zondag
+        )
+    ).all()
+    gedaan = 0
+    for uit in uitzendingen:
+        bewaard = store.resultaat_ophalen(uit.video_id)
+        if bewaard and (bewaard.get("transcript_ruw") or "").strip():
+            continue  # al (voor)verwerkt
+        try:
+            main.verwerk_en_bewaar(
+                uit.url, alleen_transcript=True,
+                bijbel=main.bijbel_van_kerk(kerk),
+                uitvoer_typen=main.uitvoer_van_kerk(kerk),
+            )
+            gedaan += 1
+        except Exception:  # noqa: BLE001 — één dienst mag de rest niet blokkeren
+            _log.exception("Vooraf transcriberen mislukt voor uitzending %s", uit.id)
+    return gedaan
+
+
 def _stuur_goedkeur_mail(kerk, uit, base_url):
     goedkeur = f"{base_url}/api/uitzending/goedkeuren?token={uit.goedkeur_token}"
     bewerk = f"{base_url}/uitzending?token={uit.goedkeur_token}"
@@ -266,6 +299,8 @@ def tick(base_url):
                 continue
             try:
                 nieuw = scan_kerk(db, kerk, base_url) if kerk.auto_scan else 0
+                if kerk.auto_verwerken:
+                    preverwerk_kerk(db, kerk, base_url)
                 verzonden = bezorg_kerk(db, kerk, base_url)
                 if nieuw or verzonden:
                     _log.info(

@@ -284,7 +284,13 @@ function toonDashboard(mij) {
   kaart.appendChild(el('label', {}, 'Verzendtijd'));
   kaart.appendChild(el('input', {id: 'vtijd', type: 'time', value: mij.verzend_tijd || '07:00'}));
 
-  const rij = el('div', {className: 'rij'}); rij.style.marginTop = '.9rem';
+  const rij0 = el('div', {className: 'rij'}); rij0.style.marginTop = '.9rem';
+  const chk0 = el('input', {id: 'autoverwerk', type: 'checkbox', checked: !!mij.auto_verwerken});
+  rij0.append(chk0, el('label', {htmlFor: 'autoverwerk'},
+    T('Preken automatisch op de achtergrond verwerken (dan staan de preken van afgelopen zondag klaar als je inlogt)')));
+  kaart.appendChild(rij0);
+
+  const rij = el('div', {className: 'rij'}); rij.style.marginTop = '.5rem';
   const chk = el('input', {id: 'auto', type: 'checkbox', checked: !!mij.auto_versturen});
   rij.append(chk, el('label', {htmlFor: 'auto'},
     'Automatisch versturen (uit = eerst zelf goedkeuren via de mail die je krijgt)'));
@@ -310,6 +316,7 @@ function toonDashboard(mij) {
         kanaal_url: kanaalUrl, tijdzone: val('tz'),
         verzend_dag: +val('vdag'), verzend_tijd: val('vtijd'),
         auto_versturen: document.getElementById('auto').checked,
+        auto_verwerken: document.getElementById('autoverwerk').checked,
         versturen_zonder_goedkeuring: document.getElementById('zonder').checked,
         ai_disclaimer: document.getElementById('aidiscl').checked,
         admin_taal: val('admin_taal'), inschrijf_taal: val('inschrijf_taal'),
@@ -703,10 +710,24 @@ function bouwHoofdscherm(mij, pane) {
   naarLijst.style.marginTop = '.4rem';
   naarLijst.onclick = () => window._naarVerzendlijst && window._naarVerzendlijst();
   stap2.appendChild(naarLijst);
-  start.appendChild(stap2);
-  pane.appendChild(start);
+  const inschrijversCard = el('div', {className: 'kaart'});
+  inschrijversCard.appendChild(stap2);
 
-  const houder = el('div'); pane.appendChild(houder);
+  const houder = el('div');
+  const recentHouder = el('div');
+  if (mij.auto_verwerken) {
+    // Automatisch verwerken aan: toon de preken van afgelopen zondag; aanleveren
+    // van een andere preek wordt secundair (inklapbaar).
+    pane.append(recentHouder, inschrijversCard);
+    start.hidden = true;
+    const meer = el('button', {className: 'secundair'}, T('Andere preek verwerken'));
+    meer.style.marginTop = '1rem';
+    meer.onclick = () => { start.hidden = !start.hidden; };
+    pane.append(meer, start, houder);
+    hs_recenteLijst(recentHouder);
+  } else {
+    pane.append(start, inschrijversCard, houder);
+  }
 
   fetch('/api/admin/inschrijvers').then(r => r.json()).then(subs => {
     const n = Array.isArray(subs) ? subs.filter(s => s.bevestigd).length : 0;
@@ -814,27 +835,63 @@ async function hs_uploadPreek(file, status, klaar, aanleverBox) {
   } catch (e) { status.textContent = e.message; if (aanleverBox) aanleverBox.hidden = false; }
 }
 
-function hs_toonKeuze(houder, videoId, heeftPreek) {
+function hs_toonKeuze(houder, videoId, heeftPreek, compact) {
   const T = s => AfterSermonI18n.text(s);
   houder.innerHTML = '';
-  const kaart = el('div', {className: 'kaart'});
-  kaart.appendChild(el('h2', {}, T('Wat wil je met deze preek?')));
-  kaart.appendChild(el('p', {className: 'sub'}, T('Er wordt pas AI gebruikt als je iets kiest.')));
-  const rij = el('div'); rij.style.cssText = 'display:flex;flex-wrap:wrap;gap:.6rem;margin-top:.6rem';
+  const doel = compact ? houder : el('div', {className: 'kaart'});
+  if (!compact) {
+    doel.appendChild(el('h2', {}, T('Wat wil je met deze preek?')));
+    doel.appendChild(el('p', {className: 'sub'}, T('Er wordt pas AI gebruikt als je iets kiest.')));
+  }
+  const rij = el('div'); rij.style.cssText = 'display:flex;flex-wrap:wrap;gap:.6rem;margin-top:.7rem';
   if (heeftPreek) {
-    const b1 = el('a', {href: '/api/preek/' + videoId + '.pdf'}, '1 · ' + T('Preektekst (PDF)'));
-    b1.className = 'grijs'; b1.style.cssText = 'text-decoration:none;padding:.6rem 1rem;border-radius:.45rem';
+    const b1 = el('a', {href: '/api/preek/' + videoId + '.pdf'}, T('Preektekst'));
+    b1.className = 'secundair';
+    b1.style.cssText = 'text-decoration:none;padding:.55rem 1.1rem;border-radius:.45rem;font-weight:650';
     rij.appendChild(b1);
   }
-  const b2 = el('button', {className: 'grijs'}, '2 · ' + T('Samenvatting (PDF)'));
+  const b2 = el('button', {className: 'secundair'}, T('Samenvatting'));
   b2.onclick = () => hs_genereer(videoId, 'samenvatting', b2, true);
-  const b3 = el('button', {className: 'grijs'}, '3 · ' + T('Vragen voor groepen…'));
+  const b3 = el('button', {className: 'secundair'}, T('Vragen voor groepen…'));
   b3.onclick = () => hs_groepsForm(houder, videoId);
-  const b4 = el('button', {}, '4 · ' + T('Dagstukjes'));
+  const b4 = el('button', {}, T('Dagstukjes'));
   b4.onclick = () => hs_maakDagstukjes(houder, videoId, b4);
   rij.append(b2, b3, b4);
-  kaart.appendChild(rij);
-  houder.appendChild(kaart);
+  doel.appendChild(rij);
+  if (!compact) houder.appendChild(doel);
+}
+
+async function hs_recenteLijst(container) {
+  const T = s => AfterSermonI18n.text(s);
+  container.innerHTML = '';
+  const kaart = el('div', {className: 'kaart'});
+  kaart.appendChild(el('h2', {}, T('Preken van afgelopen zondag')));
+  kaart.appendChild(el('p', {className: 'sub'},
+    T('Kies wat je met een preek wilt. Nieuwe preken worden op de achtergrond verwerkt.')));
+  const lijst = el('div'); kaart.appendChild(lijst);
+  container.appendChild(kaart);
+  let data;
+  try { data = await fetch('/api/admin/recente-preken').then(r => r.json()); }
+  catch (e) { lijst.appendChild(el('p', {className: 'sub'}, T('Kon de lijst niet laden.'))); return; }
+  if (!data.preken || !data.preken.length) {
+    lijst.appendChild(el('p', {className: 'sub'}, T('Nog geen dienst van afgelopen zondag gevonden. Verwerk er zelf een via „Andere preek verwerken”.')));
+    return;
+  }
+  data.preken.forEach(p => {
+    const rij = el('div'); rij.style.cssText = 'border-top:1px solid var(--rand);padding:1.1rem 0';
+    const kop = el('div');
+    kop.style.cssText = 'display:flex;justify-content:space-between;align-items:baseline;gap:1rem;flex-wrap:wrap';
+    const info = el('div');
+    info.appendChild(el('b', {}, p.titel || 'Dienst'));
+    info.appendChild(el('div', {className: 'sub'}, (p.datum || '') + (p.dagdeel ? ' · ' + T(p.dagdeel) : '')));
+    const statusEl = el('span', {className: 'sub'});
+    kop.append(info, statusEl); rij.appendChild(kop);
+    const houder = el('div'); rij.appendChild(houder);
+    lijst.appendChild(rij);
+    const klaar = (vid, heeftPreek) => { statusEl.textContent = ''; hs_toonKeuze(houder, vid, heeftPreek, true); };
+    if (p.klaar) klaar(p.video_id, p.heeft_preek);
+    else { statusEl.textContent = T('wordt verwerkt…'); hs_startVerwerken(p.url, statusEl, klaar, null); }
+  });
 }
 
 async function hs_genereer(videoId, wat, knop, download) {

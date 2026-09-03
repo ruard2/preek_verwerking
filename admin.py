@@ -401,6 +401,7 @@ class ResetBody(BaseModel):
 class KanaalBody(BaseModel):
     kanaal_url: str = ""
     auto_versturen: bool = False
+    auto_verwerken: bool = False
     tijdzone: str = "Europe/Amsterdam"
     verzend_dag: int = 0
     verzend_tijd: str = "07:00"
@@ -548,6 +549,7 @@ def mij(request: Request, db=Depends(get_db)):
         "email": kerk.email,
         "kanaal_url": kerk.kanaal_url,
         "auto_versturen": kerk.auto_versturen,
+        "auto_verwerken": kerk.auto_verwerken,
         "tijdzone": kerk.tijdzone,
         "verzend_dag": kerk.verzend_dag,
         "verzend_tijd": kerk.verzend_tijd,
@@ -571,6 +573,7 @@ def kanaal(body: KanaalBody, request: Request, db=Depends(get_db)):
     kerk = _vereis_kerk(request, db)
     kerk.kanaal_url = (body.kanaal_url or "").strip()
     kerk.auto_versturen = bool(body.auto_versturen)
+    kerk.auto_verwerken = bool(body.auto_verwerken)
     kerk.tijdzone = (body.tijdzone or "Europe/Amsterdam").strip()
     kerk.verzend_dag = int(body.verzend_dag) % 7
     kerk.verzend_tijd = (body.verzend_tijd or "07:00").strip()
@@ -609,6 +612,31 @@ def _sub_json(s):
         data["communicatie_taal"] = s.kerk.communicatie_taal
         data["accentkleur"] = s.kerk.accentkleur or "#2c5f2d"
     return data
+
+
+@router.get("/api/admin/recente-preken")
+def recente_preken(request: Request, db=Depends(get_db)):
+    """Dienst(en) van afgelopen zondag, met of ze al (voor)verwerkt zijn."""
+    from datetime import timedelta
+    import automatisering
+    kerk = _vereis_kerk(request, db)
+    nu = automatisering._nu_lokaal(kerk).date()
+    zondag = nu - timedelta(days=(nu.weekday() + 1) % 7)
+    uitz = db.scalars(
+        select(Uitzending).where(
+            Uitzending.kerk_id == kerk.id, Uitzending.datum == zondag
+        ).order_by(Uitzending.dagdeel)
+    ).all()
+    preken = []
+    for u in uitz:
+        bewaard = store.resultaat_ophalen(u.video_id)
+        preken.append({
+            "video_id": u.video_id, "url": u.url, "titel": u.titel,
+            "datum": str(u.datum), "dagdeel": u.dagdeel or "",
+            "klaar": bool(bewaard and (bewaard.get("transcript_ruw") or "").strip()),
+            "heeft_preek": bool(bewaard and bewaard.get("preek_schoon")),
+        })
+    return {"zondag": str(zondag), "auto_verwerken": bool(kerk.auto_verwerken), "preken": preken}
 
 
 @router.get("/api/admin/analytics")

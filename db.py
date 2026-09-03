@@ -68,6 +68,9 @@ class Church(Base):
     kanaal_url: Mapped[str] = mapped_column(String(500), default="")
     auto_versturen: Mapped[bool] = mapped_column(Boolean, default=False)
     auto_scan: Mapped[bool] = mapped_column(Boolean, default=True)  # automatisch nieuwe diensten oppikken
+    # Preken van afgelopen zondag vooraf (achtergrond) transcriberen, zodat ze
+    # klaarstaan als de beheerder inlogt.
+    auto_verwerken: Mapped[bool] = mapped_column(Boolean, default=False)
     tijdzone: Mapped[str] = mapped_column(String(50), default="Europe/Amsterdam")
     admin_taal: Mapped[str] = mapped_column(String(5), default="auto")
     inschrijf_taal: Mapped[str] = mapped_column(String(5), default="auto")
