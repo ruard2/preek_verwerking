@@ -44,6 +44,15 @@
     border-radius: 50%; display: inline-block; animation: spin .8s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
   .logo-preview { max-height: 3rem; border: 1px solid var(--rand); border-radius: .4rem; padding: .3rem; background: #fff; }
+  .editveld { display: block; margin: .15rem 0 .7rem; }
+  .editveld > span { display: block; font-size: .82rem; color: var(--grijs); margin-bottom: .15rem; }
+  .editveld input, .editveld textarea { width: 100%; font: inherit; padding: .5rem .6rem; border: 1px solid var(--rand);
+    border-radius: .45rem; background: var(--kaart); color: var(--tekst); box-sizing: border-box; }
+  .editveld textarea { min-height: 3.4rem; resize: vertical; line-height: 1.45; }
+  .dagkaart { border: 1px solid var(--rand); border-radius: .6rem; padding: .8rem 1rem; margin: .6rem 0; }
+  .dagkaart > h4 { margin: 0 0 .5rem; font-size: 1rem; color: var(--groen); }
+  .bronblok { white-space: pre-wrap; max-height: 22rem; overflow: auto; background: var(--soft);
+    border-radius: .5rem; padding: .8rem 1rem; font-size: .9rem; line-height: 1.5; }
   h1 { font-size: 1.6rem; margin: 0 0 .3rem; color: var(--groen); }
   h2 { font-size: 1.15rem; margin: 1.6rem 0 .6rem; }
   .sub { color: var(--grijs); margin-top: 0; font-size: .95rem; }
@@ -271,11 +280,9 @@ function toonDashboard(mij) {
   tz.value = mij.tijdzone || 'Europe/Amsterdam';
   kaart.appendChild(tz);
 
-  kaart.appendChild(el('label', {}, 'Verzenddag (wanneer de overdenkingen uitgaan)'));
+  kaart.appendChild(el('label', {}, T('Verzenddag (wanneer de overdenkingen uitgaan)')));
   const vdag = el('select', {id: 'vdag'});
-  ['maandag','dinsdag','woensdag','donderdag','vrijdag','zaterdag','zondag']
-    .forEach((d,i) => vdag.appendChild(el('option', {value: String(i)}, d.charAt(0).toUpperCase()+d.slice(1))));
-  vdag.value = String(mij.verzend_dag || 0);
+  vulWeekdagen(vdag, mij.verzend_dag || 0);
   kaart.appendChild(vdag);
   kaart.appendChild(el('p', {className:'sub'},
     'Wekelijks = op deze dag het hele boekje; dagelijks = dag 1 op deze dag, daarna elke dag een deel.'));
@@ -746,6 +753,14 @@ const UITVOER_LABEL = {
   dagstukjes: 'Dagstukjes', preeksamenvatting: 'Samenvatting',
   nabespreking: 'Vragen voor groepen', preektranscript: 'Preektekst',
 };
+// Weekdagen (index 0 = maandag). Vertaald via de i18n-tabel, zodat er nooit
+// Nederlandse dagnamen tussen een andere taal staan.
+const WEEKDAGEN = ['Maandag', 'Dinsdag', 'Woensdag', 'Donderdag', 'Vrijdag', 'Zaterdag', 'Zondag'];
+function vulWeekdagen(select, gekozenIndex) {
+  const T = s => AfterSermonI18n.text(s);
+  WEEKDAGEN.forEach((d, i) => select.appendChild(el('option', {value: String(i)}, T(d))));
+  select.value = String(gekozenIndex || 0);
+}
 
 // ---- Stap 1: preek aanleveren (link/upload). Zodra verwerken start: spinner + open stap 2. ----
 function bouwStap1(mij, s1, st, wiz) {
@@ -931,9 +946,7 @@ function bouwStap3(mij, s3, st, wiz) {
   s3.body.appendChild(el('label', {}, T('Wanneer gaat het wekelijks de deur uit?')));
   const wrij = el('div'); wrij.style.cssText = 'display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;margin:.3rem 0 .8rem';
   const dag = el('select');
-  ['maandag', 'dinsdag', 'woensdag', 'donderdag', 'vrijdag', 'zaterdag', 'zondag']
-    .forEach((d, i) => dag.appendChild(el('option', {value: String(i)}, d.charAt(0).toUpperCase() + d.slice(1))));
-  dag.value = String(mij.verzend_dag || 0);
+  vulWeekdagen(dag, mij.verzend_dag || 0);
   const tijd = el('input', {type: 'time', value: mij.verzend_tijd || '07:00'}); tijd.style.maxWidth = '8rem';
   wrij.append(el('span', {className: 'sub'}, T('Elke week op')), dag, el('span', {className: 'sub'}, T('om')), tijd);
   s3.body.appendChild(wrij);
@@ -1051,59 +1064,175 @@ function vulStap4(mij, st, s4, s5, wiz) {
   }
   s4.bezig();
   const gekozen = (mij.uitvoer_typen && mij.uitvoer_typen.length) ? mij.uitvoer_typen : ['dagstukjes'];
-  s4.body.appendChild(el('p', {className: 'sub'}, T('Maak en controleer het materiaal dat je bij stap 2 hebt gekozen.')));
+  s4.body.appendChild(el('p', {className: 'sub'}, T('Maak, bekijk en bewerk het materiaal dat je bij stap 2 hebt gekozen. Wat je opslaat, wordt gebruikt in de PDF en de mail.')));
+
+  // Altijd: de oorspronkelijke preektekst kunnen inzien (inklapbaar).
+  bouwBronView(st, s4.body);
+
   ['dagstukjes', 'preeksamenvatting', 'nabespreking', 'preektranscript']
     .filter(t => gekozen.includes(t))
     .forEach(typ => {
-      const blok = el('div'); blok.style.cssText = 'border-top:1px solid var(--rand);padding:.9rem 0';
-      s4.body.appendChild(blok); bouwUitvoer(mij, st, typ, blok, s5, wiz);
+      const blok = el('div'); blok.style.cssText = 'border-top:1px solid var(--rand);padding:1rem 0';
+      blok.appendChild(el('b', {}, T(UITVOER_LABEL[typ])));
+      s4.body.appendChild(blok);
+      bouwUitvoer(mij, st, typ, blok, s5, wiz);
     });
   if (!gekozen.includes('dagstukjes')) s5.leeg(T('Zet „Dagstukjes” aan bij stap 2 om te kunnen versturen.'));
+}
+
+// Inklapbare weergave van de oorspronkelijke preektekst (opgeschoond + ruw transcript).
+function bouwBronView(st, container) {
+  const T = s => AfterSermonI18n.text(s);
+  if (!st.heeftPreek) return;
+  const wrap = el('div'); wrap.style.cssText = 'border-top:1px solid var(--rand);padding:1rem 0';
+  const knop = el('button', {className: 'link'}, '📄 ' + T('Bekijk de preektekst'));
+  const inhoud = el('div'); inhoud.hidden = true; inhoud.style.marginTop = '.6rem';
+  let geladen = false;
+  knop.onclick = async () => {
+    inhoud.hidden = !inhoud.hidden;
+    if (geladen || inhoud.hidden) return;
+    geladen = true;
+    inhoud.appendChild(el('p', {className: 'sub'}, T('Laden…')));
+    try {
+      const tekst = await fetch('/api/preek/' + st.videoId + '.txt').then(r => r.ok ? r.text() : Promise.reject(r));
+      inhoud.innerHTML = '';
+      const dl = el('a', {href: '/api/preek/' + st.videoId + '.txt'}, T('Download')); dl.className = 'sub';
+      dl.style.marginLeft = '.5rem';
+      inhoud.append(el('span', {className: 'sub'}, T('Opgeschoonde preektekst')), dl, el('div', {className: 'bronblok'}, tekst));
+    } catch (e) { inhoud.innerHTML = ''; inhoud.appendChild(el('p', {className: 'sub'}, T('Kon niet laden.'))); }
+  };
+  wrap.append(knop, inhoud); container.appendChild(wrap);
 }
 
 function bouwUitvoer(mij, st, typ, blok, s5, wiz) {
   const T = s => AfterSermonI18n.text(s);
   const videoId = st.videoId;
-  blok.appendChild(el('b', {}, T(UITVOER_LABEL[typ])));
   if (typ === 'preektranscript') {
     if (st.heeftPreek) {
-      const a = el('a', {href: '/api/preek/' + videoId + '.pdf'}, T('Download PDF')); a.className = 'secundair';
-      a.style.cssText = 'display:inline-block;text-decoration:none;padding:.5rem 1rem;border-radius:.45rem;margin-left:.6rem';
-      blok.appendChild(a);
+      const rij = el('div'); rij.style.cssText = 'display:flex;gap:.6rem;flex-wrap:wrap;margin-top:.5rem';
+      const pdf = el('a', {href: '/api/preek/' + videoId + '.pdf'}, T('Download PDF')); pdf.className = 'secundair';
+      pdf.style.cssText = 'text-decoration:none;padding:.5rem 1rem;border-radius:.45rem';
+      const txt = el('a', {href: '/api/preek/' + videoId + '.txt'}, T('Download') + ' (.txt)'); txt.className = 'grijs';
+      txt.style.cssText = 'text-decoration:none;padding:.5rem 1rem;border-radius:.45rem';
+      rij.append(pdf, txt); blok.appendChild(rij);
     } else blok.appendChild(el('span', {className: 'sub'}, ' — ' + T('Alleen beschikbaar bij audio/video-preken.')));
     return;
   }
-  if (typ === 'preeksamenvatting') {
-    const knop = el('button', {className: 'secundair'}, T('Maak samenvatting')); knop.style.marginLeft = '.6rem';
-    knop.onclick = () => hs_genereer(videoId, 'samenvatting', knop, true);
+  if (typ === 'nabespreking') {
+    const houder = el('div'); blok.appendChild(houder);
+    const knop = el('button', {className: 'secundair'}, T('Stel vragen samen…')); knop.style.cssText = 'display:block;margin-top:.5rem';
+    knop.onclick = () => { knop.remove(); hs_groepsForm(houder, videoId); };
     blok.appendChild(knop); return;
   }
-  if (typ === 'nabespreking') {
-    const knop = el('button', {className: 'secundair'}, T('Stel vragen samen…')); knop.style.marginLeft = '.6rem';
-    const houder = el('div');
-    knop.onclick = () => { knop.remove(); hs_groepsForm(houder, videoId); };
-    blok.append(knop, houder); return;
-  }
-  // dagstukjes
-  const knop = el('button', {}, T('Maak dagstukjes')); knop.style.marginLeft = '.6rem';
-  const houder = el('div');
-  knop.onclick = () => hs_maakDagstukjes2(houder, videoId, knop, mij, st, s5, wiz);
-  blok.append(knop, houder);
+  // dagstukjes en samenvatting: laad bestaande data en toon de editor; regenereer alleen op verzoek.
+  const houder = el('div'); houder.style.marginTop = '.5rem'; blok.appendChild(houder);
+  bouwEditorBlok(mij, st, typ, houder, s5, wiz);
 }
 
-async function hs_maakDagstukjes2(houder, videoId, knop, mij, st, s5, wiz) {
+// Laadt de opgeslagen data (zonder AI) en toont de editor, of een knop om te maken.
+async function bouwEditorBlok(mij, st, typ, houder, s5, wiz) {
   const T = s => AfterSermonI18n.text(s);
-  const orig = knop.textContent; knop.disabled = true; knop.textContent = T('Bezig met genereren…');
-  try {
-    const r = await fetch('/api/genereer/' + videoId, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({wat: 'dagstukjes'})});
-    if (!r.ok) throw new Error(await fouttekst(r, T('Genereren mislukt.')));
+  houder.innerHTML = ''; houder.appendChild(el('p', {className: 'sub'}, T('Laden…')));
+  let d;
+  try { d = await fetch('/api/data/' + st.videoId).then(r => r.ok ? r.json() : Promise.reject(r)); }
+  catch (e) { houder.innerHTML = ''; houder.appendChild(el('p', {className: 'sub'}, T('Kon niet laden.'))); return; }
+  const aanwezig = typ === 'dagstukjes' ? d.heeft_dagen : d.heeft_samenvatting;
+  houder.innerHTML = '';
+  if (aanwezig) {
+    bouwWeekboekjeEditor(mij, st, typ, houder, d.data, s5, wiz);
+  } else {
+    const wat = typ === 'dagstukjes' ? 'dagstukjes' : 'samenvatting';
+    const knop = el('button', typ === 'dagstukjes' ? {} : {className: 'secundair'},
+      typ === 'dagstukjes' ? T('Maak dagstukjes') : T('Maak samenvatting'));
+    knop.onclick = async () => {
+      const orig = knop.textContent; knop.disabled = true; knop.textContent = T('Bezig met genereren…');
+      try {
+        const r = await fetch('/api/genereer/' + st.videoId, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({wat})});
+        if (!r.ok) throw new Error(await fouttekst(r, T('Genereren mislukt.')));
+        const out = await r.json();
+        houder.innerHTML = '';
+        bouwWeekboekjeEditor(mij, st, typ, houder, out.data, s5, wiz);
+      } catch (e) { toon('fout', e.message); knop.disabled = false; knop.textContent = orig; }
+    };
+    houder.appendChild(knop);
+  }
+}
+
+// De editor: bewerk titel/bijbelgedeelte/samenvatting (+ dagen bij dagstukjes), sla op, download.
+function bouwWeekboekjeEditor(mij, st, typ, houder, data, s5, wiz) {
+  const T = s => AfterSermonI18n.text(s);
+  houder.innerHTML = '';
+  houder.appendChild(el('p', {className: 'sub'}, T('Bewerk hieronder en sla op; de PDF gebruikt jouw versie.')));
+
+  const velden = {};
+  velden.titel = _editVeld(houder, T('Titel'), data.titel || '', false);
+  velden.bijbelgedeelte = _editVeld(houder, T('Bijbelgedeelte'), data.bijbelgedeelte || '', false);
+  velden.samenvatting = _editVeld(houder, T('Samenvatting'), data.samenvatting || '', true);
+
+  const dagInputs = [];
+  if (typ === 'dagstukjes' && Array.isArray(data.dagen)) {
+    data.dagen.forEach((dag, i) => {
+      const kaart = el('div', {className: 'dagkaart'});
+      kaart.appendChild(el('h4', {}, T('Dag') + ' ' + (i + 1) + (dag.titel ? ' — ' + dag.titel : '')));
+      const inp = {};
+      inp.titel = _editVeld(kaart, T('Titel'), dag.titel || '', false);
+      inp.bijbeltekst = _editVeld(kaart, T('Bijbeltekst'), dag.bijbeltekst || '', true);
+      inp.gedachte = _editVeld(kaart, T('Gedachte'), dag.gedachte || '', true);
+      inp.vraag_volwassenen = _editVeld(kaart, T('Vraag (volwassenen)'), dag.vraag_volwassenen || '', true);
+      inp.vraag_kinderen = _editVeld(kaart, T('Vraag (kinderen)'), dag.vraag_kinderen || '', true);
+      dagInputs.push(inp);
+      houder.appendChild(kaart);
+    });
+  }
+
+  const rij = el('div'); rij.style.cssText = 'display:flex;gap:.6rem;flex-wrap:wrap;align-items:center;margin-top:.6rem';
+  const opslaan = el('button', {}, T('Wijzigingen opslaan'));
+  opslaan.onclick = async () => {
+    const body = {velden: {
+      titel: velden.titel.get(), bijbelgedeelte: velden.bijbelgedeelte.get(), samenvatting: velden.samenvatting.get(),
+    }};
+    if (dagInputs.length) body.velden.dagen = dagInputs.map(inp => ({
+      titel: inp.titel.get(), bijbeltekst: inp.bijbeltekst.get(), gedachte: inp.gedachte.get(),
+      vraag_volwassenen: inp.vraag_volwassenen.get(), vraag_kinderen: inp.vraag_kinderen.get(),
+    }));
+    const orig = opslaan.textContent; opslaan.disabled = true; opslaan.textContent = T('Bezig…');
+    try {
+      const r = await fetch('/api/bewerk/' + st.videoId, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+      if (!r.ok) throw new Error(await fouttekst(r, T('Genereren mislukt.')));
+      opslaan.textContent = T('Opgeslagen ✓');
+      setTimeout(() => { opslaan.disabled = false; opslaan.textContent = orig; }, 1500);
+    } catch (e) { toon('fout', e.message); opslaan.disabled = false; opslaan.textContent = orig; }
+  };
+  const dl = el('a', {href: (typ === 'dagstukjes') ? '/api/pdf/' + st.videoId : '/api/pdf/' + st.videoId}, T('Download PDF'));
+  dl.className = 'grijs'; dl.style.cssText = 'text-decoration:none;padding:.55rem 1rem;border-radius:.45rem';
+  const opnieuw = el('button', {className: 'link'}, '↻ ' + T('Opnieuw genereren'));
+  opnieuw.onclick = async () => {
+    if (!confirm(T('Weet je het zeker? Je bewerkingen gaan verloren.'))) return;
+    const wat = typ === 'dagstukjes' ? 'dagstukjes' : 'samenvatting';
     houder.innerHTML = '';
-    const a = el('a', {href: '/api/pdf/' + videoId}, T('Download weekboekje (PDF)')); a.className = 'secundair';
-    a.style.cssText = 'display:inline-block;text-decoration:none;padding:.5rem 1rem;border-radius:.45rem;margin-top:.5rem';
-    houder.append(el('span', {className: 'sub'}, ' ✓ '), a);
-    vulStap5(mij, st, s5);
-    if (wiz) wiz.naar(4);   // dagstukjes klaar → open stap 5
-  } catch (e) { toon('fout', e.message); } finally { knop.disabled = false; knop.textContent = orig; }
+    const bezig = el('p', {className: 'sub'}); bezig.innerHTML = '<span class="spinner"></span> ' + T('Bezig met genereren…');
+    houder.appendChild(bezig);
+    try {
+      const r = await fetch('/api/genereer/' + st.videoId, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({wat})});
+      if (!r.ok) throw new Error(await fouttekst(r, T('Genereren mislukt.')));
+      const out = await r.json();
+      bouwWeekboekjeEditor(mij, st, typ, houder, out.data, s5, wiz);
+    } catch (e) { toon('fout', e.message); bouwEditorBlok(mij, st, typ, houder, s5, wiz); }
+  };
+  rij.append(opslaan, dl, opnieuw); houder.appendChild(rij);
+
+  // Dagstukjes klaar → stap 5 (versturen) beschikbaar maken.
+  if (typ === 'dagstukjes') { vulStap5(mij, st, s5); }
+}
+
+// Klein bewerkveld (label + input/textarea). Geeft {get()} terug.
+function _editVeld(container, label, waarde, meerregelig) {
+  const wrap = el('label', {className: 'editveld'});
+  wrap.appendChild(el('span', {}, label));
+  const veld = el(meerregelig ? 'textarea' : 'input', {value: waarde});
+  if (meerregelig) veld.value = waarde;
+  wrap.appendChild(veld); container.appendChild(wrap);
+  return {get: () => veld.value};
 }
 
 function vulStap5(mij, st, s5) {

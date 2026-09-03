@@ -952,6 +952,24 @@ def preek(video_id: str, ext: str):
     raise HTTPException(400, "Onbekend formaat (gebruik pdf of txt).")
 
 
+@app.get("/api/data/{video_id}")
+def data_ophalen(video_id: str):
+    """Huidige (opgeslagen) verwerking voor de editor — regenereert niets."""
+    bewaard = store.resultaat_ophalen(video_id)
+    if not bewaard:
+        raise HTTPException(404, "Voor deze dienst is nog geen verwerking beschikbaar.")
+    data = bewaard.get("data") or {}
+    return {
+        "video_id": video_id,
+        "data": _met_labels(data),
+        "heeft_dagen": bool(data.get("dagen")),
+        "heeft_samenvatting": bool((data.get("samenvatting") or "").strip()),
+        "heeft_groepsvragen": bool((data.get("groepsvragen") or {}).get("vragen")),
+        "heeft_preek": bool(bewaard.get("preek_schoon")),
+        "heeft_ruw": bool((bewaard.get("transcript_ruw") or "").strip()),
+    }
+
+
 @app.get("/api/transcript/{video_id}.txt")
 def transcript_ruw(video_id: str):
     """Het ruwe, onbewerkte transcript zoals uitgesproken."""
