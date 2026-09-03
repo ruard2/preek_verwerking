@@ -37,12 +37,23 @@ DIENSTVOORKEUREN = ("beide", "ochtend", "avond")
 
 
 KANALEN = ("email", "push", "beide")
+UITVOER_TYPEN = ("dagstukjes", "preeksamenvatting", "preektranscript", "nabespreking")
+
+
+def _schoon_uitvoer(waarde):
+    """Normaliseer een uitvoer-voorkeur (lijst of komma-tekst) naar een geldige
+    komma-tekst; onbekende types eruit. Leeg = alles wat de kerk stuurt."""
+    if isinstance(waarde, str):
+        waarde = waarde.split(",")
+    schoon = [t.strip() for t in (waarde or []) if t and t.strip() in UITVOER_TYPEN]
+    return ",".join(dict.fromkeys(schoon))
 
 
 def maak_inschrijver(db, kerk_id, naam, email, telefoon="", frequentie="wekelijks",
                      ontvang_dag=0, ontvang_tijd="07:00", bevestigd=False,
-                     dienstvoorkeur="beide", kanaal="email"):
+                     dienstvoorkeur="beide", kanaal="email", uitvoer_voorkeur=None):
     """Maak (of werk bij) een inschrijver. Geeft (subscriber, is_nieuw)."""
+    uitvoer = _schoon_uitvoer(uitvoer_voorkeur)
     email = (email or "").strip().lower()
     if not email or "@" not in email:
         raise InschrijfFout("Geef een geldig e-mailadres op.")
@@ -60,6 +71,8 @@ def maak_inschrijver(db, kerk_id, naam, email, telefoon="", frequentie="wekelijk
         bestaand.frequentie = frequentie
         bestaand.dienstvoorkeur = dienstvoorkeur
         bestaand.kanaal = kanaal
+        if uitvoer_voorkeur is not None:
+            bestaand.uitvoer_voorkeur = uitvoer
         bestaand.ontvang_dag = ontvang_dag
         bestaand.ontvang_tijd = ontvang_tijd
         if bevestigd:
@@ -74,7 +87,7 @@ def maak_inschrijver(db, kerk_id, naam, email, telefoon="", frequentie="wekelijk
     sub = Subscriber(
         kerk_id=kerk_id, naam=(naam or "").strip(), email=email,
         telefoon=(telefoon or "").strip(), frequentie=frequentie,
-        dienstvoorkeur=dienstvoorkeur, kanaal=kanaal,
+        dienstvoorkeur=dienstvoorkeur, kanaal=kanaal, uitvoer_voorkeur=uitvoer,
         ontvang_dag=ontvang_dag, ontvang_tijd=ontvang_tijd,
         bevestigd=bevestigd,
         bevestig_token="" if bevestigd else _token(),
@@ -106,6 +119,8 @@ def werk_voorkeuren_bij(db, sub, **velden):
         sub.frequentie = velden["frequentie"]
     if velden.get("dienstvoorkeur") in DIENSTVOORKEUREN:
         sub.dienstvoorkeur = velden["dienstvoorkeur"]
+    if velden.get("uitvoer_voorkeur") is not None:
+        sub.uitvoer_voorkeur = _schoon_uitvoer(velden["uitvoer_voorkeur"])
     if "naam" in velden:
         sub.naam = (velden["naam"] or "").strip()
     if "telefoon" in velden:

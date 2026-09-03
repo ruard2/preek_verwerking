@@ -107,6 +107,9 @@ class Church(Base):
     # "datums" = als aparte mail op vaste datums (nabespreking_datums, ISO, komma).
     nabespreking_schema: Mapped[str] = mapped_column(String(10), default="mee")
     nabespreking_datums: Mapped[str] = mapped_column(String(400), default="")
+    # Staat de publieke inschrijving (QR/link) open? Uit = geen nieuwe aanmeldingen;
+    # de kerk stelt dan zelf in wat er verstuurd wordt.
+    inschrijving_open: Mapped[bool] = mapped_column(Boolean, default=True)
 
     aangemaakt: Mapped[DateTime] = mapped_column(DateTime, server_default=func.now())
 
@@ -166,6 +169,9 @@ class Subscriber(Base):
     frequentie: Mapped[str] = mapped_column(String(20), default="wekelijks")  # of "dagelijks"
     # Welke dienst(en) wil de inschrijver: "beide" | "ochtend" | "avond".
     dienstvoorkeur: Mapped[str] = mapped_column(String(10), default="beide")
+    # Welke uitvoer(en) dit lid wil ontvangen (komma-gescheiden, deel van wat de
+    # kerk aanbiedt). Leeg = alles wat de kerk stuurt.
+    uitvoer_voorkeur: Mapped[str] = mapped_column(String(120), default="")
     # Push-abonnement (browser) als JSON-tekst; leeg = geen push. Het gekozen
     # kanaal ("email" | "push" | "beide") staat in het bestaande veld `kanaal`.
     push_abonnement: Mapped[str] = mapped_column(Text, default="")

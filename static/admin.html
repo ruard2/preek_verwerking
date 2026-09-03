@@ -744,6 +744,7 @@ function _kanaalBody(mij, wijziging) {
     bezorg_typen: mij.bezorg_typen || [],
     nabespreking_schema: mij.nabespreking_schema || 'mee',
     nabespreking_datums: mij.nabespreking_datums || [],
+    inschrijving_open: mij.inschrijving_open !== false,
   };
   return Object.assign(b, wijziging || {});
 }
@@ -967,6 +968,10 @@ function bouwStap3(mij, s3, st, wiz) {
   const naar = el('button', {className: 'grijs'}, T('Beheer verzendlijst / QR-code')); naar.style.margin = '.2rem 0 .4rem';
   naar.onclick = () => window._naarVerzendlijst && window._naarVerzendlijst();
   s3.body.appendChild(naar);
+  const orij = el('div', {className: 'rij'}); orij.style.marginTop = '.3rem';
+  const ochk = el('input', {type: 'checkbox', checked: mij.inschrijving_open !== false});
+  orij.append(ochk, el('label', {}, T('Inschrijving open — gemeenteleden kunnen zich via de QR/link aanmelden en zelf kiezen wat ze willen ontvangen')));
+  s3.body.appendChild(orij);
 
   // (c) Wanneer?
   s3.body.appendChild(_scheiding());
@@ -1006,7 +1011,7 @@ function bouwStap3(mij, s3, st, wiz) {
   knop.onclick = async () => {
     knop.disabled = true;
     const bezorg = Object.keys(bezorgKeuze).filter(t => bezorgKeuze[t].value === 'lijst');
-    const wijziging = {verzend_dag: +dag.value, verzend_tijd: tijd.value, auto_versturen: controle.value === 'nee', auto_verwerken: vchk.checked, accentkleur: kleur.value, bezorg_typen: bezorg};
+    const wijziging = {verzend_dag: +dag.value, verzend_tijd: tijd.value, auto_versturen: controle.value === 'nee', auto_verwerken: vchk.checked, accentkleur: kleur.value, bezorg_typen: bezorg, inschrijving_open: ochk.checked};
     if (nabPlan && bezorgKeuze.nabespreking && bezorgKeuze.nabespreking.value === 'lijst') {
       wijziging.nabespreking_schema = nabPlan.getSchema();
       wijziging.nabespreking_datums = nabPlan.getSchema() === 'datums' ? nabPlan.getDatums() : [];

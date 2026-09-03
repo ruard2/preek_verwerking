@@ -419,6 +419,7 @@ class KanaalBody(BaseModel):
     bezorg_typen: list[str] = []
     nabespreking_schema: str = "mee"
     nabespreking_datums: list[str] = []
+    inschrijving_open: bool = True
 
 
 class InschrijverBody(BaseModel):
@@ -439,6 +440,7 @@ class InschrijvenBody(BaseModel):
     frequentie: str = "wekelijks"
     dienstvoorkeur: str = "beide"
     kanaal: str = "email"  # email | push | beide
+    uitvoer_voorkeur: list[str] = []
 
 
 class VoorkeurBody(BaseModel):
@@ -449,6 +451,7 @@ class VoorkeurBody(BaseModel):
     dienstvoorkeur: str = "beide"
     ontvang_dag: int = 0
     ontvang_tijd: str = "07:00"
+    uitvoer_voorkeur: list[str] = []
 
 
 # ---- E-mails ----
@@ -571,6 +574,7 @@ def mij(request: Request, db=Depends(get_db)):
         "bezorg_typen": (kerk.bezorg_typen or "").split(",") if (kerk.bezorg_typen or "").strip() else [],
         "nabespreking_schema": getattr(kerk, "nabespreking_schema", "mee") or "mee",
         "nabespreking_datums": [d for d in (getattr(kerk, "nabespreking_datums", "") or "").split(",") if d],
+        "inschrijving_open": bool(getattr(kerk, "inschrijving_open", True)),
     }
 
 
@@ -613,6 +617,7 @@ def kanaal(body: KanaalBody, request: Request, db=Depends(get_db)):
         if re.fullmatch(r"\d{4}-\d{2}-\d{2}", d):
             _datums.append(d)
     kerk.nabespreking_datums = ",".join(sorted(set(_datums)))
+    kerk.inschrijving_open = bool(body.inschrijving_open)
     db.commit()
     return {"ok": True, "kanaal_url": kerk.kanaal_url}
 
@@ -624,10 +629,13 @@ def _sub_json(s):
         "frequentie": s.frequentie, "dienstvoorkeur": getattr(s, "dienstvoorkeur", "beide"),
         "ontvang_dag": s.ontvang_dag,
         "ontvang_tijd": s.ontvang_tijd, "bevestigd": s.bevestigd,
+        "uitvoer_voorkeur": [t for t in (getattr(s, "uitvoer_voorkeur", "") or "").split(",") if t],
     }
     if getattr(s, "kerk", None):
+        import main  # lui: circulaire import vermijden
         data["communicatie_taal"] = s.kerk.communicatie_taal
         data["accentkleur"] = s.kerk.accentkleur or "#2c5f2d"
+        data["uitvoer_beschikbaar"] = main.bezorg_van_kerk(s.kerk)
     return data
 
 
@@ -1339,11 +1347,15 @@ def kerk_info(kerk_id: int, db=Depends(get_db)):
     kerk = db.get(Church, kerk_id)
     if not kerk:
         raise HTTPException(404, "Kerk niet gevonden.")
+    import main  # lui: circulaire import vermijden
     return {
         "naam": kerk.naam or "AfterSermon",
         "inschrijf_taal": kerk.inschrijf_taal,
         "heeft_logo": bool(kerk.logo),
         "accentkleur": kerk.accentkleur or "#2c5f2d",
+        # Welke uitvoeren het lid kan kiezen (wat de kerk daadwerkelijk verstuurt).
+        "uitvoer_beschikbaar": main.bezorg_van_kerk(kerk),
+        "inschrijving_open": bool(getattr(kerk, "inschrijving_open", True)),
     }
 
 
@@ -1372,10 +1384,13 @@ def inschrijven(body: InschrijvenBody, request: Request, db=Depends(get_db)):
     kerk = db.get(Church, body.kerk_id)
     if not kerk:
         raise HTTPException(404, "Kerk niet gevonden.")
+    if not getattr(kerk, "inschrijving_open", True):
+        raise HTTPException(403, "De inschrijving voor deze kerk is gesloten.")
     try:
         sub, _ = subscribers.maak_inschrijver(
             db, kerk.id, body.naam, body.email, body.telefoon, body.frequentie,
             dienstvoorkeur=body.dienstvoorkeur, kanaal=body.kanaal,
+            uitvoer_voorkeur=body.uitvoer_voorkeur,
         )
     except subscribers.InschrijfFout as fout:
         raise HTTPException(400, str(fout))
@@ -1422,7 +1437,7 @@ def voorkeuren_opslaan(body: VoorkeurBody, db=Depends(get_db)):
         raise HTTPException(404, "Onbekende of verlopen link.")
     subscribers.werk_voorkeuren_bij(
         db, sub, naam=body.naam, telefoon=body.telefoon, frequentie=body.frequentie,
-        dienstvoorkeur=body.dienstvoorkeur,
+        dienstvoorkeur=body.dienstvoorkeur, uitvoer_voorkeur=body.uitvoer_voorkeur,
         ontvang_dag=body.ontvang_dag, ontvang_tijd=body.ontvang_tijd,
     )
     return {"ok": True}

@@ -129,6 +129,15 @@ def bouw_email(data, kerk_naam, base_url, voorkeur_token, alleen_dag=None,
 def verstuur_een(kerk, data, base_url, sub, alleen_dag=None, bezorg_typen=None):
     """Bezorg één overdenking bij één inschrijver via het gekozen kanaal
     (e-mail en/of push). `bezorg_typen` beperkt welke uitvoeren meegaan."""
+    # Lid-voorkeur: alleen de uitvoeren die dit lid wil (deel van wat de kerk stuurt).
+    pref = [t for t in (getattr(sub, "uitvoer_voorkeur", "") or "").split(",") if t]
+    if pref:
+        if bezorg_typen is None:
+            bezorg_typen = pref
+        else:
+            bezorg_typen = [t for t in bezorg_typen if t in pref]
+        if not bezorg_typen:
+            return True  # lid wil niets van wat er nu is; niets versturen
     kanaal = getattr(sub, "kanaal", "email") or "email"
     if kanaal in ("email", "beide"):
         logo_url = f"{base_url}/logo/{kerk.id}" if getattr(kerk, "logo", "") else None

@@ -30,6 +30,10 @@
   .bedankt h2 { font-size:1.45rem; margin:.2rem 0 .65rem; }
   .bedankt p { max-width:30rem; margin:.35rem auto; color:var(--grijs); }
   @media (prefers-color-scheme: dark) { .ok { background:#1c2a1c; color:#9fd6a3; } .fout { background:#3a1c1a; color:#f0a9a3; } }
+  .uitvoer-groep { display:flex; flex-direction:column; gap:.35rem; margin:.2rem 0 .4rem; }
+  .uitvoer-optie { display:flex; align-items:center; gap:.5rem; text-transform:none; letter-spacing:normal;
+    font-size:.95rem; color:var(--tekst); margin:0; }
+  .uitvoer-optie input { width:auto; }
 </style>
 <link rel="stylesheet" href="/static/dashboard.css">
 <link rel="manifest" href="/static/manifest.json">
@@ -72,10 +76,14 @@ if (!kerkId) {
         document.getElementById('titel').before(logo);
       }
       if (params.get('bevestigd')) toonBedankt(k);
-      else {
+      else if (k.inschrijving_open === false) {
+        document.getElementById('titel').textContent = k.naam || 'AfterSermon';
+        inhoud.innerHTML = '<div class="kaart"><p>' +
+          AfterSermonI18n.text('De inschrijving voor deze kerk is op dit moment gesloten.') + '</p></div>';
+      } else {
         document.getElementById('titel').textContent =
           AfterSermonI18n.text('Aanmelden') + ' — ' + k.naam;
-        bouwFormulier();
+        bouwFormulier(k);
       }
     })
     .catch(() => toon('fout', 'Deze kerk bestaat niet (controleer de link).'));
@@ -115,13 +123,29 @@ function toonBedankt(kerk) {
   }
 }
 
-function bouwFormulier() {
+const UITVOER_LABEL = {dagstukjes: 'Dagstukjes', preeksamenvatting: 'Samenvatting',
+  nabespreking: 'Vragen voor groepen', preektranscript: 'Preektekst'};
+
+function _uitvoerKeuze(k) {
+  // Alleen tonen als de kerk méér dan één soort verstuurt — anders is er niets te kiezen.
+  const t = s => AfterSermonI18n.text(s);
+  const beschikbaar = (k.uitvoer_beschikbaar || []).filter(x => UITVOER_LABEL[x]);
+  if (beschikbaar.length < 2) return '';
+  const rijen = beschikbaar.map(x =>
+    `<label class="uitvoer-optie"><input type="checkbox" class="uitvoer-chk" value="${x}" checked> ${t(UITVOER_LABEL[x])}</label>`
+  ).join('');
+  return `<label>${t('Wat wil je ontvangen?')}</label>
+      <div class="uitvoer-groep">${rijen}</div>`;
+}
+
+function bouwFormulier(k) {
   const t = s => AfterSermonI18n.text(s);
   inhoud.innerHTML = `
     <div class="kaart">
       <label for="naam">${t('Naam')}</label><input id="naam">
       <label for="email">${t('E-mailadres *')}</label><input id="email" type="email" required>
       <label for="tel">${t('Telefoonnummer (optioneel)')}</label><input id="tel">
+      ${_uitvoerKeuze(k)}
       <label for="freq">${t('Hoe vaak wil je ontvangen?')}</label>
       <select id="freq">
         <option value="wekelijks">${t('Eén keer per week (hele weekboekje ineens)')}</option>
@@ -148,7 +172,8 @@ function bouwFormulier() {
         method: 'POST', headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({kerk_id: +kerkId, naam: val('naam'), email: val('email'),
           telefoon: val('tel'), frequentie: val('freq'), dienstvoorkeur: val('dienst'),
-          kanaal: val('kanaal')})
+          kanaal: val('kanaal'),
+          uitvoer_voorkeur: [...document.querySelectorAll('.uitvoer-chk:checked')].map(c => c.value)})
       });
       if (!r.ok) throw new Error(await fouttekst(r));
       inhoud.innerHTML = '';
