@@ -54,8 +54,12 @@ def _transcript_blok(L, transcript, accent):
 
 def bouw_email(data, kerk_naam, base_url, voorkeur_token, alleen_dag=None,
                communicatie_taal="nl", ai_disclaimer=True, logo_url=None,
-               accent="#2c5f2d"):
-    """Geef (onderwerp, html) voor het weekboekje of één dag (0-geïndexeerd)."""
+               accent="#2c5f2d", bezorg_typen=None):
+    """Geef (onderwerp, html) voor het weekboekje of één dag (0-geïndexeerd).
+
+    `bezorg_typen` (optioneel) beperkt welke uitvoeren in de mail komen — zo kan
+    een kerk bv. dagstukjes wél mailen maar de preektekst alleen voor download
+    houden. None = alles wat in `data` zit."""
     accent = accent or "#2c5f2d"
     L = render.labels(data.get("taal"))
     titel = data.get("titel", L["week"])
@@ -83,6 +87,9 @@ def bouw_email(data, kerk_naam, base_url, voorkeur_token, alleen_dag=None,
         onderwerp = titel
         body = kop
         typen = render.gekozen_typen(data)
+        if bezorg_typen is not None:
+            toegestaan = set(bezorg_typen)
+            typen = [t for t in typen if t in toegestaan]
         if ("dagstukjes" in typen or "preeksamenvatting" in typen) and data.get("samenvatting"):
             body += (
                 f'<p style="color:#6b6b64;font-size:12px;text-transform:uppercase;'
@@ -119,16 +126,16 @@ def bouw_email(data, kerk_naam, base_url, voorkeur_token, alleen_dag=None,
     return onderwerp, html
 
 
-def verstuur_een(kerk, data, base_url, sub, alleen_dag=None):
+def verstuur_een(kerk, data, base_url, sub, alleen_dag=None, bezorg_typen=None):
     """Bezorg één overdenking bij één inschrijver via het gekozen kanaal
-    (e-mail en/of push)."""
+    (e-mail en/of push). `bezorg_typen` beperkt welke uitvoeren meegaan."""
     kanaal = getattr(sub, "kanaal", "email") or "email"
     if kanaal in ("email", "beide"):
         logo_url = f"{base_url}/logo/{kerk.id}" if getattr(kerk, "logo", "") else None
         onderwerp, html = bouw_email(
             data, kerk.naam or "AfterSermon", base_url, sub.voorkeur_token, alleen_dag,
             kerk.communicatie_taal, getattr(kerk, "ai_disclaimer", True), logo_url,
-            getattr(kerk, "accentkleur", None),
+            getattr(kerk, "accentkleur", None), bezorg_typen,
         )
         brevo.verzend(
             sub.email, onderwerp, html,
@@ -163,6 +170,8 @@ def verstuur_weekboekje(db, kerk, data, base_url, dagdeel=""):
     Met `dagdeel` ("ochtend"/"avond") worden alleen inschrijvers meegenomen die
     dat dagdeel willen (of "beide"). Geeft het aantal verzonden mails terug.
     """
+    import main  # lui: vermijdt circulaire import
+    bezorg_typen = main.bezorg_van_kerk(kerk)
     verzonden = 0
     for sub in subscribers.lijst(db, kerk.id):
         if not sub.bevestigd:
@@ -170,6 +179,6 @@ def verstuur_weekboekje(db, kerk, data, base_url, dagdeel=""):
         voorkeur = getattr(sub, "dienstvoorkeur", "beide") or "beide"
         if dagdeel and voorkeur != "beide" and voorkeur != dagdeel:
             continue
-        verstuur_een(kerk, data, base_url, sub)
+        verstuur_een(kerk, data, base_url, sub, bezorg_typen=bezorg_typen)
         verzonden += 1
     return verzonden

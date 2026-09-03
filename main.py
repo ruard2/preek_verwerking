@@ -426,6 +426,21 @@ def uitvoer_van_kerk(kerk):
     return parse_uitvoer(getattr(kerk, "uitvoer_typen", "") or "dagstukjes")
 
 
+def bezorg_van_kerk(kerk):
+    """Welke uitvoer(en) automatisch naar de verzendlijst worden gemaild.
+
+    Leeg `bezorg_typen` → terugval op alles wat de kerk maakt (oud gedrag).
+    Altijd een deelverzameling van uitvoer_typen (je kunt niets versturen dat
+    niet gemaakt wordt).
+    """
+    gemaakt = uitvoer_van_kerk(kerk)
+    ruw = (getattr(kerk, "bezorg_typen", "") or "").strip() if kerk is not None else ""
+    if not ruw:
+        return gemaakt
+    gekozen = parse_uitvoer(ruw)
+    return [t for t in gekozen if t in gemaakt] or gemaakt
+
+
 def _pas_uitvoer_toe(data, uitvoer_typen, preek_schoon, transcript_ruw, meld):
     """Vul `data` aan met de gekozen uitvoer: transcript en/of nabespreking.
 

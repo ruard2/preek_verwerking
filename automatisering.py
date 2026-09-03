@@ -229,6 +229,8 @@ def _stuur_goedkeur_mail(kerk, uit, base_url):
 # ---------- Bezorgen ----------
 def bezorg_kerk(db, kerk, base_url, nu_lokaal=None):
     """Verstuur alle nu-verschuldigde dagdelen naar de inschrijvers."""
+    import main  # lui: vermijdt circulaire import (main importeert automatisering)
+    bezorg_typen = main.bezorg_van_kerk(kerk)
     nu_lokaal = nu_lokaal or _nu_lokaal(kerk)
     verzonden = 0
     uitzendingen = list(db.scalars(
@@ -280,7 +282,10 @@ def bezorg_kerk(db, kerk, base_url, nu_lokaal=None):
                     continue
                 alleen_dag = None if dag == 0 else dag - 1
                 try:
-                    levering.verstuur_een(kerk, data, base_url, sub, alleen_dag)
+                    levering.verstuur_een(
+                        kerk, data, base_url, sub, alleen_dag,
+                        bezorg_typen=bezorg_typen,
+                    )
                 except Exception:  # noqa: BLE001
                     traceback.print_exc()
                     continue

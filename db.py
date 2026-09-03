@@ -100,6 +100,9 @@ class Church(Base):
     # Welke uitvoer(en) de kerk maakt, komma-gescheiden. Keuze uit:
     # dagstukjes, preeksamenvatting, preektranscript, nabespreking.
     uitvoer_typen: Mapped[str] = mapped_column(String(120), default="dagstukjes")
+    # Welke van die uitvoeren automatisch naar de verzendlijst worden gemaild.
+    # Leeg = terugval op uitvoer_typen (oud gedrag: alles wat gemaakt wordt gaat mee).
+    bezorg_typen: Mapped[str] = mapped_column(String(120), default="")
 
     aangemaakt: Mapped[DateTime] = mapped_column(DateTime, server_default=func.now())
 

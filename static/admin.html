@@ -741,6 +741,7 @@ function _kanaalBody(mij, wijziging) {
     citaat_volledig: mij.citaat_volledig !== false, bijbelvertaling: mij.bijbelvertaling || 'vrij',
     accentkleur: mij.accentkleur || '#2c5f2d', toon: mij.toon || 'warm', lengte: mij.lengte || 'middel',
     uitvoer_typen: (mij.uitvoer_typen && mij.uitvoer_typen.length) ? mij.uitvoer_typen : ['dagstukjes'],
+    bezorg_typen: mij.bezorg_typen || [],
   };
   return Object.assign(b, wijziging || {});
 }
@@ -932,12 +933,30 @@ function bouwStap3(mij, s3, st, wiz) {
   st.stap3Auto = () => bouwStap3Auto(mij, st, autoSec);
   st.stap3Auto();
 
-  // (b) Naar wie?
+  // (b) Wat gebeurt er met elke gekozen uitvoer? Alleen de types uit stap 2.
   s3.body.appendChild(_scheiding());
-  s3.body.appendChild(el('label', {}, T('Naar wie gaat het?')));
+  s3.body.appendChild(el('label', {}, T('Wat gebeurt er met elke uitvoer?')));
   s3.body.appendChild(el('p', {className: 'sub'},
-    T('De dagstukjes gaan naar je verzendlijst; jij krijgt zelf altijd een kopie ter controle op je eigen mailadres. Deel een inschrijflink of QR-code zodat gemeenteleden zich aanmelden.')));
-  const naar = el('button', {className: 'grijs'}, T('Beheer verzendlijst / QR-code')); naar.style.marginBottom = '.4rem';
+    T('Per onderdeel dat je in stap 2 koos: automatisch meesturen in de wekelijkse mail naar je verzendlijst, of alleen zelf maken en downloaden bij stap 4.')));
+  const s3gekozen = (mij.uitvoer_typen && mij.uitvoer_typen.length) ? mij.uitvoer_typen : ['dagstukjes'];
+  // Leeg bezorg_typen = oud gedrag: alles wat gemaakt wordt gaat mee.
+  const bezorgSet = new Set((mij.bezorg_typen && mij.bezorg_typen.length) ? mij.bezorg_typen : s3gekozen);
+  const bezorgKeuze = {};
+  ['dagstukjes', 'preeksamenvatting', 'nabespreking', 'preektranscript']
+    .filter(t => s3gekozen.includes(t))
+    .forEach(typ => {
+      const rij = el('div'); rij.style.cssText = 'display:flex;gap:.6rem;flex-wrap:wrap;align-items:center;justify-content:space-between;border:1px solid var(--rand);border-radius:.5rem;padding:.55rem .8rem;margin:.35rem 0';
+      rij.appendChild(el('b', {}, T(UITVOER_LABEL[typ])));
+      const sel = el('select');
+      sel.appendChild(el('option', {value: 'lijst'}, T('Automatisch naar verzendlijst')));
+      sel.appendChild(el('option', {value: 'download'}, T('Alleen downloaden (stap 4)')));
+      sel.value = bezorgSet.has(typ) ? 'lijst' : 'download';
+      bezorgKeuze[typ] = sel;
+      rij.appendChild(sel); s3.body.appendChild(rij);
+    });
+  s3.body.appendChild(el('p', {className: 'sub'},
+    T('Naar je verzendlijst: gemeenteleden schrijven zich in via een link/QR; jij krijgt zelf altijd een controle-kopie.')));
+  const naar = el('button', {className: 'grijs'}, T('Beheer verzendlijst / QR-code')); naar.style.margin = '.2rem 0 .4rem';
   naar.onclick = () => window._naarVerzendlijst && window._naarVerzendlijst();
   s3.body.appendChild(naar);
 
@@ -978,8 +997,9 @@ function bouwStap3(mij, s3, st, wiz) {
   const knop = el('button', {}, T('Opslaan en verder')); knop.style.cssText = 'display:block;margin-top:1rem';
   knop.onclick = async () => {
     knop.disabled = true;
+    const bezorg = Object.keys(bezorgKeuze).filter(t => bezorgKeuze[t].value === 'lijst');
     try {
-      await bewaarInstellingen(mij, {verzend_dag: +dag.value, verzend_tijd: tijd.value, auto_versturen: controle.value === 'nee', auto_verwerken: vchk.checked, accentkleur: kleur.value});
+      await bewaarInstellingen(mij, {verzend_dag: +dag.value, verzend_tijd: tijd.value, auto_versturen: controle.value === 'nee', auto_verwerken: vchk.checked, accentkleur: kleur.value, bezorg_typen: bezorg});
       wiz.voltooi(2, samenvatting());
     } catch (e) { toon('fout', e.message); } finally { knop.disabled = false; }
   };

@@ -416,6 +416,7 @@ class KanaalBody(BaseModel):
     toon: str = "warm"
     lengte: str = "middel"
     uitvoer_typen: list[str] = ["dagstukjes"]
+    bezorg_typen: list[str] = []
 
 
 class InschrijverBody(BaseModel):
@@ -565,6 +566,7 @@ def mij(request: Request, db=Depends(get_db)):
         "toon": kerk.toon or "warm",
         "lengte": kerk.lengte or "middel",
         "uitvoer_typen": (kerk.uitvoer_typen or "dagstukjes").split(","),
+        "bezorg_typen": (kerk.bezorg_typen or "").split(",") if (kerk.bezorg_typen or "").strip() else [],
     }
 
 
@@ -593,9 +595,12 @@ def kanaal(body: KanaalBody, request: Request, db=Depends(get_db)):
     kerk.accentkleur = kleur if re.fullmatch(r"#[0-9a-fA-F]{6}", kleur) else "#2c5f2d"
     kerk.toon = body.toon if body.toon in {"warm", "nuchter", "toegankelijk", "verdiepend"} else "warm"
     kerk.lengte = body.lengte if body.lengte in {"kort", "middel", "lang"} else "middel"
-    _uitvoer = [t for t in (body.uitvoer_typen or [])
-                if t in {"dagstukjes", "preeksamenvatting", "preektranscript", "nabespreking"}]
+    _geldig = {"dagstukjes", "preeksamenvatting", "preektranscript", "nabespreking"}
+    _uitvoer = [t for t in (body.uitvoer_typen or []) if t in _geldig]
     kerk.uitvoer_typen = ",".join(_uitvoer) if _uitvoer else "dagstukjes"
+    # Alleen types die ook gemaakt worden mogen bezorgd worden. Leeg = alles.
+    _bezorg = [t for t in (body.bezorg_typen or []) if t in _uitvoer]
+    kerk.bezorg_typen = ",".join(_bezorg)
     db.commit()
     return {"ok": True, "kanaal_url": kerk.kanaal_url}
 
