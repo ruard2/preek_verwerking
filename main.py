@@ -435,10 +435,11 @@ def bezorg_van_kerk(kerk):
     """
     gemaakt = uitvoer_van_kerk(kerk)
     ruw = (getattr(kerk, "bezorg_typen", "") or "").strip() if kerk is not None else ""
-    if not ruw:
-        return gemaakt
-    gekozen = parse_uitvoer(ruw)
-    return [t for t in gekozen if t in gemaakt] or gemaakt
+    lijst = [t for t in parse_uitvoer(ruw) if t in gemaakt] or gemaakt if ruw else list(gemaakt)
+    # Groepsvragen op vaste datums? Dan gaan ze niet mee in de wekelijkse mail.
+    if kerk is not None and getattr(kerk, "nabespreking_schema", "mee") == "datums":
+        lijst = [t for t in lijst if t != "nabespreking"]
+    return lijst
 
 
 def _pas_uitvoer_toe(data, uitvoer_typen, preek_schoon, transcript_ruw, meld):

@@ -742,6 +742,8 @@ function _kanaalBody(mij, wijziging) {
     accentkleur: mij.accentkleur || '#2c5f2d', toon: mij.toon || 'warm', lengte: mij.lengte || 'middel',
     uitvoer_typen: (mij.uitvoer_typen && mij.uitvoer_typen.length) ? mij.uitvoer_typen : ['dagstukjes'],
     bezorg_typen: mij.bezorg_typen || [],
+    nabespreking_schema: mij.nabespreking_schema || 'mee',
+    nabespreking_datums: mij.nabespreking_datums || [],
   };
   return Object.assign(b, wijziging || {});
 }
@@ -942,6 +944,7 @@ function bouwStap3(mij, s3, st, wiz) {
   // Leeg bezorg_typen = oud gedrag: alles wat gemaakt wordt gaat mee.
   const bezorgSet = new Set((mij.bezorg_typen && mij.bezorg_typen.length) ? mij.bezorg_typen : s3gekozen);
   const bezorgKeuze = {};
+  let nabPlan = null;
   ['dagstukjes', 'preeksamenvatting', 'nabespreking', 'preektranscript']
     .filter(t => s3gekozen.includes(t))
     .forEach(typ => {
@@ -953,6 +956,11 @@ function bouwStap3(mij, s3, st, wiz) {
       sel.value = bezorgSet.has(typ) ? 'lijst' : 'download';
       bezorgKeuze[typ] = sel;
       rij.appendChild(sel); s3.body.appendChild(rij);
+      // Groepsvragen krijgen een eigen planning (elke week of vaste datums).
+      if (typ === 'nabespreking') {
+        nabPlan = _nabesprekingPlanning(mij, sel);
+        s3.body.appendChild(nabPlan.panel);
+      }
     });
   s3.body.appendChild(el('p', {className: 'sub'},
     T('Naar je verzendlijst: gemeenteleden schrijven zich in via een link/QR; jij krijgt zelf altijd een controle-kopie.')));
@@ -998,8 +1006,15 @@ function bouwStap3(mij, s3, st, wiz) {
   knop.onclick = async () => {
     knop.disabled = true;
     const bezorg = Object.keys(bezorgKeuze).filter(t => bezorgKeuze[t].value === 'lijst');
+    const wijziging = {verzend_dag: +dag.value, verzend_tijd: tijd.value, auto_versturen: controle.value === 'nee', auto_verwerken: vchk.checked, accentkleur: kleur.value, bezorg_typen: bezorg};
+    if (nabPlan && bezorgKeuze.nabespreking && bezorgKeuze.nabespreking.value === 'lijst') {
+      wijziging.nabespreking_schema = nabPlan.getSchema();
+      wijziging.nabespreking_datums = nabPlan.getSchema() === 'datums' ? nabPlan.getDatums() : [];
+    } else {
+      wijziging.nabespreking_schema = 'mee'; wijziging.nabespreking_datums = [];
+    }
     try {
-      await bewaarInstellingen(mij, {verzend_dag: +dag.value, verzend_tijd: tijd.value, auto_versturen: controle.value === 'nee', auto_verwerken: vchk.checked, accentkleur: kleur.value, bezorg_typen: bezorg});
+      await bewaarInstellingen(mij, wijziging);
       wiz.voltooi(2, samenvatting());
     } catch (e) { toon('fout', e.message); } finally { knop.disabled = false; }
   };
@@ -1011,6 +1026,48 @@ function bouwStap3(mij, s3, st, wiz) {
 function _scheiding() {
   const hr = el('div'); hr.style.cssText = 'border-top:1px solid var(--rand);margin:1.1rem 0 .8rem';
   return hr;
+}
+
+// Planning van de groepsvragen: elke week (mee) of op vaste datums.
+// `sel` = de bezorg-keuze van nabespreking; het paneel toont zich alleen bij 'lijst'.
+function _nabesprekingPlanning(mij, sel) {
+  const T = s => AfterSermonI18n.text(s);
+  const panel = el('div');
+  panel.style.cssText = 'margin:.1rem 0 .5rem;padding:.6rem .8rem;border-left:3px solid var(--brand);background:var(--soft);border-radius:.4rem';
+  panel.appendChild(el('label', {}, T('Wanneer krijgen de groepen de vragen?')));
+  const schema = el('select');
+  schema.appendChild(el('option', {value: 'mee'}, T('Elke week, samen met de rest')));
+  schema.appendChild(el('option', {value: 'datums'}, T('Op vaste datums')));
+  schema.value = mij.nabespreking_schema === 'datums' ? 'datums' : 'mee';
+  panel.appendChild(schema);
+  const datumBox = el('div'); datumBox.style.marginTop = '.5rem'; panel.appendChild(datumBox);
+  const datums = Array.isArray(mij.nabespreking_datums) ? mij.nabespreking_datums.slice() : [];
+
+  function render() {
+    datumBox.hidden = schema.value !== 'datums';
+    if (schema.value !== 'datums') return;
+    datumBox.innerHTML = '';
+    datumBox.appendChild(el('p', {className: 'sub'}, T('Voeg de datums toe waarop de groepsvragen worden verstuurd.')));
+    const chips = el('div'); chips.style.cssText = 'display:flex;flex-wrap:wrap;gap:.4rem;margin:.3rem 0';
+    datums.sort();
+    datums.forEach((d, i) => {
+      const chip = el('span'); chip.style.cssText = 'display:inline-flex;align-items:center;gap:.35rem;background:var(--kaart);border:1px solid var(--rand);border-radius:.4rem;padding:.2rem .5rem';
+      const x = el('button', {className: 'link'}, '✕'); x.style.margin = '0';
+      x.onclick = () => { datums.splice(i, 1); render(); };
+      chip.append(el('span', {}, d), x); chips.appendChild(chip);
+    });
+    if (!datums.length) chips.appendChild(el('span', {className: 'sub'}, T('Nog geen datums.')));
+    datumBox.appendChild(chips);
+    const rij = el('div'); rij.style.cssText = 'display:flex;gap:.4rem;flex-wrap:wrap;align-items:center';
+    const inp = el('input', {type: 'date'});
+    const add = el('button', {className: 'secundair'}, T('Datum toevoegen'));
+    add.onclick = () => { const v = inp.value; if (v && !datums.includes(v)) { datums.push(v); inp.value = ''; render(); } };
+    rij.append(inp, add); datumBox.appendChild(rij);
+  }
+  schema.onchange = render;
+  const sync = () => { panel.hidden = sel.value !== 'lijst'; };
+  sel.addEventListener('change', sync); sync(); render();
+  return {panel, getSchema: () => schema.value, getDatums: () => datums.slice()};
 }
 
 // Automatisch-ophalen-blok (kanaal zelf ontdekken van de aangeleverde preek, of vragen).

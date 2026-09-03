@@ -103,6 +103,10 @@ class Church(Base):
     # Welke van die uitvoeren automatisch naar de verzendlijst worden gemaild.
     # Leeg = terugval op uitvoer_typen (oud gedrag: alles wat gemaakt wordt gaat mee).
     bezorg_typen: Mapped[str] = mapped_column(String(120), default="")
+    # Planning van de groepsvragen (nabespreking): "mee" = in de wekelijkse mail,
+    # "datums" = als aparte mail op vaste datums (nabespreking_datums, ISO, komma).
+    nabespreking_schema: Mapped[str] = mapped_column(String(10), default="mee")
+    nabespreking_datums: Mapped[str] = mapped_column(String(400), default="")
 
     aangemaakt: Mapped[DateTime] = mapped_column(DateTime, server_default=func.now())
 
@@ -197,6 +201,22 @@ class Uitzending(Base):
     # Dagdeel van de dienst: "ochtend" | "avond" | "" (onbekend). Voor het
     # filteren op dienstvoorkeur van de inschrijver.
     dagdeel: Mapped[str] = mapped_column(String(10), default="")
+
+
+class NabesprekingBezorging(Base):
+    """Idempotentie voor de losse groepsvragen-mail op vaste datums:
+    één regel per (kerk, datum, inschrijver) — voorkomt dubbel versturen."""
+
+    __tablename__ = "nabespreking_bezorgingen"
+    __table_args__ = (
+        UniqueConstraint("kerk_id", "datum", "subscriber_id", name="uq_nabespreking_bezorging"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    kerk_id: Mapped[int] = mapped_column(ForeignKey("churches.id", ondelete="CASCADE"), index=True)
+    subscriber_id: Mapped[int] = mapped_column(ForeignKey("subscribers.id", ondelete="CASCADE"), index=True)
+    datum: Mapped[Date] = mapped_column(Date, index=True)
+    verzonden_op: Mapped[DateTime] = mapped_column(DateTime, server_default=func.now())
 
 
 class Verzending(Base):

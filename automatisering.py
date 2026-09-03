@@ -28,7 +28,9 @@ import levering
 import store
 import transcript as ts
 import ui_i18n
-from db import Church, SessionLocal, Subscriber, Uitzending, Verzending
+from db import (
+    Church, NabesprekingBezorging, SessionLocal, Subscriber, Uitzending, Verzending,
+)
 
 # Alleen diensten van de afgelopen zoveel dagen automatisch oppikken (voorkomt
 # dat bij de eerste scan de hele back-catalogus verwerkt wordt).
@@ -295,6 +297,78 @@ def bezorg_kerk(db, kerk, base_url, nu_lokaal=None):
     return verzonden
 
 
+def bezorg_nabespreking(db, kerk, base_url, nu_lokaal=None):
+    """Verstuur de groepsvragen als losse mail op de ingestelde vaste datums.
+
+    Alleen actief als nabespreking_schema == 'datums'. Per datum wordt de meest
+    recente verwerkte dienst-met-nabespreking gebruikt; idempotent via
+    NabesprekingBezorging (kerk+datum+inschrijver)."""
+    import main  # lui: circulaire import vermijden
+    if getattr(kerk, "nabespreking_schema", "mee") != "datums":
+        return 0
+    if "nabespreking" not in main.uitvoer_van_kerk(kerk):
+        return 0
+    datums = sorted({
+        d for d in (_naar_datum(s.strip()) for s in (kerk.nabespreking_datums or "").split(","))
+        if d
+    })
+    if not datums:
+        return 0
+    nu_lokaal = nu_lokaal or _nu_lokaal(kerk)
+    t = parse_tijd(getattr(kerk, "verzend_tijd", None) or "07:00")
+    inschrijvers = [
+        s for s in db.scalars(select(Subscriber).where(Subscriber.kerk_id == kerk.id))
+        if s.bevestigd
+    ]
+    if not inschrijvers:
+        return 0
+    verzonden = 0
+    for d in datums:
+        moment = datetime.combine(d, t)
+        # Verschuldigd: verzendmoment bereikt en niet te oud (voorkomt dat een oude
+        # datum bij het instellen alsnog uitgaat).
+        if not (moment <= nu_lokaal and (nu_lokaal - moment) <= timedelta(days=GRACE_DAGEN)):
+            continue
+        uitz = _recente_met_nabespreking(db, kerk, d)
+        if not uitz or not (uitz.goedgekeurd or kerk.versturen_zonder_goedkeuring):
+            continue
+        bewaard = store.resultaat_ophalen(uitz.video_id)
+        data = (bewaard or {}).get("data")
+        if not data or not data.get("nabespreking"):
+            continue
+        for sub in inschrijvers:
+            al = db.scalar(select(NabesprekingBezorging).where(
+                NabesprekingBezorging.kerk_id == kerk.id,
+                NabesprekingBezorging.datum == d,
+                NabesprekingBezorging.subscriber_id == sub.id,
+            ))
+            if al:
+                continue
+            try:
+                levering.verstuur_een(kerk, data, base_url, sub, bezorg_typen=["nabespreking"])
+            except Exception:  # noqa: BLE001
+                traceback.print_exc()
+                continue
+            db.add(NabesprekingBezorging(kerk_id=kerk.id, datum=d, subscriber_id=sub.id))
+            db.commit()
+            verzonden += 1
+    return verzonden
+
+
+def _recente_met_nabespreking(db, kerk, uiterlijk):
+    """Meest recente uitzending (datum <= uiterlijk) waarvan de data groepsvragen bevat."""
+    uitzendingen = db.scalars(
+        select(Uitzending).where(
+            Uitzending.kerk_id == kerk.id, Uitzending.datum <= uiterlijk
+        ).order_by(Uitzending.datum.desc())
+    )
+    for uit in uitzendingen:
+        bewaard = store.resultaat_ophalen(uit.video_id)
+        if bewaard and (bewaard.get("data") or {}).get("nabespreking"):
+            return uit
+    return None
+
+
 # ---------- Lus ----------
 def tick(base_url):
     db = SessionLocal()
@@ -307,6 +381,7 @@ def tick(base_url):
                 if kerk.auto_verwerken:
                     preverwerk_kerk(db, kerk, base_url)
                 verzonden = bezorg_kerk(db, kerk, base_url)
+                verzonden += bezorg_nabespreking(db, kerk, base_url)
                 if nieuw or verzonden:
                     _log.info(
                         "kerk %s: %s nieuwe dienst(en), %s mail(s) verzonden",

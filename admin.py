@@ -417,6 +417,8 @@ class KanaalBody(BaseModel):
     lengte: str = "middel"
     uitvoer_typen: list[str] = ["dagstukjes"]
     bezorg_typen: list[str] = []
+    nabespreking_schema: str = "mee"
+    nabespreking_datums: list[str] = []
 
 
 class InschrijverBody(BaseModel):
@@ -567,6 +569,8 @@ def mij(request: Request, db=Depends(get_db)):
         "lengte": kerk.lengte or "middel",
         "uitvoer_typen": (kerk.uitvoer_typen or "dagstukjes").split(","),
         "bezorg_typen": (kerk.bezorg_typen or "").split(",") if (kerk.bezorg_typen or "").strip() else [],
+        "nabespreking_schema": getattr(kerk, "nabespreking_schema", "mee") or "mee",
+        "nabespreking_datums": [d for d in (getattr(kerk, "nabespreking_datums", "") or "").split(",") if d],
     }
 
 
@@ -601,6 +605,14 @@ def kanaal(body: KanaalBody, request: Request, db=Depends(get_db)):
     # Alleen types die ook gemaakt worden mogen bezorgd worden. Leeg = alles.
     _bezorg = [t for t in (body.bezorg_typen or []) if t in _uitvoer]
     kerk.bezorg_typen = ",".join(_bezorg)
+    # Groepsvragen-planning: 'mee' (in de wekelijkse mail) of 'datums' (vaste data).
+    kerk.nabespreking_schema = body.nabespreking_schema if body.nabespreking_schema in {"mee", "datums"} else "mee"
+    _datums = []
+    for d in (body.nabespreking_datums or []):
+        d = (d or "").strip()[:10]
+        if re.fullmatch(r"\d{4}-\d{2}-\d{2}", d):
+            _datums.append(d)
+    kerk.nabespreking_datums = ",".join(sorted(set(_datums)))
     db.commit()
     return {"ok": True, "kanaal_url": kerk.kanaal_url}
 
