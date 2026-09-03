@@ -768,6 +768,36 @@ def kanaal(url: str = "", vernieuw: bool = False):
     }
 
 
+def _kanaal_van_enkele(url):
+    """Best-effort: leid het kanaal (streams-tabblad) af van één preeklink.
+
+    Alleen YouTube — daar geeft yt-dlp het kanaal-URL van de video. Voor andere
+    bronnen geven we None terug (dan vraagt de UI zelf om de kanaal-link)."""
+    u = (url or "").lower()
+    if not ("youtube.com" in u or "youtu.be" in u):
+        return None
+    try:
+        info = ts._haal_info(url) or {}
+    except Exception:  # noqa: BLE001
+        return None
+    kanaal = (
+        info.get("channel_url")
+        or info.get("uploader_url")
+        or info.get("uploader_id")
+    )
+    if not kanaal:
+        return None
+    if not kanaal.startswith("http"):
+        kanaal = "https://www.youtube.com/" + kanaal.lstrip("/")
+    return _youtube_kanaal_url(kanaal)
+
+
+@app.get("/api/kanaal-van-preek")
+def kanaal_van_preek(url: str = ""):
+    """Probeer het kanaal af te leiden van één geplakte preeklink (voor 'automatiseer')."""
+    return {"kanaal_url": _kanaal_van_enkele((url or "").strip())}
+
+
 @app.post("/api/verwerk")
 def start_verwerking(verzoek: VerwerkVerzoek):
     url = verzoek.url.strip()
