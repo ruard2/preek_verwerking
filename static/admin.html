@@ -786,6 +786,10 @@ function bouwStap1(mij, s1, st, wiz) {
   const upKnop = el('button', {className: 'secundair'}, T('Upload'));
   uprij.append(upIn, upKnop); s1.body.appendChild(uprij);
 
+  const tip = el('p', {className: 'sub'}); tip.style.marginTop = '.8rem';
+  tip.innerHTML = '💡 ' + T('De eerste keer duurt even: de preek wordt gedownload, getranscribeerd en geanalyseerd. Zet bij stap 3 „automatisch ophalen" aan, dan gebeurt dit vanzelf na de dienst en hoef je nergens op te wachten.');
+  s1.body.appendChild(tip);
+
   const status = el('p', {className: 'sub'}); status.style.marginTop = '.8rem'; s1.body.appendChild(status);
   const houder = el('div'); s1.body.appendChild(houder);       // dienstenkeuze / recente lijst
 
