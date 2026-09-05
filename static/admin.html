@@ -44,6 +44,12 @@
     border-radius: 50%; display: inline-block; animation: spin .8s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
   .logo-preview { max-height: 3rem; border: 1px solid var(--rand); border-radius: .4rem; padding: .3rem; background: #fff; }
+  .hero { border-top: 4px solid var(--groen); }
+  .cta-rij { display: flex; gap: .7rem; flex-wrap: wrap; margin: 1.1rem 0 0; }
+  .cta-knop { display: inline-block; text-decoration: none; padding: .72rem 1.5rem; border-radius: .5rem;
+    background: var(--groen); color: #fff; font-weight: 650; font-size: 1rem; }
+  .cta-knop:hover { filter: brightness(1.06); }
+  .cta-knop.secundair { background: transparent; color: var(--groen); border: 1px solid var(--rand); }
   .editveld { display: block; margin: .15rem 0 .7rem; }
   .editveld > span { display: block; font-size: .82rem; color: var(--grijs); margin-bottom: .15rem; }
   .editveld input, .editveld textarea { width: 100%; font: inherit; padding: .5rem .6rem; border: 1px solid var(--rand);
@@ -136,63 +142,41 @@ function veld(labelTekst, id, type = 'text', waarde = '') {
   return wrap;
 }
 
+const COMMUNITY_TOOLS_URL = 'https://www.communitytools.online/';
+
 function toonLogin() {
   inhoud.innerHTML = '';
+  const T = s => AfterSermonI18n.text(s);
 
-  const uitleg = el('div', {className: 'kaart'});
-  uitleg.innerHTML =
-    '<p style="margin-top:0"><b>AfterSermon</b> maakt van je zondagse preek automatisch een ' +
-    'weekboekje: een korte samenvatting en zeven dagoverdenkingen met vragen voor volwassenen ' +
-    'en kinderen — en mailt die elke week naar je gemeenteleden.</p>' +
-    '<p style="margin-bottom:0">Koppel je YouTube- of Kerkdienstgemist-kanaal en het gaat vanzelf. ' +
-    'Log in of maak een account om te beginnen.</p>';
-  const demo = el('a', {href: '/demo'}, 'Bekijk eerst de demo →');
-  demo.style.cssText = 'display:inline-block;margin-top:.8rem;color:var(--groen)';
-  uitleg.appendChild(demo);
+  // Hero: wat AfterSermon doet.
+  const hero = el('div', {className: 'kaart hero'});
+  hero.innerHTML =
+    '<p style="margin-top:0;font-size:1.06rem;line-height:1.6"><b>AfterSermon</b> ' +
+    T('maakt van je zondagse preek automatisch een weekboekje: een korte samenvatting en zeven dagoverdenkingen met vragen voor volwassenen en kinderen — en mailt die elke week naar je gemeenteleden.') +
+    '</p><p style="margin-bottom:0;color:var(--grijs)">' +
+    T('Koppel je YouTube- of Kerkdienstgemist-kanaal en het gaat vanzelf.') + '</p>';
+  inhoud.appendChild(hero);
+
+  // Call-to-action: account aanmaken (bij Community Tools) + demo.
+  const cta = el('div', {className: 'cta-rij'});
+  const aanmaak = el('a', {href: COMMUNITY_TOOLS_URL}, T('Account aanmaken'));
+  aanmaak.className = 'cta-knop';
+  const demo = el('a', {href: '/demo'}, T('Bekijk de demo'));
+  demo.className = 'cta-knop secundair';
+  cta.append(aanmaak, demo);
+  inhoud.appendChild(cta);
+
+  // Uitleg: account/inloggen loopt via Community Tools.
+  const uitleg = el('div', {className: 'kaart'}); uitleg.style.marginTop = '1rem';
+  const p1 = el('p'); p1.style.margin = '0';
+  p1.innerHTML = '<b>' + T('Je account maak je aan bij Community Tools.') + '</b> ' +
+    T('Daar beheer je al je kerk-apps op één plek. Je maakt (of gebruikt) daar je account en opent AfterSermon vervolgens vanuit Community Tools.');
+  const p2 = el('p'); p2.style.margin = '.7rem 0 0';
+  const login = el('a', {href: COMMUNITY_TOOLS_URL}, T('Al een account? Open AfterSermon via Community Tools →'));
+  login.style.cssText = 'color:var(--groen);font-weight:650';
+  p2.appendChild(login);
+  uitleg.append(p1, p2);
   inhoud.appendChild(uitleg);
-
-  const tabs = el('div', {className: 'tabs'});
-  const bLogin = el('button', {className: 'actief'}, 'Inloggen');
-  const bReg = el('button', {}, 'Account aanmaken');
-  tabs.append(bLogin, bReg); inhoud.appendChild(tabs);
-  const kaart = el('div', {className: 'kaart'}); inhoud.appendChild(kaart);
-
-  function login() {
-    bLogin.className = 'actief'; bReg.className = '';
-    kaart.innerHTML = '';
-    kaart.append(veld('E-mailadres', 'e', 'email'), veld('Wachtwoord', 'w', 'password'));
-    const knop = el('button', {}, 'Inloggen');
-    knop.onclick = async () => {
-      try {
-        await post('/api/admin/login', {email: val('e'), wachtwoord: val('w')});
-        location.href = '/';
-      } catch (f) { toon('fout', f.message); }
-    };
-    kaart.appendChild(knop);
-    const verg = el('button', {className: 'link'}, 'Wachtwoord vergeten?');
-    verg.onclick = toonVergeten;
-    kaart.appendChild(verg);
-  }
-  function registreer() {
-    bLogin.className = ''; bReg.className = 'actief';
-    kaart.innerHTML = '';
-    kaart.append(
-      veld('Naam van de kerk', 'n'), veld('E-mailadres', 'e', 'email'),
-      veld('Wachtwoord (min. 8 tekens)', 'w', 'password')
-    );
-    const knop = el('button', {}, 'Account aanmaken');
-    knop.onclick = async () => {
-      try {
-        await post('/api/admin/register', {naam: val('n'), email: val('e'), wachtwoord: val('w'),
-          taal: AfterSermonI18n.current});
-        toon('ok', 'Account aangemaakt. Check je e-mail en klik op de bevestigingslink.');
-        inhoud.innerHTML = '';
-      } catch (f) { toon('fout', f.message); }
-    };
-    kaart.appendChild(knop);
-  }
-  bLogin.onclick = login; bReg.onclick = registreer;
-  login();
 }
 
 function toonVergeten() {
