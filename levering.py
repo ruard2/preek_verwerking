@@ -54,7 +54,7 @@ def _transcript_blok(L, transcript, accent):
 
 def bouw_email(data, kerk_naam, base_url, voorkeur_token, alleen_dag=None,
                communicatie_taal="nl", ai_disclaimer=True, logo_url=None,
-               accent="#2c5f2d", bezorg_typen=None):
+               accent="#2c5f2d", bezorg_typen=None, waarschuwingstekst=None):
     """Geef (onderwerp, html) voor het weekboekje of één dag (0-geïndexeerd).
 
     `bezorg_typen` (optioneel) beperkt welke uitvoeren in de mail komen — zo kan
@@ -107,9 +107,13 @@ def bouw_email(data, kerk_naam, base_url, voorkeur_token, alleen_dag=None,
     afmeld = f"{base_url}/afmelden?token={voorkeur_token}"
     voorkeur = f"{base_url}/voorkeuren?token={voorkeur_token}"
     C = ui_i18n.messages(communicatie_taal)
+    # Voorkeur: aangepaste tekst van de kerk → i18n-standaard → geen disclaimer.
+    _disc_tekst = (waarschuwingstekst or "").strip() or (
+        C.get("ai_disclaimer", "") if ai_disclaimer else ""
+    )
     disclaimer = (
         f'<p style="color:#a0a099;font-size:11px;margin:.4em 0 0">'
-        f'{escape(C.get("ai_disclaimer", ""))}</p>' if ai_disclaimer else ""
+        f'{escape(_disc_tekst)}</p>' if _disc_tekst else ""
     )
     voettekst = (
         f'<hr style="border:none;border-top:1px solid #e2e2dd;margin:2em 0 1em">'
@@ -145,6 +149,7 @@ def verstuur_een(kerk, data, base_url, sub, alleen_dag=None, bezorg_typen=None):
             data, kerk.naam or "AfterSermon", base_url, sub.voorkeur_token, alleen_dag,
             kerk.communicatie_taal, getattr(kerk, "ai_disclaimer", True), logo_url,
             getattr(kerk, "accentkleur", None), bezorg_typen,
+            waarschuwingstekst=getattr(kerk, "waarschuwingstekst", None),
         )
         brevo.verzend(
             sub.email, onderwerp, html,

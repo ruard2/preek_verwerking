@@ -1101,6 +1101,7 @@ def test_verzenden(request: Request, db=Depends(get_db)):
             onderwerp, html = levering.bouw_email(
                 bewaard["data"], kerk.naam or "AfterSermon", _basis_url(request),
                 "test", None, kerk.communicatie_taal,
+                waarschuwingstekst=getattr(kerk, "waarschuwingstekst", None),
             )
             brevo.verzend(
                 kerk.email, "[TEST] " + onderwerp, html,
@@ -1263,6 +1264,7 @@ def uitzending_test(body: dict, request: Request, db=Depends(get_db)):
         bewaard["data"], kerk.naam or "AfterSermon", base, "test",
         None, kerk.communicatie_taal, getattr(kerk, "ai_disclaimer", True),
         logo_url, getattr(kerk, "accentkleur", None),
+        waarschuwingstekst=getattr(kerk, "waarschuwingstekst", None),
     )
     brevo.verzend(
         kerk.email, "[TEST] " + onderwerp, html,

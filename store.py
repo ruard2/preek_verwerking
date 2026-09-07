@@ -14,6 +14,7 @@ import json
 import os
 import re
 import tempfile
+from collections import OrderedDict
 from datetime import datetime, timedelta
 
 DATA_DIR = os.environ.get("DATA_DIR", os.path.join(os.path.dirname(__file__), "data"))
@@ -113,6 +114,13 @@ def datum_opslaan(video_id, datum):
 
 
 # ---- Preekresultaten -----------------------------------------------------
+# In-memory cache: eenmaal geladen blijft het resultaat in RAM. Voorkomt
+# herhaald lezen van hetzelfde JSON-bestand tijdens de automatisering-tick
+# (scan → goedkeuring → bezorging) en bij meerdere inschrijvers per dienst.
+# Max 100 entries (LRU); elk resultaat is ±20-100 kB → max ~10 MB RAM.
+_MAX_CACHE = int(os.environ.get("RESULT_CACHE_MAX", "100"))
+_resultaat_cache: OrderedDict = OrderedDict()
+
 
 def _veilig(video_id):
     return re.sub(r"[^A-Za-z0-9_-]", "_", video_id)[:64]
@@ -123,8 +131,33 @@ def _resultaat_pad(video_id):
 
 
 def resultaat_ophalen(video_id):
-    return _lees(_resultaat_pad(video_id))
+    """Geef het opgeslagen resultaat. Leest van schijf als het niet in RAM zit."""
+    if video_id in _resultaat_cache:
+        # LRU: naar het einde verplaatsen (meest recent gebruikt)
+        _resultaat_cache.move_to_end(video_id)
+        return _resultaat_cache[video_id]
+    data = _lees(_resultaat_pad(video_id))
+    if data is not None:
+        _resultaat_cache[video_id] = data
+        _resultaat_cache.move_to_end(video_id)
+        # Evict oudste als we boven de limiet zitten
+        while len(_resultaat_cache) > _MAX_CACHE:
+            _resultaat_cache.popitem(last=False)
+    return data
 
 
 def resultaat_opslaan(video_id, payload):
+    """Sla op op schijf én update de in-memory cache direct."""
     _schrijf_atomisch(_resultaat_pad(video_id), payload)
+    _resultaat_cache[video_id] = payload
+    _resultaat_cache.move_to_end(video_id)
+    while len(_resultaat_cache) > _MAX_CACHE:
+        _resultaat_cache.popitem(last=False)
+
+
+def resultaat_cache_wissen(video_id=None):
+    """Gooi één of alle entries uit de cache (bijv. na handmatig bewerken)."""
+    if video_id is None:
+        _resultaat_cache.clear()
+    else:
+        _resultaat_cache.pop(video_id, None)
