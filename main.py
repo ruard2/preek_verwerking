@@ -1009,6 +1009,14 @@ def demo():
     )
 
 
+@app.get("/setup")
+def setup():
+    """Stap-voor-stap onboarding-wizard voor nieuwe beheerders."""
+    return FileResponse(
+        "static/setup.html", headers={"Cache-Control": "no-cache"}
+    )
+
+
 if __name__ == "__main__":
     # Zelfstandig starten (Docker/Railway): lees de poort uit de omgeving, zodat
     # we niet afhankelijk zijn van shell-expansie van $PORT in het startcommando.

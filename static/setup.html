@@ -1,0 +1,699 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AfterSermon</title>
+<link rel="stylesheet" href="/static/dashboard.css">
+<style>
+/* ====== Wizard accordion ====== */
+.wizard { max-width: 700px; margin: 0 auto; }
+
+.stap {
+  border: 1px solid var(--line); border-radius: 14px;
+  margin-bottom: 10px; background: var(--surface);
+  box-shadow: 0 2px 8px rgba(16,42,42,.04);
+  overflow: hidden;
+}
+.stap-kop {
+  display: flex; align-items: center; gap: 14px;
+  padding: 18px 22px; user-select: none;
+}
+.stap.bereikbaar .stap-kop { cursor: pointer; }
+.stap-nr {
+  width: 32px; height: 32px; border-radius: 50%;
+  background: var(--soft); color: var(--brand);
+  display: grid; place-items: center;
+  font-weight: 800; font-size: .88rem; flex: none;
+  transition: background .15s, color .15s;
+}
+.stap.open .stap-nr,
+.stap.klaar .stap-nr { background: var(--brand); color: #fff; }
+.stap-titelrij { flex: 1; display: flex; align-items: baseline; gap: 5px; flex-wrap: wrap; }
+.stap-titel { font-weight: 700; font-size: 1rem; color: var(--ink); }
+.stap-vinkje { color: var(--brand); }
+.stap-sam { color: var(--muted); font-size: .83rem; margin-left: auto; white-space: nowrap; }
+.stap-body {
+  display: none; padding: 4px 22px 22px;
+  border-top: 1px solid var(--line);
+}
+.stap.open .stap-body { display: block; }
+
+/* ====== Within step body ====== */
+.sectie-label {
+  text-transform: uppercase; letter-spacing: .1em;
+  color: var(--brand); font-size: .7rem; font-weight: 800;
+  margin: 22px 0 8px; font-family: Inter, sans-serif;
+}
+.sectie-label:first-child { margin-top: 10px; }
+.info-tekst { color: var(--muted); font-size: .88rem; margin: 6px 0 12px; line-height: 1.5; }
+.info-tekst a { color: var(--brand); }
+
+/* ====== Output tiles (step 2) ====== */
+.output-tiles { display: flex; gap: 10px; margin: 8px 0 16px; flex-wrap: wrap; }
+.output-tile {
+  border: 2px solid var(--line); border-radius: 11px;
+  padding: 14px 16px; cursor: pointer; flex: 1 1 160px;
+  transition: border-color .15s, background .15s;
+  user-select: none;
+}
+.output-tile:hover { border-color: var(--brand); }
+.output-tile.gekozen { border-color: var(--brand); background: var(--soft); }
+.output-tile h4 { margin: 0 0 4px; font-size: .92rem; }
+.output-tile .omschr { margin: 0; font-size: .78rem; color: var(--muted); }
+
+/* ====== Delivery rows (step 3) ====== */
+.levering-rij {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px; background: var(--bg);
+  border-radius: 8px; margin-bottom: 8px;
+}
+.levering-naam { font-weight: 600; font-size: .88rem; min-width: 120px; flex: none; }
+.levering-rij select { flex: 1; margin: 0; }
+
+/* ====== Toggle ====== */
+.toggle-rij { display: flex; align-items: center; gap: 10px; padding: 6px 0; }
+.toggle-rij input[type=checkbox] {
+  appearance: none; -webkit-appearance: none;
+  width: 44px !important; height: 24px;
+  border-radius: 99px !important; background: #cdd8d2 !important;
+  border: 0 !important; position: relative; transition: .2s; flex: none; cursor: pointer;
+}
+.toggle-rij input[type=checkbox]:before {
+  content: ""; position: absolute; width: 18px; height: 18px;
+  left: 3px; top: 3px; border-radius: 50%; background: #fff;
+  box-shadow: 0 1px 4px #0003; transition: .2s;
+}
+.toggle-rij input[type=checkbox]:checked { background: var(--brand) !important; }
+.toggle-rij input[type=checkbox]:checked:before { transform: translateX(20px); }
+.toggle-rij label {
+  margin: 0 !important; font-size: .88rem !important;
+  color: var(--ink) !important; font-weight: 500 !important;
+  text-transform: none !important; letter-spacing: 0 !important; cursor: pointer;
+}
+
+/* ====== "Nothing to configure" box ====== */
+.geen-config {
+  background: var(--soft); border-radius: 10px;
+  padding: 18px 20px; text-align: center; color: var(--muted);
+  margin: 10px 0 16px;
+}
+.geen-config b { display: block; color: var(--brand); font-size: 1rem; margin-bottom: 6px; }
+
+/* ====== Email notification block ====== */
+.notif-blok {
+  border: 1px solid var(--line); border-radius: 10px;
+  padding: 14px 16px; margin: 10px 0;
+}
+.notif-blok > .notif-label {
+  font-size: .75rem; color: var(--muted); margin: 0 0 8px;
+  display: block; text-transform: uppercase;
+  letter-spacing: .06em; font-family: Inter, sans-serif;
+}
+.notif-blok input { width: 100%; margin: 0; }
+
+/* ====== QR / share section ====== */
+.qr-sectie { display: flex; gap: 16px; align-items: flex-start; margin: 10px 0 12px; }
+.qr-sectie img { width: 96px; flex: none; border-radius: 8px; border: 1px solid var(--line); }
+.qr-sectie .qr-rechts { flex: 1; }
+.qr-sectie .qr-rechts input { width: 100%; margin-bottom: 6px; font-size: .82rem; }
+
+/* ====== Timing row ====== */
+.timing-grid { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 6px 0 10px; }
+.timing-grid span { color: var(--muted); font-size: .88rem; }
+.timing-grid select, .timing-grid input[type=time] { flex: 1 1 120px; margin: 0; }
+
+/* ====== Nav buttons ====== */
+.nav-rij { display: flex; gap: 8px; margin-top: 20px; }
+.nav-rij button { flex: 1; }
+.nav-rij .btn-terug {
+  background: transparent !important; border: 1px solid var(--line) !important;
+  color: var(--ink) !important; box-shadow: none !important;
+}
+.nav-rij .btn-terug:hover { background: var(--bg) !important; }
+
+/* ====== Step 4 finish ====== */
+.finish-blok { text-align: center; padding: 24px 20px; }
+.finish-blok .finish-icon { font-size: 2.4rem; margin-bottom: 10px; }
+.finish-blok p { color: var(--muted); margin: 0 0 16px; font-size: .92rem; }
+</style>
+</head>
+<body>
+  <h1>AfterSermon</h1>
+  <p class="sub">Van zondagse preek naar een week vol verdieping — in vier stappen.</p>
+
+  <div class="wizard" id="wizard"></div>
+
+<script src="/static/ui-i18n.js"></script>
+<script>
+// ====================================================
+// State
+// ====================================================
+const state = {
+  kanaalUrl: '',
+  // Set of chosen output keys: 'samenvatting' | 'dagstukjes'
+  outputs: new Set(),
+  // Delivery per output key: 'download' | 'email' | 'lijst'
+  levering: {},
+  notifEmail: '',      // email address for "mail me als klaar"
+  verzendDag: 0,       // 0=ma … 6=zo
+  verzendTijd: '07:00',
+  autoVersturen: true,
+  inschrijvingOpen: true,
+  actieveStap: 1,
+};
+
+// ====================================================
+// Output definitions
+// ====================================================
+const OUTPUTS = {
+  samenvatting: {
+    label: 'Samenvatting',
+    omschr: 'Samenvatting van de preek (400–600 woorden, met structuur en alinea\'s).',
+  },
+  dagstukjes: {
+    label: 'Dagstukjes',
+    omschr: 'Zeven dagoverdenkingen met Bijbeltekst, gedachte en vragen.',
+  },
+};
+
+const LEVERING_OPTIES = [
+  { value: 'download', label: 'Alleen downloaden (stap 4)' },
+  { value: 'email',    label: 'Mail me als het klaar is' },
+  { value: 'lijst',    label: 'Wekelijks naar mijn verzendlijst' },
+];
+
+const DAG_NAMEN = ['Maandag','Dinsdag','Woensdag','Donderdag','Vrijdag','Zaterdag','Zondag'];
+
+// ====================================================
+// Helpers
+// ====================================================
+function alleDownload() {
+  return [...state.outputs].every(o => (state.levering[o] || 'download') === 'download');
+}
+function heeftMethode(m) {
+  return [...state.outputs].some(o => (state.levering[o] || 'download') === m);
+}
+function kortLabel(url) {
+  try {
+    const u = new URL(url);
+    if (u.hostname.includes('kerkdienstgemist')) return 'Kerkdienstgemist';
+    const m = u.pathname.match(/@[\w.-]+/);
+    return 'YouTube ' + (m ? m[0] : u.hostname);
+  } catch { return url.slice(0, 30); }
+}
+function stapKlaar(n) {
+  if (n === 1) return !!state.kanaalUrl;
+  if (n === 2) return state.outputs.size > 0;
+  if (n === 3) return stapKlaar(2); // stap 3 is altijd te voltooien
+  return false;
+}
+function stapBereikbaar(n) {
+  if (n === 1) return true;
+  return stapKlaar(n - 1);
+}
+
+// ====================================================
+// Open step
+// ====================================================
+function openStap(n) {
+  if (!stapBereikbaar(n)) return;
+  state.actieveStap = n;
+  renderWizard();
+  // Scroll to wizard top
+  document.getElementById('wizard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// ====================================================
+// Render wizard
+// ====================================================
+function renderWizard() {
+  const w = document.getElementById('wizard');
+  w.innerHTML = '';
+  [1, 2, 3, 4].forEach(n => w.appendChild(buildStap(n)));
+}
+
+function buildStap(n) {
+  const open = state.actieveStap === n;
+  const klaar = stapKlaar(n);
+  const bereikbaar = stapBereikbaar(n);
+
+  const d = document.createElement('div');
+  d.className = 'stap' +
+    (open        ? ' open'       : '') +
+    (klaar       ? ' klaar'      : '') +
+    (bereikbaar  ? ' bereikbaar' : '');
+
+  // -- Header --
+  const kop = document.createElement('div');
+  kop.className = 'stap-kop';
+  if (bereikbaar && !open) kop.addEventListener('click', () => openStap(n));
+
+  const nr = document.createElement('div');
+  nr.className = 'stap-nr';
+  nr.textContent = n;
+  kop.appendChild(nr);
+
+  const titelrij = document.createElement('div');
+  titelrij.className = 'stap-titelrij';
+
+  const titel = document.createElement('span');
+  titel.className = 'stap-titel';
+  titel.textContent = stapTitel(n);
+  titelrij.appendChild(titel);
+
+  if (klaar && !open) {
+    const vink = document.createElement('span');
+    vink.className = 'stap-vinkje';
+    vink.textContent = ' ✓';
+    titelrij.appendChild(vink);
+  }
+  kop.appendChild(titelrij);
+
+  const sam = stapSamenvatting(n);
+  if (sam && !open) {
+    const s = document.createElement('span');
+    s.className = 'stap-sam';
+    s.textContent = sam;
+    kop.appendChild(s);
+  }
+  d.appendChild(kop);
+
+  // -- Body --
+  if (open) {
+    const body = document.createElement('div');
+    body.className = 'stap-body';
+    buildStapBody(n, body);
+    d.appendChild(body);
+  }
+
+  return d;
+}
+
+function stapTitel(n) {
+  return ['', 'Koppel je kanaal', 'Kies wat je wil maken',
+          'Automatiseer het proces', 'Verwerken & downloaden'][n];
+}
+
+function stapSamenvatting(n) {
+  if (n === 1 && state.kanaalUrl) return kortLabel(state.kanaalUrl);
+  if (n === 2 && state.outputs.size > 0)
+    return [...state.outputs].map(k => OUTPUTS[k].label).join(', ');
+  return '';
+}
+
+function buildStapBody(n, body) {
+  if (n === 1) buildStap1(body);
+  else if (n === 2) buildStap2(body);
+  else if (n === 3) buildStap3(body);
+  else buildStap4(body);
+}
+
+// ====================================================
+// Stap 1 — Kanaal koppelen
+// ====================================================
+function buildStap1(body) {
+  addTekst(body, 'info-tekst',
+    'Plak de link van je YouTube-kanaal of Kerkdienstgemist-station. ' +
+    'AfterSermon haalt nieuwe preken daarna automatisch op.');
+
+  const inp = document.createElement('input');
+  inp.type = 'url';
+  inp.id = 'kanaal-url';
+  inp.placeholder = 'https://youtube.com/@mijnkerk  ·  https://kerkdienstgemist.nl/stations/…';
+  inp.value = state.kanaalUrl;
+  inp.style.cssText = 'width:100%;margin-bottom:12px';
+  inp.addEventListener('keydown', e => { if (e.key === 'Enter') laadKanaal(); });
+  body.appendChild(inp);
+
+  const btn = document.createElement('button');
+  btn.id = 'kanaal-knop';
+  btn.textContent = 'Verbinden →';
+  btn.addEventListener('click', laadKanaal);
+  body.appendChild(btn);
+
+  if (state.kanaalUrl) {
+    const ok = document.createElement('p');
+    ok.className = 'info-tekst';
+    ok.style.color = 'var(--brand)';
+    ok.textContent = '✓ Kanaal verbonden. Ga naar stap 2.';
+    body.appendChild(ok);
+    body.appendChild(buildNav(null, () => openStap(2)));
+  }
+}
+
+async function laadKanaal() {
+  const url = (document.getElementById('kanaal-url')?.value || '').trim();
+  if (!url) return;
+  const knop = document.getElementById('kanaal-knop');
+  if (knop) { knop.disabled = true; knop.textContent = 'Laden…'; }
+  try {
+    const r = await fetch('/api/kanaal?' + new URLSearchParams({ url }));
+    if (!r.ok) throw new Error('Kanaal kon niet worden geladen.');
+    const data = await r.json();
+    state.kanaalUrl = data.kanaal || url;
+    openStap(2);
+  } catch (e) {
+    alert(e.message);
+    if (knop) { knop.disabled = false; knop.textContent = 'Verbinden →'; }
+  }
+}
+
+// ====================================================
+// Stap 2 — Kies wat je wil maken
+// ====================================================
+function buildStap2(body) {
+  addTekst(body, 'info-tekst',
+    'Selecteer wat je van elke preek wil ontvangen. ' +
+    'In stap 3 kies je per onderdeel hoe het bezorgd wordt.');
+
+  const tiles = document.createElement('div');
+  tiles.className = 'output-tiles';
+
+  for (const [key, info] of Object.entries(OUTPUTS)) {
+    const tile = document.createElement('div');
+    tile.className = 'output-tile' + (state.outputs.has(key) ? ' gekozen' : '');
+    tile.innerHTML = `<h4>${info.label}</h4><p class="omschr">${info.omschr}</p>`;
+    tile.addEventListener('click', () => {
+      if (state.outputs.has(key)) {
+        state.outputs.delete(key);
+        delete state.levering[key];
+      } else {
+        state.outputs.add(key);
+        if (!state.levering[key]) state.levering[key] = 'download';
+      }
+      openStap(2);
+    });
+    tiles.appendChild(tile);
+  }
+  body.appendChild(tiles);
+
+  body.appendChild(buildNav(
+    () => openStap(1),
+    state.outputs.size > 0 ? () => openStap(3) : null
+  ));
+}
+
+// ====================================================
+// Stap 3 — Automatiseer het proces (DYNAMISCH)
+// ====================================================
+function buildStap3(body) {
+  const outputs = [...state.outputs];
+
+  if (outputs.length === 0) {
+    // Shouldn't normally happen; send back
+    addTekst(body, 'info-tekst', 'Ga terug naar stap 2 en kies wat je wil maken.');
+    body.appendChild(buildNav(() => openStap(2), null));
+    return;
+  }
+
+  // ── Alle outputs op "alleen downloaden" → niets te configureren ──
+  if (alleDownload()) {
+    const msg = document.createElement('div');
+    msg.className = 'geen-config';
+    msg.innerHTML =
+      '<b>✓ Niets in te stellen</b>' +
+      'Je hebt voor alle onderdelen gekozen voor alleen downloaden — ga direct naar stap 4.';
+    body.appendChild(msg);
+    body.appendChild(buildNav(() => openStap(2), () => openStap(4)));
+    return;
+  }
+
+  // ── Automatisch ophalen ──
+  addLabel(body, '⚡ Automatisch ophalen');
+  addTekst(body, 'info-tekst',
+    '✓ Preken komen automatisch van je kanaal. ' +
+    'Volgende week staat de preek klaar als je inlogt.');
+
+  // ── WAT GEBEURT ER MET ELKE UITVOER? ──
+  addLabel(body, 'Wat gebeurt er met elke uitvoer?');
+  addTekst(body, 'info-tekst',
+    'Per onderdeel dat je in stap 2 koos: automatisch meesturen in de mail naar je verzendlijst, ' +
+    'een notificatie sturen als het klaar is, of alleen zelf downloaden bij stap 4.');
+
+  // Delivery row ONLY for chosen outputs
+  for (const key of outputs) {
+    const rij = document.createElement('div');
+    rij.className = 'levering-rij';
+
+    const naam = document.createElement('div');
+    naam.className = 'levering-naam';
+    naam.textContent = OUTPUTS[key].label;
+
+    const sel = document.createElement('select');
+    LEVERING_OPTIES.forEach(opt => {
+      const o = document.createElement('option');
+      o.value = opt.value;
+      o.textContent = opt.label;
+      sel.appendChild(o);
+    });
+    sel.value = state.levering[key] || 'download';
+    sel.addEventListener('change', () => {
+      state.levering[key] = sel.value;
+      renderWizard(); // Re-render step 3 to show/hide sections
+    });
+
+    rij.appendChild(naam);
+    rij.appendChild(sel);
+    body.appendChild(rij);
+  }
+
+  // ── Notificatie-mail (alleen als minstens één output "email" heeft) ──
+  if (heeftMethode('email')) {
+    addLabel(body, 'Notificatie');
+    const blok = document.createElement('div');
+    blok.className = 'notif-blok';
+    const lbl = document.createElement('span');
+    lbl.className = 'notif-label';
+    lbl.textContent = 'Op welk adres stuur je een notificatie als de preek klaar staat?';
+    const inp = document.createElement('input');
+    inp.type = 'email';
+    inp.id = 'notif-email';
+    inp.placeholder = 'dominee@kerk.nl  ·  of meerdere adressen, komma-gescheiden';
+    inp.value = state.notifEmail;
+    inp.addEventListener('input', () => { state.notifEmail = inp.value; });
+    blok.appendChild(lbl);
+    blok.appendChild(inp);
+    body.appendChild(blok);
+  }
+
+  // ── Verzendlijst + timing (alleen als minstens één output "lijst" heeft) ──
+  if (heeftMethode('lijst')) {
+    addLabel(body, 'Verzendlijst');
+    addTekst(body, 'info-tekst',
+      'Naar je verzendlijst: gemeenteleden schrijven zich in via een link/QR; ' +
+      'jij krijgt zelf altijd een controle-kopie.');
+
+    // QR-code and link
+    const qrSectie = document.createElement('div');
+    qrSectie.className = 'qr-sectie';
+    const qrImg = document.createElement('img');
+    qrImg.src = '/api/admin/qr';
+    qrImg.alt = 'QR-code inschrijfpagina';
+    qrImg.onerror = () => { qrImg.style.display = 'none'; };
+    const qrRechts = document.createElement('div');
+    qrRechts.className = 'qr-rechts';
+    const linkInp = document.createElement('input');
+    linkInp.type = 'text';
+    linkInp.id = 'inschrijf-link';
+    linkInp.readOnly = true;
+    linkInp.placeholder = 'Laden…';
+    const qrDl = document.createElement('a');
+    qrDl.href = '/api/admin/qr?download=true';
+    qrDl.style.cssText = 'font-size:.82rem;color:var(--brand);text-decoration:none';
+    qrDl.textContent = 'QR-code downloaden';
+    qrRechts.appendChild(linkInp);
+    qrRechts.appendChild(qrDl);
+    qrSectie.appendChild(qrImg);
+    qrSectie.appendChild(qrRechts);
+    body.appendChild(qrSectie);
+
+    // Beheer-knop
+    const beheerKnop = document.createElement('button');
+    beheerKnop.textContent = 'Beheer verzendlijst / QR-code';
+    beheerKnop.style.marginBottom = '12px';
+    beheerKnop.addEventListener('click', () => location.href = '/admin#tab-leden');
+    body.appendChild(beheerKnop);
+
+    // Toggle: inschrijving open
+    const toggleRij = document.createElement('div');
+    toggleRij.className = 'toggle-rij';
+    const chk = document.createElement('input');
+    chk.type = 'checkbox';
+    chk.id = 'inschrijving-open';
+    chk.checked = state.inschrijvingOpen;
+    chk.addEventListener('change', () => { state.inschrijvingOpen = chk.checked; });
+    const lbl = document.createElement('label');
+    lbl.htmlFor = 'inschrijving-open';
+    lbl.textContent =
+      'Inschrijving open — gemeenteleden kunnen zich via de QR/link aanmelden ' +
+      'en zelf kiezen wat ze willen ontvangen';
+    toggleRij.appendChild(chk);
+    toggleRij.appendChild(lbl);
+    body.appendChild(toggleRij);
+
+    // Timing
+    addLabel(body, 'Wanneer gaat het wekelijks de deur uit?');
+    const timingInfo = document.createElement('p');
+    timingInfo.className = 'info-tekst';
+    timingInfo.textContent = 'Elke week op:';
+    body.appendChild(timingInfo);
+
+    const grid = document.createElement('div');
+    grid.className = 'timing-grid';
+
+    const dagSel = document.createElement('select');
+    DAG_NAMEN.forEach((d, i) => {
+      const o = document.createElement('option');
+      o.value = i; o.textContent = d;
+      dagSel.appendChild(o);
+    });
+    dagSel.value = state.verzendDag;
+    dagSel.addEventListener('change', () => { state.verzendDag = +dagSel.value; });
+
+    const omSpan = document.createElement('span');
+    omSpan.textContent = 'om';
+
+    const tijdInp = document.createElement('input');
+    tijdInp.type = 'time';
+    tijdInp.value = state.verzendTijd;
+    tijdInp.addEventListener('input', () => { state.verzendTijd = tijdInp.value; });
+
+    grid.appendChild(dagSel);
+    grid.appendChild(omSpan);
+    grid.appendChild(tijdInp);
+    body.appendChild(grid);
+
+    // Auto-goedkeuring toggle
+    // Checkbox = "Met goedkeuring" → checked means auto_versturen=false
+    const autoRij = document.createElement('div');
+    autoRij.className = 'toggle-rij';
+    const autoChk = document.createElement('input');
+    autoChk.type = 'checkbox';
+    autoChk.id = 'auto-versturen';
+    autoChk.checked = !state.autoVersturen; // invert: checked = "met goedkeuring" = NOT auto
+    autoChk.addEventListener('change', () => { state.autoVersturen = !autoChk.checked; });
+    const autoLbl = document.createElement('label');
+    autoLbl.htmlFor = 'auto-versturen';
+    autoLbl.textContent =
+      'Met goedkeuring — je krijgt eerst een mail om de uitvoer te beoordelen vóór het verstuurd wordt';
+    autoRij.appendChild(autoChk);
+    autoRij.appendChild(autoLbl);
+    body.appendChild(autoRij);
+
+    // Lazy load inschrijflink
+    fetch('/api/admin/inschrijflink')
+      .then(r => r.json())
+      .then(d => {
+        const el = document.getElementById('inschrijf-link');
+        if (el) el.value = d.url || '';
+      })
+      .catch(() => {});
+  }
+
+  // Nav + opslaan
+  const opslaanKnop = document.createElement('button');
+  opslaanKnop.textContent = 'Opslaan & naar stap 4 →';
+  opslaanKnop.style.cssText = 'margin-top:16px;width:100%';
+  opslaanKnop.addEventListener('click', slaStap3Op);
+
+  body.appendChild(buildNav(() => openStap(2), null));
+  body.appendChild(opslaanKnop);
+}
+
+async function slaStap3Op() {
+  try {
+    await fetch('/api/admin/kanaal', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        kanaal_url: state.kanaalUrl,
+        verzend_dag: state.verzendDag,
+        verzend_tijd: state.verzendTijd,
+        auto_versturen: state.autoVersturen,
+      }),
+    });
+    openStap(4);
+  } catch (e) {
+    alert('Opslaan mislukt: ' + e.message);
+  }
+}
+
+// ====================================================
+// Stap 4 — Verwerken & downloaden
+// ====================================================
+function buildStap4(body) {
+  const blok = document.createElement('div');
+  blok.className = 'finish-blok';
+  blok.innerHTML =
+    '<div class="finish-icon">🎉</div>' +
+    '<p>Alles is ingesteld! Open nu een preek om te verwerken en te downloaden.</p>';
+
+  const knop = document.createElement('button');
+  knop.textContent = '→ Naar de preken';
+  knop.addEventListener('click', () => location.href = '/');
+  blok.appendChild(knop);
+  body.appendChild(blok);
+  body.appendChild(buildNav(() => openStap(3), null));
+}
+
+// ====================================================
+// Nav-rij helper
+// ====================================================
+function buildNav(terug, verder) {
+  const rij = document.createElement('div');
+  rij.className = 'nav-rij';
+  if (terug) {
+    const b = document.createElement('button');
+    b.className = 'btn-terug';
+    b.textContent = '← Terug';
+    b.addEventListener('click', terug);
+    rij.appendChild(b);
+  }
+  if (verder) {
+    const b = document.createElement('button');
+    b.textContent = 'Volgende →';
+    b.addEventListener('click', verder);
+    rij.appendChild(b);
+  }
+  return rij;
+}
+
+// ====================================================
+// DOM helpers
+// ====================================================
+function addLabel(parent, tekst) {
+  const d = document.createElement('div');
+  d.className = 'sectie-label';
+  d.textContent = tekst;
+  parent.appendChild(d);
+}
+function addTekst(parent, cls, tekst) {
+  const p = document.createElement('p');
+  p.className = cls;
+  p.textContent = tekst;
+  parent.appendChild(p);
+}
+
+// ====================================================
+// Init — load existing settings if logged in
+// ====================================================
+const DAG_NAMEN = ['Maandag','Dinsdag','Woensdag','Donderdag','Vrijdag','Zaterdag','Zondag'];
+
+(async function init() {
+  try {
+    const mij = await fetch('/api/admin/mij').then(r => r.json()).catch(() => ({}));
+    if (mij.ingelogd) {
+      if (mij.kanaal_url) state.kanaalUrl = mij.kanaal_url;
+      if (mij.verzend_dag != null) state.verzendDag = mij.verzend_dag;
+      if (mij.verzend_tijd) state.verzendTijd = mij.verzend_tijd;
+      if (mij.auto_versturen != null) state.autoVersturen = !!mij.auto_versturen;
+      // If already has a channel, start at step 2
+      if (state.kanaalUrl) state.actieveStap = 2;
+    }
+  } catch (_) {}
+  renderWizard();
+})();
+</script>
+</body>
+</html>

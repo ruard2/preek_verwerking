@@ -19,7 +19,7 @@ Regels:
   voorbeelden of conclusies).
 * Verwijder tijdcodes, herhalingen, stopwoorden en versprekingen.
 * Maak kromme of onafgemaakte zinnen grammaticaal correct; zet spreektaal om in
-  natuurlijk, goedlopend geschreven Nederlands (of de taal van de preek).
+  natuurlijk, goedlopend geschreven tekst in de taal van de preek.
 * Deel de tekst in logische alinea's in.
 * Herstel duidelijke transcriptiefouten en corrigeer namen van Bijbelboeken en
   Bijbelse personen. Maak onzekere details niet stilzwijgend zeker.
@@ -47,7 +47,7 @@ Houd je daarbij aan de volgende regels:
 * Verwijder tijdcodes.
 * Verwijder onnodige herhalingen, stopwoorden en versprekingen.
 * Maak onafgemaakte of kromme zinnen grammaticaal correct.
-* Zet spreektaal om in natuurlijk, goedlopend Nederlands.
+* Zet spreektaal om in natuurlijk, goedlopend geschreven tekst in de taal van de preek.
 * Deel lange tekstblokken logisch in.
 * Herstel duidelijke transcriptiefouten.
 * Corrigeer namen van Bijbelboeken en Bijbelse personen.
@@ -90,12 +90,14 @@ Algemene eisen
 Lengte
 
 Samenvatting
-Schrijf een samenvatting van ongeveer 150 tot 200 woorden.
+Schrijf een samenvatting van minimaal 400 tot maximaal 600 woorden.
 De samenvatting moet:
 
 * de centrale boodschap van de preek benoemen;
-* de belangrijkste opbouw of gedachtegang weergeven;
-* duidelijk maken wat de preek van de hoorder vraagt;
+* de structuur en opbouw van de preek duidelijk weergeven (inleiding, hoofdpunten, conclusie/toepassing);
+* per thema of gedachtegang een eigen alinea gebruiken — schrijf dus niet in één aaneengesloten blok maar werk met witregels;
+* de belangrijkste onderbouwing, voorbeelden of Bijbelverwijzingen die de voorganger gebruikt noemen;
+* duidelijk maken wat de preek van de hoorder vraagt of oproept;
 * waar passend eindigen bij Christus, het evangelie of Gods genade, wanneer dat ook de lijn van de preek is.
 
 Daggedeelten
@@ -112,7 +114,7 @@ eromheen, met exact deze velden:
   "titel": "<titel van de preekverwerking>",
   "bijbelgedeelte": "<centraal Bijbelgedeelte>",
   "voorganger": "<naam van de voorganger, of null als die onbekend of onzeker is>",
-  "samenvatting": "<samenvatting van 150 tot 200 woorden>",
+  "samenvatting": "<samenvatting van 400 tot 600 woorden, gestructureerd in alinea's>",
   "dagen": [
     {
       "titel": "<korte titel>",
@@ -169,9 +171,11 @@ het welkomstfragment nergens anders voor.
 
 Taal van de uitvoer
 * Schrijf de VOLLEDIGE inhoud — titel, samenvatting, alle dagen en beide \
-vragen — in de taal van de preek zelf. Is de preek in het Afrikaans, schrijf \
-dan in het Afrikaans; is hij in het Engels, in het Engels; enzovoort. Vertaal \
-de inhoud niet naar het Nederlands.
+vragen — ALTIJD in de taal van de preek zelf. Is de preek in het Nederlands, \
+schrijf dan in het Nederlands. Is de preek in het Afrikaans, schrijf dan in \
+het Afrikaans. Is de preek in het Engels, schrijf dan in het Engels. \
+Vertaal de inhoud NOOIT naar een andere taal — schrijf uitsluitend in de \
+taal van de preek.
 * Schrijf de bijbelboeknaam in de verwijzing in diezelfde taal (bijvoorbeeld \
 Engels "Zechariah 4:6", Afrikaans "Sagaria 4:6"). De verstekst: Nederlands uit \
 de Statenvertaling, Engels uit de KJV/World English Bible, Afrikaans uit de \
@@ -501,8 +505,14 @@ herstel namen van Bijbelboeken en personen; voeg niets toe; maak onzekerheden ni
 stilzwijgend zeker.
 
 Lever: (1) de taal, (2) een titel, (3) het centrale Bijbelgedeelte, (4) de
-voorganger of null, (5) een samenvatting van 150–200 woorden die de centrale
-boodschap, de opbouw/gedachtegang en wat de preek van de hoorder vraagt weergeeft.
+voorganger of null, (5) een samenvatting van 400–600 woorden die de centrale
+boodschap, de structuur (inleiding/hoofdpunten/conclusie), de belangrijkste
+voorbeelden en wat de preek van de hoorder vraagt weergeeft — gebruik alinea's,
+niet één aaneengesloten blok.
+
+Schrijf de VOLLEDIGE inhoud (titel, bijbelgedeelte, samenvatting) in de taal van
+de preek zelf — Nederlands voor een Nederlandse preek, Afrikaans voor een
+Afrikaanse preek, Engels voor een Engelse preek. Vertaal de inhoud NOOIT.
 
 Uitvoer UITSLUITEND als geldig JSON, met exact deze Nederlandse sleutels (vertaal
 de sleutels nooit):
