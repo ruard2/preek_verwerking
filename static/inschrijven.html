@@ -30,10 +30,20 @@
   .bedankt h2 { font-size:1.45rem; margin:.2rem 0 .65rem; }
   .bedankt p { max-width:30rem; margin:.35rem auto; color:var(--grijs); }
   @media (prefers-color-scheme: dark) { .ok { background:#1c2a1c; color:#9fd6a3; } .fout { background:#3a1c1a; color:#f0a9a3; } }
-  .uitvoer-groep { display:flex; flex-direction:column; gap:.35rem; margin:.2rem 0 .4rem; }
-  .uitvoer-optie { display:flex; align-items:center; gap:.5rem; text-transform:none; letter-spacing:normal;
-    font-size:.95rem; color:var(--tekst); margin:0; }
-  .uitvoer-optie input { width:auto; }
+  .uitvoer-groep { display:flex; flex-direction:column; gap:.5rem; margin:.3rem 0 .6rem; }
+  .uitvoer-blok { border:1.5px solid var(--rand); border-radius:.55rem; padding:.7rem .85rem;
+    transition:border-color .15s; }
+  .uitvoer-blok:has(.uitvoer-chk:checked) { border-color: var(--groen); background: rgba(44,95,45,.05); }
+  .uitvoer-optie { display:flex; align-items:flex-start; gap:.55rem; text-transform:none;
+    letter-spacing:normal; font-size:.95rem; color:var(--tekst); margin:0; cursor:pointer; }
+  .uitvoer-optie input { width:auto; flex:none; margin-top:.2rem; accent-color:var(--groen); }
+  .uitvoer-naam { display:block; font-weight:600; }
+  .uitvoer-omschr { display:block; font-size:.8rem; color:var(--grijs); margin-top:.1rem; line-height:1.45; }
+  .dag-timing { margin:.55rem 0 .2rem .2rem; display:flex; flex-direction:column; gap:.4rem; }
+  .dag-timing-rij { display:flex; align-items:center; gap:.5rem; }
+  .dag-timing-rij select, .dag-timing-rij input { margin:0; flex:1; }
+  .direct-info { font-size:.78rem; color:var(--grijs); margin:.35rem 0 0 .2rem; line-height:1.45; }
+  .kerk-info { opacity:.75; }
 </style>
 <link rel="stylesheet" href="/static/dashboard.css">
 <link rel="manifest" href="/static/manifest.json">
@@ -123,35 +133,53 @@ function toonBedankt(kerk) {
   }
 }
 
-const UITVOER_LABEL = {dagstukjes: 'Dagstukjes', preeksamenvatting: 'Samenvatting',
-  nabespreking: 'Vragen voor groepen', preektranscript: 'Preektekst'};
+const UITVOER_LABEL = {
+  dagstukjes:        'Dagstukjes',
+  preeksamenvatting: 'Samenvatting',
+  nabespreking:      'Vragen voor groepen',
+  preektranscript:   'Preektekst',
+};
 
-function _uitvoerKeuze(k) {
-  // Alleen tonen als de kerk méér dan één soort verstuurt — anders is er niets te kiezen.
-  const t = s => AfterSermonI18n.text(s);
-  const beschikbaar = (k.uitvoer_beschikbaar || []).filter(x => UITVOER_LABEL[x]);
-  if (beschikbaar.length < 2) return '';
-  const rijen = beschikbaar.map(x =>
-    `<label class="uitvoer-optie"><input type="checkbox" class="uitvoer-chk" value="${x}" checked> ${t(UITVOER_LABEL[x])}</label>`
-  ).join('');
-  return `<label>${t('Wat wil je ontvangen?')}</label>
-      <div class="uitvoer-groep">${rijen}</div>`;
-}
+// Beschrijving per onderdeel (getoond onder de checkbox)
+const UITVOER_OMSCHR = {
+  dagstukjes:        'Zeven korte overdenkingen — één per dag, met Bijbeltekst en vragen.',
+  preeksamenvatting: 'Samenvatting van 400–600 woorden met de lijn en boodschap van de preek.',
+  nabespreking:      'Vragen om als huisgroep of gezin de preek verder te bespreken.',
+  preektranscript:   'De volledige, opgeschoonde preektekst om rustig na te lezen.',
+};
+
+const DAGEN_KORT = ['ma','di','wo','do','vr','za','zo'];
+const DAGEN_LANG = ['Maandag','Dinsdag','Woensdag','Donderdag','Vrijdag','Zaterdag','Zondag'];
 
 function bouwFormulier(k) {
   const t = s => AfterSermonI18n.text(s);
+  const beschikbaar = (k.uitvoer_beschikbaar || Object.keys(UITVOER_LABEL)).filter(x => UITVOER_LABEL[x]);
+
+  // Build uitvoer checkboxes with inline timing for dagstukjes
+  const uitvoerRijen = beschikbaar.map(x => {
+    const isDag = x === 'dagstukjes';
+    return `
+      <div class="uitvoer-blok" id="blok-${x}">
+        <label class="uitvoer-optie">
+          <input type="checkbox" class="uitvoer-chk" value="${x}" checked
+            ${isDag ? 'onchange="toggleDagstukjesTiming(this)"' : ''}>
+          <span>
+            <span class="uitvoer-naam">${t(UITVOER_LABEL[x])}</span>
+            <span class="uitvoer-omschr">${t(UITVOER_OMSCHR[x])}</span>
+          </span>
+        </label>
+        ${isDag ? dagstukjesTiming(t) : directInfo(t)}
+      </div>`;
+  }).join('');
+
   inhoud.innerHTML = `
     <div class="kaart">
       <label for="naam">${t('Naam')}</label><input id="naam">
       <label for="email">${t('E-mailadres *')}</label><input id="email" type="email" required>
       <label for="tel">${t('Telefoonnummer (optioneel)')}</label><input id="tel">
-      ${_uitvoerKeuze(k)}
-      <label for="freq">${t('Hoe vaak wil je ontvangen?')}</label>
-      <select id="freq">
-        <option value="wekelijks">${t('Eén keer per week (hele weekboekje ineens)')}</option>
-        <option value="dagelijks">${t('Dagelijks (één overdenking per dag)')}</option>
-      </select>
-      <label for="dienst">${t('Welke dienst(en) wil je ontvangen?')}</label>
+      <label style="margin-top:.8rem">${t('Wat wil je ontvangen?')}</label>
+      <div class="uitvoer-groep">${uitvoerRijen}</div>
+      <label for="dienst">${t('Welke dienst(en)?')}</label>
       <select id="dienst">
         <option value="beide">${t('Beide diensten')}</option>
         <option value="ochtend">${t('Alleen de ochtenddienst')}</option>
@@ -165,21 +193,75 @@ function bouwFormulier(k) {
       </select>
       <button id="knop">${t('Aanmelden')}</button>
     </div>`;
+
   document.getElementById('knop').onclick = async () => {
     if (!val('email')) { toon('fout', t('Vul je e-mailadres in.')); return; }
+    const gekozen = [...document.querySelectorAll('.uitvoer-chk:checked')].map(c => c.value);
+    if (!gekozen.length) { toon('fout', t('Kies minimaal één onderdeel.')); return; }
+
+    // Frequentie voor dagstukjes
+    const dagChk = document.querySelector('.uitvoer-chk[value=dagstukjes]');
+    const freqEl = document.getElementById('dag-freq');
+    const dagTijdEl = document.getElementById('dag-tijd');
+
     try {
       const r = await fetch('/api/inschrijven', {
         method: 'POST', headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({kerk_id: +kerkId, naam: val('naam'), email: val('email'),
-          telefoon: val('tel'), frequentie: val('freq'), dienstvoorkeur: val('dienst'),
-          kanaal: val('kanaal'),
-          uitvoer_voorkeur: [...document.querySelectorAll('.uitvoer-chk:checked')].map(c => c.value)})
+        body: JSON.stringify({
+          kerk_id:         +kerkId,
+          naam:            val('naam'),
+          email:           val('email'),
+          telefoon:        val('tel'),
+          frequentie:      (dagChk?.checked && freqEl) ? freqEl.value : 'wekelijks',
+          dagstukjes_tijd: (dagChk?.checked && dagTijdEl) ? dagTijdEl.value : null,
+          dienstvoorkeur:  val('dienst'),
+          kanaal:          val('kanaal'),
+          uitvoer_voorkeur: gekozen,
+        }),
       });
       if (!r.ok) throw new Error(await fouttekst(r));
       inhoud.innerHTML = '';
-      toon('ok', 'Bijna klaar! We hebben je een bevestigingsmail gestuurd. Klik op de link daarin om je aanmelding af te ronden.');
+      toon('ok', t('Bijna klaar! We hebben je een bevestigingsmail gestuurd. Klik op de link daarin om je aanmelding af te ronden.'));
     } catch (f) { toon('fout', f.message); }
   };
+}
+
+function dagstukjesTiming(t) {
+  const dagOpties = DAGEN_LANG.map((d, i) =>
+    `<option value="${DAGEN_KORT[i]}">${d}</option>`).join('');
+  return `
+    <div class="dag-timing" id="dag-timing-blok">
+      <div class="dag-timing-rij">
+        <label style="margin:0;min-width:110px">${t('Hoe vaak?')}</label>
+        <select id="dag-freq" onchange="toggleDagFreq(this)">
+          <option value="dagelijks">${t('Dagelijks (één per dag)')}</option>
+          <option value="wekelijks">${t('Wekelijks (alles ineens)')}</option>
+        </select>
+      </div>
+      <div class="dag-timing-rij" id="dag-dag-rij" style="display:none">
+        <label style="margin:0;min-width:110px">${t('Welke dag?')}</label>
+        <select id="dag-dag">${dagOpties}</select>
+      </div>
+      <div class="dag-timing-rij">
+        <label style="margin:0;min-width:110px">${t('Hoe laat?')}</label>
+        <input type="time" id="dag-tijd" value="07:00" style="flex:1;margin:0">
+      </div>
+    </div>`;
+}
+
+function directInfo(t) {
+  return `<p class="direct-info">${t('Wordt direct verstuurd zodra de verwerking klaar is.')
+    } <span class="kerk-info">${t('Als jullie kerk de inhoud eerst controleert, kan dit wat langer duren.')}</span></p>`;
+}
+
+function toggleDagstukjesTiming(chk) {
+  const blok = document.getElementById('dag-timing-blok');
+  if (blok) blok.style.display = chk.checked ? '' : 'none';
+}
+
+function toggleDagFreq(sel) {
+  const dagRij = document.getElementById('dag-dag-rij');
+  if (dagRij) dagRij.style.display = sel.value === 'wekelijks' ? '' : 'none';
 }
 </script>
 </body>

@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AfterSermon</title>
+<title>AfterSermon — Instellen</title>
 <link rel="stylesheet" href="/static/dashboard.css">
 <style>
-/* ====== Wizard accordion ====== */
+/* ===== Wizard ===== */
 .wizard { max-width: 700px; margin: 0 auto; }
 
 .stap {
@@ -33,45 +33,74 @@
 .stap-titel { font-weight: 700; font-size: 1rem; color: var(--ink); }
 .stap-vinkje { color: var(--brand); }
 .stap-sam { color: var(--muted); font-size: .83rem; margin-left: auto; white-space: nowrap; }
-.stap-body {
-  display: none; padding: 4px 22px 22px;
-  border-top: 1px solid var(--line);
-}
+.stap-body { display: none; padding: 4px 22px 22px; border-top: 1px solid var(--line); }
 .stap.open .stap-body { display: block; }
 
-/* ====== Within step body ====== */
+/* ===== Section labels ===== */
 .sectie-label {
   text-transform: uppercase; letter-spacing: .1em;
   color: var(--brand); font-size: .7rem; font-weight: 800;
-  margin: 22px 0 8px; font-family: Inter, sans-serif;
+  margin: 24px 0 8px; font-family: Inter, sans-serif;
+  display: flex; align-items: center; gap: 6px;
 }
 .sectie-label:first-child { margin-top: 10px; }
-.info-tekst { color: var(--muted); font-size: .88rem; margin: 6px 0 12px; line-height: 1.5; }
+.sectie-label .ico { font-size: 1rem; text-transform: none; letter-spacing: 0; }
+.info-tekst { color: var(--muted); font-size: .88rem; margin: 4px 0 12px; line-height: 1.55; }
 .info-tekst a { color: var(--brand); }
 
-/* ====== Output tiles (step 2) ====== */
-.output-tiles { display: flex; gap: 10px; margin: 8px 0 16px; flex-wrap: wrap; }
-.output-tile {
-  border: 2px solid var(--line); border-radius: 11px;
-  padding: 14px 16px; cursor: pointer; flex: 1 1 160px;
-  transition: border-color .15s, background .15s;
-  user-select: none;
+/* ===== Aanbevolen badge ===== */
+.badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: .72rem; font-weight: 700; border-radius: 99px;
+  padding: 2px 9px; text-transform: uppercase; letter-spacing: .06em;
+  vertical-align: middle; margin-left: 6px;
 }
-.output-tile:hover { border-color: var(--brand); }
-.output-tile.gekozen { border-color: var(--brand); background: var(--soft); }
-.output-tile h4 { margin: 0 0 4px; font-size: .92rem; }
-.output-tile .omschr { margin: 0; font-size: .78rem; color: var(--muted); }
+.badge-groen { background: var(--soft); color: var(--brand); }
+.badge-grijs  { background: var(--bg);   color: var(--muted); border: 1px solid var(--line); }
 
-/* ====== Delivery rows (step 3) ====== */
-.levering-rij {
-  display: flex; align-items: center; gap: 10px;
-  padding: 10px 12px; background: var(--bg);
-  border-radius: 8px; margin-bottom: 8px;
+/* ===== Service time rows ===== */
+.dienst-rij {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 12px; background: var(--bg); border-radius: 9px;
+  margin-bottom: 7px; border: 1px solid var(--line);
 }
-.levering-naam { font-weight: 600; font-size: .88rem; min-width: 120px; flex: none; }
-.levering-rij select { flex: 1; margin: 0; }
+.dienst-rij select, .dienst-rij input[type=time] { flex: 1; margin: 0; }
+.dienst-rij .del-knop {
+  flex: none; background: none !important; border: none !important; box-shadow: none !important;
+  color: var(--muted); font-size: 1.1rem; padding: 4px 6px !important;
+  cursor: pointer; line-height: 1; border-radius: 5px; min-width: 0 !important;
+}
+.dienst-rij .del-knop:hover { color: #c0392b; background: #fdecea !important; }
+.link-knop {
+  background: none !important; border: none !important; box-shadow: none !important;
+  color: var(--brand); font-size: .84rem; padding: 0 !important;
+  cursor: pointer; font-weight: 600; text-decoration: underline; margin: 0;
+}
 
-/* ====== Toggle ====== */
+/* ===== Controle detail (collapsible) ===== */
+.controle-detail {
+  margin-top: 10px;
+  border: 1px solid var(--line); border-radius: 10px;
+  padding: 14px 16px; background: var(--bg);
+}
+.controle-detail .sectie-label { margin-top: 12px; }
+.controle-detail .sectie-label:first-child { margin-top: 0; }
+
+/* ===== Radio options ===== */
+.radio-groep { display: flex; flex-direction: column; gap: 7px; margin: 8px 0 12px; }
+.radio-optie {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 10px 12px; border-radius: 9px; border: 1.5px solid var(--line);
+  cursor: pointer; transition: border-color .15s, background .15s;
+}
+.radio-optie:hover { border-color: var(--brand); }
+.radio-optie.gekozen { border-color: var(--brand); background: var(--soft); }
+.radio-optie input[type=radio] { flex: none; margin-top: 3px; accent-color: var(--brand); }
+.radio-optie .ro-inhoud { flex: 1; }
+.radio-optie .ro-titel { font-weight: 600; font-size: .88rem; margin: 0 0 1px; color: var(--ink); }
+.radio-optie .ro-omschr { font-size: .80rem; color: var(--muted); margin: 0; line-height: 1.45; }
+
+/* ===== Toggle ===== */
 .toggle-rij { display: flex; align-items: center; gap: 10px; padding: 6px 0; }
 .toggle-rij input[type=checkbox] {
   appearance: none; -webkit-appearance: none;
@@ -92,39 +121,48 @@
   text-transform: none !important; letter-spacing: 0 !important; cursor: pointer;
 }
 
-/* ====== "Nothing to configure" box ====== */
-.geen-config {
-  background: var(--soft); border-radius: 10px;
-  padding: 18px 20px; text-align: center; color: var(--muted);
-  margin: 10px 0 16px;
-}
-.geen-config b { display: block; color: var(--brand); font-size: 1rem; margin-bottom: 6px; }
-
-/* ====== Email notification block ====== */
-.notif-blok {
-  border: 1px solid var(--line); border-radius: 10px;
-  padding: 14px 16px; margin: 10px 0;
-}
-.notif-blok > .notif-label {
-  font-size: .75rem; color: var(--muted); margin: 0 0 8px;
-  display: block; text-transform: uppercase;
-  letter-spacing: .06em; font-family: Inter, sans-serif;
-}
-.notif-blok input { width: 100%; margin: 0; }
-
-/* ====== QR / share section ====== */
+/* ===== QR / share ===== */
 .qr-sectie { display: flex; gap: 16px; align-items: flex-start; margin: 10px 0 12px; }
 .qr-sectie img { width: 96px; flex: none; border-radius: 8px; border: 1px solid var(--line); }
 .qr-sectie .qr-rechts { flex: 1; }
 .qr-sectie .qr-rechts input { width: 100%; margin-bottom: 6px; font-size: .82rem; }
 
-/* ====== Timing row ====== */
-.timing-grid { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 6px 0 10px; }
-.timing-grid span { color: var(--muted); font-size: .88rem; }
-.timing-grid select, .timing-grid input[type=time] { flex: 1 1 120px; margin: 0; }
+/* ===== Color picker ===== */
+.kleur-rij { display: flex; align-items: center; gap: 10px; margin: 8px 0; }
+.kleur-rij input[type=color] {
+  width: 48px !important; height: 40px; border-radius: 8px !important;
+  border: 1px solid var(--line) !important; padding: 3px !important;
+  cursor: pointer; background: none !important; flex: none;
+}
+.kleur-rij input[type=text] { flex: 1; margin: 0; font-size: .88rem; }
+.kleur-preview {
+  width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--line);
+  flex: none; transition: background .15s;
+}
 
-/* ====== Nav buttons ====== */
-.nav-rij { display: flex; gap: 8px; margin-top: 20px; }
+/* ===== Logo upload ===== */
+.logo-zone {
+  border: 2px dashed var(--line); border-radius: 10px;
+  padding: 18px 16px; text-align: center; cursor: pointer;
+  transition: border-color .15s, background .15s; margin: 8px 0 10px;
+}
+.logo-zone:hover { border-color: var(--brand); background: var(--soft); }
+.logo-zone input { display: none; }
+.logo-zone .logo-tekst { font-size: .85rem; color: var(--muted); }
+.logo-zone .logo-tekst b { display: block; color: var(--brand); margin-bottom: 4px; font-size: .92rem; }
+.logo-preview { max-height: 60px; max-width: 200px; margin: 8px auto 0; display: block; border-radius: 5px; }
+
+/* ===== Textarea ===== */
+.disclaimer-area {
+  width: 100%; min-height: 100px; font-size: .84rem;
+  line-height: 1.55; resize: vertical; font-family: inherit;
+  padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px;
+  background: var(--surface); color: var(--ink);
+  margin: 4px 0 6px;
+}
+
+/* ===== Nav buttons ===== */
+.nav-rij { display: flex; gap: 8px; margin-top: 22px; }
 .nav-rij button { flex: 1; }
 .nav-rij .btn-terug {
   background: transparent !important; border: 1px solid var(--line) !important;
@@ -132,7 +170,7 @@
 }
 .nav-rij .btn-terug:hover { background: var(--bg) !important; }
 
-/* ====== Step 4 finish ====== */
+/* ===== Finish block ===== */
 .finish-blok { text-align: center; padding: 24px 20px; }
 .finish-blok .finish-icon { font-size: 2.4rem; margin-bottom: 10px; }
 .finish-blok p { color: var(--muted); margin: 0 0 16px; font-size: .92rem; }
@@ -140,72 +178,45 @@
 </head>
 <body>
   <h1>AfterSermon</h1>
-  <p class="sub">Van zondagse preek naar een week vol verdieping — in vier stappen.</p>
+  <p class="sub">Koppel je kanaal en stel de automatisering in — in twee stappen klaar.</p>
 
   <div class="wizard" id="wizard"></div>
 
 <script src="/static/ui-i18n.js"></script>
 <script>
-// ====================================================
-// State
-// ====================================================
-const state = {
-  kanaalUrl: '',
-  // Set of chosen output keys: 'samenvatting' | 'dagstukjes'
-  outputs: new Set(),
-  // Delivery per output key: 'download' | 'email' | 'lijst'
-  levering: {},
-  notifEmail: '',      // email address for "mail me als klaar"
-  verzendDag: 0,       // 0=ma … 6=zo
-  verzendTijd: '07:00',
-  autoVersturen: true,
-  inschrijvingOpen: true,
-  actieveStap: 1,
-};
-
-// ====================================================
-// Output definitions
-// ====================================================
-const OUTPUTS = {
-  samenvatting: {
-    label: 'Samenvatting',
-    omschr: 'Samenvatting van de preek (400–600 woorden, met structuur en alinea\'s).',
-  },
-  dagstukjes: {
-    label: 'Dagstukjes',
-    omschr: 'Zeven dagoverdenkingen met Bijbeltekst, gedachte en vragen.',
-  },
-};
-
-const LEVERING_OPTIES = [
-  { value: 'download', label: 'Alleen downloaden (stap 4)' },
-  { value: 'email',    label: 'Mail me als het klaar is' },
-  { value: 'lijst',    label: 'Wekelijks naar mijn verzendlijst' },
-];
+// ===================================================
+// Constanten
+// ===================================================
+const STANDAARD_DISCLAIMER =
+  'Dit bericht is samengesteld met behulp van kunstmatige intelligentie. ' +
+  'De AI werkt uitsluitend met de inhoud van de preek en houdt zich aan strikte ' +
+  'richtlijnen. Toch kan AI fouten maken — bij vragen over de inhoud is de voorganger ' +
+  'de betrouwbare bron. Opmerkingen of feedback? Mail naar info@aftersermon.nl';
 
 const DAG_NAMEN = ['Maandag','Dinsdag','Woensdag','Donderdag','Vrijdag','Zaterdag','Zondag'];
 
-// ====================================================
-// Helpers
-// ====================================================
-function alleDownload() {
-  return [...state.outputs].every(o => (state.levering[o] || 'download') === 'download');
-}
-function heeftMethode(m) {
-  return [...state.outputs].some(o => (state.levering[o] || 'download') === m);
-}
-function kortLabel(url) {
-  try {
-    const u = new URL(url);
-    if (u.hostname.includes('kerkdienstgemist')) return 'Kerkdienstgemist';
-    const m = u.pathname.match(/@[\w.-]+/);
-    return 'YouTube ' + (m ? m[0] : u.hostname);
-  } catch { return url.slice(0, 30); }
-}
+// ===================================================
+// State
+// ===================================================
+const state = {
+  kanaalUrl:               '',
+  diensten:                [{ dag: 6, tijd: '10:00' }],   // Zondag 10:00 als standaard
+  controleVoorVerzending:  false,
+  controleEmails:          '',
+  alsNietGecheckt:         'versturen',                    // 'versturen' | 'blokkeren'
+  waarschuwingstekst:      STANDAARD_DISCLAIMER,
+  accentkleur:             '',
+  logoBestand:             null,
+  inschrijvingOpen:        true,
+  actieveStap:             1,
+};
+
+// ===================================================
+// Wizard helpers
+// ===================================================
 function stapKlaar(n) {
   if (n === 1) return !!state.kanaalUrl;
-  if (n === 2) return state.outputs.size > 0;
-  if (n === 3) return stapKlaar(2); // stap 3 is altijd te voltooien
+  if (n === 2) return stapKlaar(1);
   return false;
 }
 function stapBereikbaar(n) {
@@ -213,61 +224,46 @@ function stapBereikbaar(n) {
   return stapKlaar(n - 1);
 }
 
-// ====================================================
-// Open step
-// ====================================================
 function openStap(n) {
   if (!stapBereikbaar(n)) return;
   state.actieveStap = n;
   renderWizard();
-  // Scroll to wizard top
   document.getElementById('wizard').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
-// ====================================================
-// Render wizard
-// ====================================================
 function renderWizard() {
   const w = document.getElementById('wizard');
   w.innerHTML = '';
-  [1, 2, 3, 4].forEach(n => w.appendChild(buildStap(n)));
+  [1, 2].forEach(n => w.appendChild(buildStap(n)));
 }
 
 function buildStap(n) {
-  const open = state.actieveStap === n;
-  const klaar = stapKlaar(n);
+  const open       = state.actieveStap === n;
+  const klaar      = stapKlaar(n);
   const bereikbaar = stapBereikbaar(n);
 
   const d = document.createElement('div');
   d.className = 'stap' +
-    (open        ? ' open'       : '') +
-    (klaar       ? ' klaar'      : '') +
-    (bereikbaar  ? ' bereikbaar' : '');
+    (open       ? ' open'       : '') +
+    (klaar      ? ' klaar'      : '') +
+    (bereikbaar ? ' bereikbaar' : '');
 
-  // -- Header --
+  // Header
   const kop = document.createElement('div');
   kop.className = 'stap-kop';
   if (bereikbaar && !open) kop.addEventListener('click', () => openStap(n));
 
   const nr = document.createElement('div');
   nr.className = 'stap-nr';
-  nr.textContent = n;
+  nr.textContent = klaar && !open ? '✓' : n;
   kop.appendChild(nr);
 
   const titelrij = document.createElement('div');
   titelrij.className = 'stap-titelrij';
-
   const titel = document.createElement('span');
   titel.className = 'stap-titel';
   titel.textContent = stapTitel(n);
   titelrij.appendChild(titel);
-
-  if (klaar && !open) {
-    const vink = document.createElement('span');
-    vink.className = 'stap-vinkje';
-    vink.textContent = ' ✓';
-    titelrij.appendChild(vink);
-  }
   kop.appendChild(titelrij);
 
   const sam = stapSamenvatting(n);
@@ -279,47 +275,43 @@ function buildStap(n) {
   }
   d.appendChild(kop);
 
-  // -- Body --
   if (open) {
     const body = document.createElement('div');
     body.className = 'stap-body';
-    buildStapBody(n, body);
+    n === 1 ? buildStap1(body) : buildStap2(body);
     d.appendChild(body);
   }
-
   return d;
 }
 
 function stapTitel(n) {
-  return ['', 'Koppel je kanaal', 'Kies wat je wil maken',
-          'Automatiseer het proces', 'Verwerken & downloaden'][n];
+  return ['', 'Koppel je kanaal', 'Automatiseer het proces'][n];
 }
 
 function stapSamenvatting(n) {
   if (n === 1 && state.kanaalUrl) return kortLabel(state.kanaalUrl);
-  if (n === 2 && state.outputs.size > 0)
-    return [...state.outputs].map(k => OUTPUTS[k].label).join(', ');
   return '';
 }
 
-function buildStapBody(n, body) {
-  if (n === 1) buildStap1(body);
-  else if (n === 2) buildStap2(body);
-  else if (n === 3) buildStap3(body);
-  else buildStap4(body);
+function kortLabel(url) {
+  try {
+    const u = new URL(url);
+    if (u.hostname.includes('kerkdienstgemist')) return 'Kerkdienstgemist';
+    const m = u.pathname.match(/@[\w.-]+/);
+    return 'YouTube ' + (m ? m[0] : u.hostname);
+  } catch { return url.slice(0, 30); }
 }
 
-// ====================================================
+// ===================================================
 // Stap 1 — Kanaal koppelen
-// ====================================================
+// ===================================================
 function buildStap1(body) {
   addTekst(body, 'info-tekst',
     'Plak de link van je YouTube-kanaal of Kerkdienstgemist-station. ' +
     'AfterSermon haalt nieuwe preken daarna automatisch op.');
 
   const inp = document.createElement('input');
-  inp.type = 'url';
-  inp.id = 'kanaal-url';
+  inp.type = 'url'; inp.id = 'kanaal-url';
   inp.placeholder = 'https://youtube.com/@mijnkerk  ·  https://kerkdienstgemist.nl/stations/…';
   inp.value = state.kanaalUrl;
   inp.style.cssText = 'width:100%;margin-bottom:12px';
@@ -327,16 +319,14 @@ function buildStap1(body) {
   body.appendChild(inp);
 
   const btn = document.createElement('button');
-  btn.id = 'kanaal-knop';
-  btn.textContent = 'Verbinden →';
+  btn.id = 'kanaal-knop'; btn.textContent = 'Verbinden →';
   btn.addEventListener('click', laadKanaal);
   body.appendChild(btn);
 
   if (state.kanaalUrl) {
     const ok = document.createElement('p');
-    ok.className = 'info-tekst';
-    ok.style.color = 'var(--brand)';
-    ok.textContent = '✓ Kanaal verbonden. Ga naar stap 2.';
+    ok.className = 'info-tekst'; ok.style.color = 'var(--brand)';
+    ok.textContent = '✓ Kanaal verbonden.';
     body.appendChild(ok);
     body.appendChild(buildNav(null, () => openStap(2)));
   }
@@ -359,294 +349,460 @@ async function laadKanaal() {
   }
 }
 
-// ====================================================
-// Stap 2 — Kies wat je wil maken
-// ====================================================
+// ===================================================
+// Stap 2 — Automatiseer het proces (5 secties)
+// ===================================================
 function buildStap2(body) {
+
+  // ── 1. DIENST-TIJDEN ─────────────────────────────
+  addLabel(body, '🕐 Wanneer zijn je diensten?');
   addTekst(body, 'info-tekst',
-    'Selecteer wat je van elke preek wil ontvangen. ' +
-    'In stap 3 kies je per onderdeel hoe het bezorgd wordt.');
+    'AfterSermon wacht na elke dienst op het transcript en verwerkt daarna automatisch. ' +
+    'Heb je meerdere diensten per week? Voeg ze allemaal toe.');
 
-  const tiles = document.createElement('div');
-  tiles.className = 'output-tiles';
+  const dienstenContainer = document.createElement('div');
+  dienstenContainer.id = 'diensten-container';
+  body.appendChild(dienstenContainer);
+  renderDiensten(dienstenContainer);
 
-  for (const [key, info] of Object.entries(OUTPUTS)) {
-    const tile = document.createElement('div');
-    tile.className = 'output-tile' + (state.outputs.has(key) ? ' gekozen' : '');
-    tile.innerHTML = `<h4>${info.label}</h4><p class="omschr">${info.omschr}</p>`;
-    tile.addEventListener('click', () => {
-      if (state.outputs.has(key)) {
-        state.outputs.delete(key);
-        delete state.levering[key];
-      } else {
-        state.outputs.add(key);
-        if (!state.levering[key]) state.levering[key] = 'download';
-      }
-      openStap(2);
-    });
-    tiles.appendChild(tile);
-  }
-  body.appendChild(tiles);
+  const toevoegKnop = document.createElement('button');
+  toevoegKnop.className = 'link-knop';
+  toevoegKnop.textContent = '+ Dienst toevoegen';
+  toevoegKnop.style.marginBottom = '4px';
+  toevoegKnop.addEventListener('click', () => {
+    state.diensten.push({ dag: 6, tijd: '10:00' });
+    renderDiensten(dienstenContainer);
+  });
+  body.appendChild(toevoegKnop);
 
-  body.appendChild(buildNav(
-    () => openStap(1),
-    state.outputs.size > 0 ? () => openStap(3) : null
-  ));
-}
+  // ── 2. CONTROLE VOOR VERZENDING ───────────────────
+  addLabel(body, '✅ Controle voor verzending');
 
-// ====================================================
-// Stap 3 — Automatiseer het proces (DYNAMISCH)
-// ====================================================
-function buildStap3(body) {
-  const outputs = [...state.outputs];
+  // Recommendation card
+  const rekContainer = document.createElement('div');
+  rekContainer.className = 'radio-groep';
 
-  if (outputs.length === 0) {
-    // Shouldn't normally happen; send back
-    addTekst(body, 'info-tekst', 'Ga terug naar stap 2 en kies wat je wil maken.');
-    body.appendChild(buildNav(() => openStap(2), null));
-    return;
-  }
+  const optAuto = maakRadioOptie(
+    'controle-keuze', 'direct',
+    !state.controleVoorVerzending,
+    'Direct versturen',
+    'Zodra AfterSermon klaar is, gaat alles meteen de deur uit. Geen tussenstap. ' +
+    'Dit bespaart tijd en zorgt voor de meeste regelmaat.',
+    '<span class="badge badge-groen">Aanbevolen</span>'
+  );
+  optAuto.addEventListener('click', () => {
+    state.controleVoorVerzending = false;
+    herarrangeerControle(body);
+  });
 
-  // ── Alle outputs op "alleen downloaden" → niets te configureren ──
-  if (alleDownload()) {
-    const msg = document.createElement('div');
-    msg.className = 'geen-config';
-    msg.innerHTML =
-      '<b>✓ Niets in te stellen</b>' +
-      'Je hebt voor alle onderdelen gekozen voor alleen downloaden — ga direct naar stap 4.';
-    body.appendChild(msg);
-    body.appendChild(buildNav(() => openStap(2), () => openStap(4)));
-    return;
-  }
+  const optCheck = maakRadioOptie(
+    'controle-keuze', 'check',
+    state.controleVoorVerzending,
+    'Eerst controleren',
+    'Na de dienst ontvangen jullie een link om de samenvatting, overdenkingen en vragen ' +
+    'te bekijken en eventueel aan te passen. Pas daarna gaat het naar de verzendlijst.',
+    ''
+  );
+  optCheck.addEventListener('click', () => {
+    state.controleVoorVerzending = true;
+    herarrangeerControle(body);
+  });
 
-  // ── Automatisch ophalen ──
-  addLabel(body, '⚡ Automatisch ophalen');
+  rekContainer.appendChild(optAuto);
+  rekContainer.appendChild(optCheck);
+  body.appendChild(rekContainer);
+
+  // Detail (alleen zichtbaar bij controle=true)
+  const controleDetail = document.createElement('div');
+  controleDetail.id = 'controle-detail';
+  controleDetail.className = 'controle-detail';
+  controleDetail.style.display = state.controleVoorVerzending ? 'block' : 'none';
+  bouwControleDetail(controleDetail);
+  body.appendChild(controleDetail);
+
+  // ── 3. AI-DISCLAIMER ──────────────────────────────
+  addLabel(body, '🛡️ AI-disclaimertekst');
   addTekst(body, 'info-tekst',
-    '✓ Preken komen automatisch van je kanaal. ' +
-    'Volgende week staat de preek klaar als je inlogt.');
+    'Deze tekst staat onderaan elk bericht dat AfterSermon verstuurt. ' +
+    'Je kunt hem aanpassen aan de tone-of-voice van je kerk.');
 
-  // ── WAT GEBEURT ER MET ELKE UITVOER? ──
-  addLabel(body, 'Wat gebeurt er met elke uitvoer?');
+  const discArea = document.createElement('textarea');
+  discArea.id = 'disclaimer-area';
+  discArea.className = 'disclaimer-area';
+  discArea.value = state.waarschuwingstekst;
+  discArea.rows = 5;
+  discArea.addEventListener('input', () => { state.waarschuwingstekst = discArea.value; });
+  body.appendChild(discArea);
+
+  const resetDisc = document.createElement('button');
+  resetDisc.className = 'link-knop';
+  resetDisc.textContent = 'Standaardtekst herstellen';
+  resetDisc.style.marginBottom = '4px';
+  resetDisc.addEventListener('click', () => {
+    state.waarschuwingstekst = STANDAARD_DISCLAIMER;
+    discArea.value = STANDAARD_DISCLAIMER;
+  });
+  body.appendChild(resetDisc);
+
+  // ── 4. UITSTRALING ────────────────────────────────
+  addLabel(body, '🎨 Uitstraling');
   addTekst(body, 'info-tekst',
-    'Per onderdeel dat je in stap 2 koos: automatisch meesturen in de mail naar je verzendlijst, ' +
-    'een notificatie sturen als het klaar is, of alleen zelf downloaden bij stap 4.');
+    'Je logo en kleur verschijnen op de aanmeldpagina en in de mails die AfterSermon verstuurt.');
 
-  // Delivery row ONLY for chosen outputs
-  for (const key of outputs) {
-    const rij = document.createElement('div');
-    rij.className = 'levering-rij';
+  // Logo upload
+  const logoZone = document.createElement('div');
+  logoZone.className = 'logo-zone';
+  const logoInp = document.createElement('input');
+  logoInp.type = 'file'; logoInp.accept = 'image/*'; logoInp.id = 'logo-input';
+  const logoTekst = document.createElement('div');
+  logoTekst.className = 'logo-tekst';
+  logoTekst.innerHTML = '<b>📎 Logo uploaden</b>PNG, JPG of SVG · max 2 MB';
+  const logoImg = document.createElement('img');
+  logoImg.className = 'logo-preview'; logoImg.id = 'logo-preview';
+  logoImg.style.display = 'none';
+  logoZone.appendChild(logoInp);
+  logoZone.appendChild(logoTekst);
+  logoZone.appendChild(logoImg);
+  logoZone.addEventListener('click', () => logoInp.click());
+  logoInp.addEventListener('change', () => {
+    const f = logoInp.files[0];
+    if (!f) return;
+    state.logoBestand = f;
+    const reader = new FileReader();
+    reader.onload = e => {
+      logoImg.src = e.target.result;
+      logoImg.style.display = 'block';
+      logoTekst.innerHTML = `<b>✓ ${f.name}</b>Klik om te vervangen`;
+    };
+    reader.readAsDataURL(f);
+  });
+  // Laad bestaand logo als dat er is
+  const bestaandLogo = new Image();
+  bestaandLogo.src = '/logo/' + (window._kerkId || '');
+  bestaandLogo.onload = () => {
+    logoImg.src = bestaandLogo.src;
+    logoImg.style.display = 'block';
+    logoTekst.innerHTML = '<b>✓ Huidig logo</b>Klik om te vervangen';
+  };
+  body.appendChild(logoZone);
 
-    const naam = document.createElement('div');
-    naam.className = 'levering-naam';
-    naam.textContent = OUTPUTS[key].label;
+  // Accentkleur
+  const kleurLabel = document.createElement('div');
+  kleurLabel.className = 'sectie-label';
+  kleurLabel.style.marginTop = '12px';
+  kleurLabel.textContent = 'Accentkleur';
+  body.appendChild(kleurLabel);
 
-    const sel = document.createElement('select');
-    LEVERING_OPTIES.forEach(opt => {
-      const o = document.createElement('option');
-      o.value = opt.value;
-      o.textContent = opt.label;
-      sel.appendChild(o);
+  const kleurRij = document.createElement('div');
+  kleurRij.className = 'kleur-rij';
+  const kleurPicker = document.createElement('input');
+  kleurPicker.type = 'color';
+  kleurPicker.id = 'kleur-picker';
+  kleurPicker.value = state.accentkleur || '#167455';
+  const kleurTxt = document.createElement('input');
+  kleurTxt.type = 'text';
+  kleurTxt.id = 'kleur-txt';
+  kleurTxt.placeholder = '#167455';
+  kleurTxt.value = state.accentkleur || '';
+  kleurTxt.maxLength = 7;
+  const kleurPreview = document.createElement('div');
+  kleurPreview.className = 'kleur-preview';
+  kleurPreview.style.background = state.accentkleur || '#167455';
+
+  kleurPicker.addEventListener('input', () => {
+    state.accentkleur = kleurPicker.value;
+    kleurTxt.value = kleurPicker.value;
+    kleurPreview.style.background = kleurPicker.value;
+  });
+  kleurTxt.addEventListener('input', () => {
+    const v = kleurTxt.value.trim();
+    if (/^#[0-9a-fA-F]{6}$/.test(v)) {
+      state.accentkleur = v;
+      kleurPicker.value = v;
+      kleurPreview.style.background = v;
+    }
+  });
+  kleurRij.appendChild(kleurPicker);
+  kleurRij.appendChild(kleurTxt);
+  kleurRij.appendChild(kleurPreview);
+  body.appendChild(kleurRij);
+
+  // ── 5. VERZENDLIJST ───────────────────────────────
+  addLabel(body, '📬 Verzendlijst');
+  addTekst(body, 'info-tekst',
+    'Gemeenteleden schrijven zich in via de link of QR-code hieronder. ' +
+    'Zij kiezen zelf wat en hoe vaak ze willen ontvangen.');
+
+  // QR + link
+  const qrSectie = document.createElement('div');
+  qrSectie.className = 'qr-sectie';
+  const qrImg = document.createElement('img');
+  qrImg.src = '/api/admin/qr';
+  qrImg.alt = 'QR-code inschrijfpagina';
+  qrImg.onerror = () => { qrImg.style.display = 'none'; };
+  const qrRechts = document.createElement('div');
+  qrRechts.className = 'qr-rechts';
+  const linkInp = document.createElement('input');
+  linkInp.type = 'text'; linkInp.id = 'inschrijf-link';
+  linkInp.readOnly = true; linkInp.placeholder = 'Laden…';
+  const kopieerKnop = document.createElement('button');
+  kopieerKnop.style.cssText = 'margin-top:0;font-size:.82rem;padding:6px 12px';
+  kopieerKnop.textContent = 'Kopiëren';
+  kopieerKnop.addEventListener('click', () => {
+    navigator.clipboard.writeText(linkInp.value).then(() => {
+      kopieerKnop.textContent = '✓ Gekopieerd'; setTimeout(() => kopieerKnop.textContent = 'Kopiëren', 1800);
     });
-    sel.value = state.levering[key] || 'download';
-    sel.addEventListener('change', () => {
-      state.levering[key] = sel.value;
-      renderWizard(); // Re-render step 3 to show/hide sections
-    });
+  });
+  const qrDl = document.createElement('a');
+  qrDl.href = '/api/admin/qr?download=true';
+  qrDl.style.cssText = 'display:block;font-size:.82rem;color:var(--brand);text-decoration:none;margin-top:5px';
+  qrDl.textContent = '⬇ QR-code downloaden';
+  qrRechts.appendChild(linkInp);
+  qrRechts.appendChild(kopieerKnop);
+  qrRechts.appendChild(qrDl);
+  qrSectie.appendChild(qrImg);
+  qrSectie.appendChild(qrRechts);
+  body.appendChild(qrSectie);
 
-    rij.appendChild(naam);
-    rij.appendChild(sel);
-    body.appendChild(rij);
-  }
+  // Beheer-knop
+  const beheerKnop = document.createElement('button');
+  beheerKnop.textContent = '👥 Beheer leden & uitnodigingen';
+  beheerKnop.style.marginBottom = '12px';
+  beheerKnop.addEventListener('click', () => location.href = '/admin#tab-leden');
+  body.appendChild(beheerKnop);
 
-  // ── Notificatie-mail (alleen als minstens één output "email" heeft) ──
-  if (heeftMethode('email')) {
-    addLabel(body, 'Notificatie');
-    const blok = document.createElement('div');
-    blok.className = 'notif-blok';
-    const lbl = document.createElement('span');
-    lbl.className = 'notif-label';
-    lbl.textContent = 'Op welk adres stuur je een notificatie als de preek klaar staat?';
-    const inp = document.createElement('input');
-    inp.type = 'email';
-    inp.id = 'notif-email';
-    inp.placeholder = 'dominee@kerk.nl  ·  of meerdere adressen, komma-gescheiden';
-    inp.value = state.notifEmail;
-    inp.addEventListener('input', () => { state.notifEmail = inp.value; });
-    blok.appendChild(lbl);
-    blok.appendChild(inp);
-    body.appendChild(blok);
-  }
+  // Toggle inschrijving open/dicht
+  const toggleRij = document.createElement('div');
+  toggleRij.className = 'toggle-rij';
+  const chk = document.createElement('input');
+  chk.type = 'checkbox'; chk.id = 'inschrijving-open';
+  chk.checked = state.inschrijvingOpen;
+  chk.addEventListener('change', () => { state.inschrijvingOpen = chk.checked; });
+  const lbl = document.createElement('label');
+  lbl.htmlFor = 'inschrijving-open';
+  lbl.textContent = 'Inschrijving open — gemeenteleden kunnen zich via de link aanmelden';
+  toggleRij.appendChild(chk);
+  toggleRij.appendChild(lbl);
+  body.appendChild(toggleRij);
 
-  // ── Verzendlijst + timing (alleen als minstens één output "lijst" heeft) ──
-  if (heeftMethode('lijst')) {
-    addLabel(body, 'Verzendlijst');
-    addTekst(body, 'info-tekst',
-      'Naar je verzendlijst: gemeenteleden schrijven zich in via een link/QR; ' +
-      'jij krijgt zelf altijd een controle-kopie.');
+  // Lazy-load inschrijflink
+  fetch('/api/admin/inschrijflink')
+    .then(r => r.json())
+    .then(d => { const el = document.getElementById('inschrijf-link'); if (el) el.value = d.url || ''; })
+    .catch(() => {});
 
-    // QR-code and link
-    const qrSectie = document.createElement('div');
-    qrSectie.className = 'qr-sectie';
-    const qrImg = document.createElement('img');
-    qrImg.src = '/api/admin/qr';
-    qrImg.alt = 'QR-code inschrijfpagina';
-    qrImg.onerror = () => { qrImg.style.display = 'none'; };
-    const qrRechts = document.createElement('div');
-    qrRechts.className = 'qr-rechts';
-    const linkInp = document.createElement('input');
-    linkInp.type = 'text';
-    linkInp.id = 'inschrijf-link';
-    linkInp.readOnly = true;
-    linkInp.placeholder = 'Laden…';
-    const qrDl = document.createElement('a');
-    qrDl.href = '/api/admin/qr?download=true';
-    qrDl.style.cssText = 'font-size:.82rem;color:var(--brand);text-decoration:none';
-    qrDl.textContent = 'QR-code downloaden';
-    qrRechts.appendChild(linkInp);
-    qrRechts.appendChild(qrDl);
-    qrSectie.appendChild(qrImg);
-    qrSectie.appendChild(qrRechts);
-    body.appendChild(qrSectie);
-
-    // Beheer-knop
-    const beheerKnop = document.createElement('button');
-    beheerKnop.textContent = 'Beheer verzendlijst / QR-code';
-    beheerKnop.style.marginBottom = '12px';
-    beheerKnop.addEventListener('click', () => location.href = '/admin#tab-leden');
-    body.appendChild(beheerKnop);
-
-    // Toggle: inschrijving open
-    const toggleRij = document.createElement('div');
-    toggleRij.className = 'toggle-rij';
-    const chk = document.createElement('input');
-    chk.type = 'checkbox';
-    chk.id = 'inschrijving-open';
-    chk.checked = state.inschrijvingOpen;
-    chk.addEventListener('change', () => { state.inschrijvingOpen = chk.checked; });
-    const lbl = document.createElement('label');
-    lbl.htmlFor = 'inschrijving-open';
-    lbl.textContent =
-      'Inschrijving open — gemeenteleden kunnen zich via de QR/link aanmelden ' +
-      'en zelf kiezen wat ze willen ontvangen';
-    toggleRij.appendChild(chk);
-    toggleRij.appendChild(lbl);
-    body.appendChild(toggleRij);
-
-    // Timing
-    addLabel(body, 'Wanneer gaat het wekelijks de deur uit?');
-    const timingInfo = document.createElement('p');
-    timingInfo.className = 'info-tekst';
-    timingInfo.textContent = 'Elke week op:';
-    body.appendChild(timingInfo);
-
-    const grid = document.createElement('div');
-    grid.className = 'timing-grid';
-
-    const dagSel = document.createElement('select');
-    DAG_NAMEN.forEach((d, i) => {
-      const o = document.createElement('option');
-      o.value = i; o.textContent = d;
-      dagSel.appendChild(o);
-    });
-    dagSel.value = state.verzendDag;
-    dagSel.addEventListener('change', () => { state.verzendDag = +dagSel.value; });
-
-    const omSpan = document.createElement('span');
-    omSpan.textContent = 'om';
-
-    const tijdInp = document.createElement('input');
-    tijdInp.type = 'time';
-    tijdInp.value = state.verzendTijd;
-    tijdInp.addEventListener('input', () => { state.verzendTijd = tijdInp.value; });
-
-    grid.appendChild(dagSel);
-    grid.appendChild(omSpan);
-    grid.appendChild(tijdInp);
-    body.appendChild(grid);
-
-    // Auto-goedkeuring toggle
-    // Checkbox = "Met goedkeuring" → checked means auto_versturen=false
-    const autoRij = document.createElement('div');
-    autoRij.className = 'toggle-rij';
-    const autoChk = document.createElement('input');
-    autoChk.type = 'checkbox';
-    autoChk.id = 'auto-versturen';
-    autoChk.checked = !state.autoVersturen; // invert: checked = "met goedkeuring" = NOT auto
-    autoChk.addEventListener('change', () => { state.autoVersturen = !autoChk.checked; });
-    const autoLbl = document.createElement('label');
-    autoLbl.htmlFor = 'auto-versturen';
-    autoLbl.textContent =
-      'Met goedkeuring — je krijgt eerst een mail om de uitvoer te beoordelen vóór het verstuurd wordt';
-    autoRij.appendChild(autoChk);
-    autoRij.appendChild(autoLbl);
-    body.appendChild(autoRij);
-
-    // Lazy load inschrijflink
-    fetch('/api/admin/inschrijflink')
-      .then(r => r.json())
-      .then(d => {
-        const el = document.getElementById('inschrijf-link');
-        if (el) el.value = d.url || '';
-      })
-      .catch(() => {});
-  }
-
-  // Nav + opslaan
+  // ── Opslaan ───────────────────────────────────────
   const opslaanKnop = document.createElement('button');
-  opslaanKnop.textContent = 'Opslaan & naar stap 4 →';
-  opslaanKnop.style.cssText = 'margin-top:16px;width:100%';
-  opslaanKnop.addEventListener('click', slaStap3Op);
-
-  body.appendChild(buildNav(() => openStap(2), null));
+  opslaanKnop.textContent = 'Opslaan & afronden →';
+  opslaanKnop.style.cssText = 'margin-top:22px;width:100%';
+  opslaanKnop.addEventListener('click', slaStap2Op);
+  body.appendChild(buildNav(() => openStap(1), null));
   body.appendChild(opslaanKnop);
 }
 
-async function slaStap3Op() {
+// ───── Diensten renderen ─────
+function renderDiensten(container) {
+  container.innerHTML = '';
+  state.diensten.forEach((d, i) => {
+    const rij = document.createElement('div');
+    rij.className = 'dienst-rij';
+
+    const dagSel = document.createElement('select');
+    dagSel.style.minWidth = '110px';
+    DAG_NAMEN.forEach((naam, idx) => {
+      const o = document.createElement('option');
+      o.value = idx; o.textContent = naam;
+      dagSel.appendChild(o);
+    });
+    dagSel.value = d.dag;
+    dagSel.addEventListener('change', () => { state.diensten[i].dag = +dagSel.value; });
+
+    const omSpan = document.createElement('span');
+    omSpan.textContent = 'om'; omSpan.style.color = 'var(--muted)';
+
+    const tijdInp = document.createElement('input');
+    tijdInp.type = 'time'; tijdInp.value = d.tijd;
+    tijdInp.addEventListener('input', () => { state.diensten[i].tijd = tijdInp.value; });
+
+    const del = document.createElement('button');
+    del.className = 'del-knop'; del.textContent = '✕'; del.title = 'Verwijderen';
+    del.style.display = state.diensten.length > 1 ? '' : 'none';
+    del.addEventListener('click', () => {
+      state.diensten.splice(i, 1);
+      renderDiensten(container);
+    });
+
+    rij.appendChild(dagSel); rij.appendChild(omSpan);
+    rij.appendChild(tijdInp); rij.appendChild(del);
+    container.appendChild(rij);
+  });
+}
+
+// ───── Controle detail ─────
+function bouwControleDetail(el) {
+  el.innerHTML = '';
+
+  // Hoe werkt het
+  const uitleg = document.createElement('p');
+  uitleg.className = 'info-tekst';
+  uitleg.innerHTML =
+    '<strong>Zo werkt het:</strong> Na de verwerking ontvangen de controleurs een mail met een ' +
+    'persoonlijke link. Via die pagina kunnen zij de samenvatting, overdenkingen en vragen bekijken ' +
+    'en direct aanpassen. Zodra iedereen goedkeurt (of de deadline verstrijkt), gaat alles naar de verzendlijst.';
+  el.appendChild(uitleg);
+
+  const emailLabel = document.createElement('div');
+  emailLabel.className = 'sectie-label';
+  emailLabel.style.marginTop = '12px';
+  emailLabel.textContent = 'Wie ontvangen de controlemail?';
+  el.appendChild(emailLabel);
+
+  const emailInp = document.createElement('input');
+  emailInp.type = 'email'; emailInp.id = 'controle-emails';
+  emailInp.placeholder = 'dominee@kerk.nl, ouderling@kerk.nl';
+  emailInp.value = state.controleEmails;
+  emailInp.addEventListener('input', () => { state.controleEmails = emailInp.value; });
+  emailInp.style.width = '100%';
+  el.appendChild(emailInp);
+
+  const deadlineLabel = document.createElement('div');
+  deadlineLabel.className = 'sectie-label';
+  deadlineLabel.style.marginTop = '14px';
+  deadlineLabel.textContent = 'Wat als niet op tijd gecheckt?';
+  el.appendChild(deadlineLabel);
+
+  const grp = document.createElement('div');
+  grp.className = 'radio-groep';
+
+  const optV = maakRadioOptie('deadline-keuze', 'versturen',
+    state.alsNietGecheckt === 'versturen',
+    'Alsnog versturen',
+    'Na 48 uur gaat het automatisch de deur uit, ook zonder goedkeuring. ' +
+    'Zo staat de inhoud altijd op tijd klaar.',
+    '<span class="badge badge-groen">Aanbevolen</span>');
+  optV.addEventListener('click', () => {
+    state.alsNietGecheckt = 'versturen';
+    grp.querySelectorAll('.radio-optie').forEach(o => o.classList.remove('gekozen'));
+    optV.classList.add('gekozen');
+    optV.querySelector('input').checked = true;
+  });
+
+  const optB = maakRadioOptie('deadline-keuze', 'blokkeren',
+    state.alsNietGecheckt === 'blokkeren',
+    'Niet versturen',
+    'Als de controle uitblijft, wordt er niets verstuurd die week. ' +
+    'Gebruik dit alleen als jullie controle écht noodzakelijk is.',
+    '');
+  optB.addEventListener('click', () => {
+    state.alsNietGecheckt = 'blokkeren';
+    grp.querySelectorAll('.radio-optie').forEach(o => o.classList.remove('gekozen'));
+    optB.classList.add('gekozen');
+    optB.querySelector('input').checked = true;
+  });
+
+  grp.appendChild(optV);
+  grp.appendChild(optB);
+  el.appendChild(grp);
+}
+
+function herarrangeerControle(body) {
+  // Update radio optie styling
+  body.querySelectorAll('.radio-optie').forEach(o => {
+    const inp = o.querySelector('input[name=controle-keuze]');
+    if (!inp) return;
+    const isCheck = inp.value === 'check';
+    const selected = isCheck ? state.controleVoorVerzending : !state.controleVoorVerzending;
+    o.classList.toggle('gekozen', selected);
+    inp.checked = selected;
+  });
+  // Show/hide detail
+  const detail = document.getElementById('controle-detail');
+  if (detail) detail.style.display = state.controleVoorVerzending ? 'block' : 'none';
+}
+
+// ───── Radio optie bouwen ─────
+function maakRadioOptie(name, value, gekozen, titel, omschr, badge) {
+  const div = document.createElement('div');
+  div.className = 'radio-optie' + (gekozen ? ' gekozen' : '');
+  const inp = document.createElement('input');
+  inp.type = 'radio'; inp.name = name; inp.value = value;
+  inp.checked = gekozen; inp.style.pointerEvents = 'none';
+  const cont = document.createElement('div');
+  cont.className = 'ro-inhoud';
+  cont.innerHTML =
+    `<p class="ro-titel">${titel}${badge}</p>` +
+    (omschr ? `<p class="ro-omschr">${omschr}</p>` : '');
+  div.appendChild(inp); div.appendChild(cont);
+  return div;
+}
+
+// ===================================================
+// Save
+// ===================================================
+async function slaStap2Op() {
+  const knop = document.querySelector('[onclick], button:last-of-type') ||
+               document.createElement('button');
   try {
+    // Kanaalinstellingen opslaan
     await fetch('/api/admin/kanaal', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        kanaal_url: state.kanaalUrl,
-        verzend_dag: state.verzendDag,
-        verzend_tijd: state.verzendTijd,
-        auto_versturen: state.autoVersturen,
+        kanaal_url:              state.kanaalUrl,
+        diensten:                state.diensten,
+        controle_voor_verzending: state.controleVoorVerzending,
+        controle_emails:         state.controleEmails,
+        als_niet_gecheckt:       state.alsNietGecheckt,
+        auto_versturen:          !state.controleVoorVerzending,
+        inschrijving_open:       state.inschrijvingOpen,
+        waarschuwingstekst:      state.waarschuwingstekst,
+        accentkleur:             state.accentkleur,
       }),
     });
-    openStap(4);
+
+    // Logo uploaden als er een nieuw bestand is
+    if (state.logoBestand) {
+      const fd = new FormData();
+      fd.append('logo', state.logoBestand);
+      await fetch('/api/admin/logo', { method: 'POST', body: fd });
+    }
+
+    toonSucces();
   } catch (e) {
     alert('Opslaan mislukt: ' + e.message);
   }
 }
 
-// ====================================================
-// Stap 4 — Verwerken & downloaden
-// ====================================================
-function buildStap4(body) {
-  const blok = document.createElement('div');
-  blok.className = 'finish-blok';
-  blok.innerHTML =
-    '<div class="finish-icon">🎉</div>' +
-    '<p>Alles is ingesteld! Open nu een preek om te verwerken en te downloaden.</p>';
-
-  const knop = document.createElement('button');
-  knop.textContent = '→ Naar de preken';
-  knop.addEventListener('click', () => location.href = '/');
-  blok.appendChild(knop);
-  body.appendChild(blok);
-  body.appendChild(buildNav(() => openStap(3), null));
+function toonSucces() {
+  const w = document.getElementById('wizard');
+  w.innerHTML = `
+    <div class="stap open bereikbaar klaar">
+      <div class="stap-kop">
+        <div class="stap-nr" style="background:var(--brand);color:#fff">✓</div>
+        <div class="stap-titelrij">
+          <span class="stap-titel">Alles is ingesteld!</span>
+        </div>
+      </div>
+      <div class="stap-body" style="display:block">
+        <div class="finish-blok">
+          <div class="finish-icon">🎉</div>
+          <p>AfterSermon is klaar om te draaien. Verwerk je eerste preek of ga naar het dashboard.</p>
+          <button onclick="location.href='/'">→ Naar het dashboard</button>
+          <button class="btn-terug" onclick="location.href='/admin'" style="margin-top:8px">Beheer</button>
+        </div>
+      </div>
+    </div>`;
 }
 
-// ====================================================
-// Nav-rij helper
-// ====================================================
+// ===================================================
+// DOM helpers
+// ===================================================
 function buildNav(terug, verder) {
   const rij = document.createElement('div');
   rij.className = 'nav-rij';
   if (terug) {
     const b = document.createElement('button');
-    b.className = 'btn-terug';
-    b.textContent = '← Terug';
+    b.className = 'btn-terug'; b.textContent = '← Terug';
     b.addEventListener('click', terug);
     rij.appendChild(b);
   }
@@ -659,36 +815,37 @@ function buildNav(terug, verder) {
   return rij;
 }
 
-// ====================================================
-// DOM helpers
-// ====================================================
 function addLabel(parent, tekst) {
   const d = document.createElement('div');
   d.className = 'sectie-label';
-  d.textContent = tekst;
+  d.innerHTML = tekst; // allows emoji + text
   parent.appendChild(d);
 }
+
 function addTekst(parent, cls, tekst) {
   const p = document.createElement('p');
-  p.className = cls;
-  p.textContent = tekst;
+  p.className = cls; p.textContent = tekst;
   parent.appendChild(p);
 }
 
-// ====================================================
-// Init — load existing settings if logged in
-// ====================================================
-const DAG_NAMEN = ['Maandag','Dinsdag','Woensdag','Donderdag','Vrijdag','Zaterdag','Zondag'];
-
+// ===================================================
+// Init — bestaande instellingen laden
+// ===================================================
 (async function init() {
   try {
     const mij = await fetch('/api/admin/mij').then(r => r.json()).catch(() => ({}));
     if (mij.ingelogd) {
-      if (mij.kanaal_url) state.kanaalUrl = mij.kanaal_url;
-      if (mij.verzend_dag != null) state.verzendDag = mij.verzend_dag;
-      if (mij.verzend_tijd) state.verzendTijd = mij.verzend_tijd;
-      if (mij.auto_versturen != null) state.autoVersturen = !!mij.auto_versturen;
-      // If already has a channel, start at step 2
+      if (mij.kanaal_url)               state.kanaalUrl = mij.kanaal_url;
+      if (mij.diensten?.length)         state.diensten = mij.diensten;
+      if (mij.controle_voor_verzending != null) state.controleVoorVerzending = !!mij.controle_voor_verzending;
+      if (mij.controle_emails)          state.controleEmails = mij.controle_emails;
+      if (mij.als_niet_gecheckt)        state.alsNietGecheckt = mij.als_niet_gecheckt;
+      if (mij.auto_versturen != null)   { /* afgeleid van controleVoorVerzending */ }
+      if (mij.inschrijving_open != null) state.inschrijvingOpen = !!mij.inschrijving_open;
+      if (mij.waarschuwingstekst)       state.waarschuwingstekst = mij.waarschuwingstekst;
+      if (mij.accentkleur)              state.accentkleur = mij.accentkleur;
+      if (mij.kerk_id)                  window._kerkId = mij.kerk_id;
+      // Als kanaal al gekoppeld is, start direct op stap 2
       if (state.kanaalUrl) state.actieveStap = 2;
     }
   } catch (_) {}
