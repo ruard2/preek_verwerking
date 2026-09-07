@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Reque
 from fastapi.responses import FileResponse, RedirectResponse, Response
 from pydantic import BaseModel
 
+import json
 import os
 import re
 import secrets
@@ -400,6 +401,13 @@ class ResetBody(BaseModel):
 
 class KanaalBody(BaseModel):
     kanaal_url: str = ""
+    # Nieuwe wizard-velden
+    diensten: list[dict] = []            # [{dag: 0..6, tijd: "HH:MM"}, ...]
+    controle_voor_verzending: bool = False
+    controle_emails: str = ""
+    als_niet_gecheckt: str = "versturen"  # 'versturen' | 'blokkeren'
+    waarschuwingstekst: str | None = None
+    # Bestaande velden (ook nog bruikbaar vanuit admin.html)
     auto_versturen: bool = False
     auto_verwerken: bool = False
     tijdzone: str = "Europe/Amsterdam"
@@ -441,6 +449,9 @@ class InschrijvenBody(BaseModel):
     dienstvoorkeur: str = "beide"
     kanaal: str = "email"  # email | push | beide
     uitvoer_voorkeur: list[str] = []
+    # Timing voor dagstukjes (ingesteld door de inschrijver zelf)
+    ontvang_dag: int = 6        # dag van de week voor wekelijkse bundel (0=ma..6=zo)
+    dagstukjes_tijd: str | None = None  # "HH:MM"; ontvang_tijd als dagstukjes gekozen
 
 
 class VoorkeurBody(BaseModel):
@@ -548,12 +559,26 @@ def mij(request: Request, db=Depends(get_db)):
     kerk = huidige_kerk(request, db)
     if not kerk:
         return {"ingelogd": False}
+    # Diensten parsen uit JSON-tekst
+    try:
+        diensten = json.loads(kerk.diensten_json or "[]")
+    except Exception:
+        diensten = []
+
     return {
         "ingelogd": True,
         "id": kerk.id,
+        "kerk_id": kerk.id,    # alias voor frontend (logo preview)
         "naam": kerk.naam,
         "email": kerk.email,
         "kanaal_url": kerk.kanaal_url,
+        # Nieuwe wizard-velden
+        "diensten": diensten,
+        "controle_voor_verzending": not kerk.auto_versturen,  # afgeleid
+        "controle_emails": kerk.controle_emails or "",
+        "als_niet_gecheckt": kerk.als_niet_gecheckt or "versturen",
+        "waarschuwingstekst": kerk.waarschuwingstekst,        # None = gebruik standaard
+        # Bestaande velden
         "auto_versturen": kerk.auto_versturen,
         "auto_verwerken": kerk.auto_verwerken,
         "tijdzone": kerk.tijdzone,
@@ -582,12 +607,40 @@ def mij(request: Request, db=Depends(get_db)):
 def kanaal(body: KanaalBody, request: Request, db=Depends(get_db)):
     kerk = _vereis_kerk(request, db)
     kerk.kanaal_url = (body.kanaal_url or "").strip()
-    kerk.auto_versturen = bool(body.auto_versturen)
+
+    # ── Nieuwe wizard-velden ──────────────────────────────────────────────────
+    # Diensten-tijden: valideer en sla op als JSON.
+    diensten_schoon = []
+    for d in (body.diensten or []):
+        if not isinstance(d, dict):
+            continue
+        dag = d.get("dag")
+        tijd = (d.get("tijd") or "").strip()
+        if dag is None or not re.fullmatch(r"\d{2}:\d{2}", tijd):
+            continue
+        diensten_schoon.append({"dag": int(dag) % 7, "tijd": tijd})
+    kerk.diensten_json = json.dumps(diensten_schoon)
+
+    # Controle: nieuwe velden leidend; afgeleid gedrag terug naar bestaande vlaggen.
+    controle = bool(body.controle_voor_verzending)
+    kerk.controle_emails = (body.controle_emails or "").strip()
+    kerk.als_niet_gecheckt = (
+        body.als_niet_gecheckt if body.als_niet_gecheckt in {"versturen", "blokkeren"}
+        else "versturen"
+    )
+    # auto_versturen: True = direct (geen controle); False = wacht op goedkeuring.
+    kerk.auto_versturen = not controle
+    # versturen_zonder_goedkeuring: bij controle + deadline = alsnog versturen?
+    kerk.versturen_zonder_goedkeuring = (kerk.als_niet_gecheckt == "versturen")
+
+    # Aangepaste disclaimertekst (None = gebruik ingebouwde standaard).
+    kerk.waarschuwingstekst = (body.waarschuwingstekst or None)
+
+    # ── Bestaande velden (ook bruikbaar vanuit admin.html) ────────────────────
     kerk.auto_verwerken = bool(body.auto_verwerken)
     kerk.tijdzone = (body.tijdzone or "Europe/Amsterdam").strip()
     kerk.verzend_dag = int(body.verzend_dag) % 7
     kerk.verzend_tijd = (body.verzend_tijd or "07:00").strip()
-    kerk.versturen_zonder_goedkeuring = bool(body.versturen_zonder_goedkeuring)
     kerk.ai_disclaimer = bool(body.ai_disclaimer)
     kerk.admin_taal = ui_i18n.valid(body.admin_taal, "auto")
     kerk.inschrijf_taal = ui_i18n.valid(body.inschrijf_taal, "auto")
@@ -606,10 +659,8 @@ def kanaal(body: KanaalBody, request: Request, db=Depends(get_db)):
     _geldig = {"dagstukjes", "preeksamenvatting", "preektranscript", "nabespreking"}
     _uitvoer = [t for t in (body.uitvoer_typen or []) if t in _geldig]
     kerk.uitvoer_typen = ",".join(_uitvoer) if _uitvoer else "dagstukjes"
-    # Alleen types die ook gemaakt worden mogen bezorgd worden. Leeg = alles.
     _bezorg = [t for t in (body.bezorg_typen or []) if t in _uitvoer]
     kerk.bezorg_typen = ",".join(_bezorg)
-    # Groepsvragen-planning: 'mee' (in de wekelijkse mail) of 'datums' (vaste data).
     kerk.nabespreking_schema = body.nabespreking_schema if body.nabespreking_schema in {"mee", "datums"} else "mee"
     _datums = []
     for d in (body.nabespreking_datums or []):
@@ -1386,11 +1437,17 @@ def inschrijven(body: InschrijvenBody, request: Request, db=Depends(get_db)):
         raise HTTPException(404, "Kerk niet gevonden.")
     if not getattr(kerk, "inschrijving_open", True):
         raise HTTPException(403, "De inschrijving voor deze kerk is gesloten.")
+    # Timing voor dagstukjes: de inschrijver kiest dag + tijdstip
+    ontvang_dag = int(body.ontvang_dag) % 7 if body.ontvang_dag is not None else 6
+    ontvang_tijd = (body.dagstukjes_tijd or "07:00").strip()
+    if not re.fullmatch(r"\d{2}:\d{2}", ontvang_tijd):
+        ontvang_tijd = "07:00"
     try:
         sub, _ = subscribers.maak_inschrijver(
             db, kerk.id, body.naam, body.email, body.telefoon, body.frequentie,
             dienstvoorkeur=body.dienstvoorkeur, kanaal=body.kanaal,
             uitvoer_voorkeur=body.uitvoer_voorkeur,
+            ontvang_dag=ontvang_dag, ontvang_tijd=ontvang_tijd,
         )
     except subscribers.InschrijfFout as fout:
         raise HTTPException(400, str(fout))

@@ -763,7 +763,7 @@ async function slaStap2Op() {
     // Logo uploaden als er een nieuw bestand is
     if (state.logoBestand) {
       const fd = new FormData();
-      fd.append('logo', state.logoBestand);
+      fd.append('file', state.logoBestand);  // veldnaam die het backend-endpoint verwacht
       await fetch('/api/admin/logo', { method: 'POST', body: fd });
     }
 

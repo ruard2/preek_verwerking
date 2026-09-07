@@ -6,6 +6,7 @@ gebeuren in de tijdzone van de kerk. De verzendlog (Verzending) maakt het
 idempotent: niets wordt dubbel verstuurd, ook niet als de lus vaker draait.
 """
 
+import json as _json
 import logging
 import secrets
 import threading
@@ -55,6 +56,40 @@ def parse_tijd(s):
         return dtime(int(u) % 24, int(m) % 60)
     except Exception:  # noqa: BLE001
         return dtime(7, 0)
+
+
+def dienst_scan_venster(kerk, nu_lokaal, uren_na=8):
+    """True als we binnen `uren_na` uur ná een geplande dienst zitten.
+
+    Wordt gebruikt om de kanaallijst te vernieuwen: alleen rond dienst-tijden
+    doen we een verse ophaalronde i.p.v. altijd de cache te gebruiken.
+    Als er geen diensten geconfigureerd zijn, geven we altijd True terug
+    (conservatief: scan gewoon elke keer).
+    """
+    raw = getattr(kerk, "diensten_json", "") or "[]"
+    try:
+        diensten = _json.loads(raw)
+    except Exception:
+        return True
+    if not diensten:
+        return True
+
+    vandaag_dag = nu_lokaal.weekday()           # 0=ma..6=zo
+    nu_dt = nu_lokaal.replace(second=0, microsecond=0)
+
+    for d in diensten:
+        dag = int(d.get("dag", 6)) % 7
+        if dag != vandaag_dag:
+            continue
+        try:
+            dienst_tijd = parse_tijd(d.get("tijd", "10:00"))
+        except Exception:
+            continue
+        dienst_dt = datetime.combine(nu_lokaal.date(), dienst_tijd)
+        verschil = nu_dt - dienst_dt
+        if timedelta(0) <= verschil <= timedelta(hours=uren_na):
+            return True
+    return False
 
 
 def geplande_momenten(week_start, kerk, sub):
@@ -377,7 +412,12 @@ def tick(base_url):
             if not (kerk.kanaal_url or "").strip():
                 continue
             try:
-                nieuw = scan_kerk(db, kerk, base_url) if kerk.auto_scan else 0
+                if kerk.auto_scan:
+                    nu_lok = _nu_lokaal(kerk)
+                    vernieuw = dienst_scan_venster(kerk, nu_lok)
+                    nieuw = scan_kerk(db, kerk, base_url, nu_lokaal=nu_lok, vernieuw=vernieuw)
+                else:
+                    nieuw = 0
                 if kerk.auto_verwerken:
                     preverwerk_kerk(db, kerk, base_url)
                 verzonden = bezorg_kerk(db, kerk, base_url)

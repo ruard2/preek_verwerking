@@ -111,6 +111,16 @@ class Church(Base):
     # de kerk stelt dan zelf in wat er verstuurd wordt.
     inschrijving_open: Mapped[bool] = mapped_column(Boolean, default=True)
 
+    # Wanneer vinden de diensten plaats? JSON-tekst: [{"dag": 6, "tijd": "10:00"}, ...]
+    # dag 0=ma..6=zo (zelfde als Python weekday). Wordt gebruikt om slim te scannen.
+    diensten_json: Mapped[str] = mapped_column(Text, default="[]")
+    # Controle voor verzending: e-mailadressen die de controlemail ontvangen (kommalijst).
+    controle_emails: Mapped[str] = mapped_column(String(500), default="")
+    # Wat te doen als de controle uitblijft: 'versturen' (aanbevolen) of 'blokkeren'.
+    als_niet_gecheckt: Mapped[str] = mapped_column(String(20), default="versturen")
+    # Aangepaste AI-disclaimertekst onderaan mails (None = gebruik ingebouwde standaard).
+    waarschuwingstekst: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+
     aangemaakt: Mapped[DateTime] = mapped_column(DateTime, server_default=func.now())
 
     tokens: Mapped[list["EmailToken"]] = relationship(

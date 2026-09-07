@@ -213,6 +213,7 @@ function bouwFormulier(k) {
           email:           val('email'),
           telefoon:        val('tel'),
           frequentie:      (dagChk?.checked && freqEl) ? freqEl.value : 'wekelijks',
+          ontvang_dag:     +(document.getElementById('dag-dag')?.value ?? 6),
           dagstukjes_tijd: (dagChk?.checked && dagTijdEl) ? dagTijdEl.value : null,
           dienstvoorkeur:  val('dienst'),
           kanaal:          val('kanaal'),
@@ -227,8 +228,9 @@ function bouwFormulier(k) {
 }
 
 function dagstukjesTiming(t) {
+  // Gebruik integer-indices (0=ma..6=zo) zodat het backend ze direct kan opslaan.
   const dagOpties = DAGEN_LANG.map((d, i) =>
-    `<option value="${DAGEN_KORT[i]}">${d}</option>`).join('');
+    `<option value="${i}">${d}</option>`).join('');
   return `
     <div class="dag-timing" id="dag-timing-blok">
       <div class="dag-timing-rij">
