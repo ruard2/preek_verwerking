@@ -11,11 +11,13 @@ Werkwijze:
 """
 
 import glob
+import hashlib
 import os
 import re
 import shutil
 import subprocess
 import tempfile
+import time
 
 import imageio_ffmpeg
 import yt_dlp
@@ -27,6 +29,59 @@ TRANSCRIBE_MODEL = os.environ.get("OPENAI_TRANSCRIBE_MODEL", "gpt-4o-mini-transc
 # Veiligheidsmarge onder de 25 MB-limiet van de OpenAI-transcriptie-API.
 MAX_DEEL_SECONDEN = 20 * 60
 DEEL_MARKERING = "\n\n[VOLGEND PREEKDEEL — hiervoor werd gezongen]\n\n"
+
+# ---- Audio-cache ----------------------------------------------------------
+# Gedownloade audiobestanden bewaren zodat dezelfde preek niet herhaaldelijk
+# via de (dure) residentiële proxy gedownload hoeft te worden.
+# Standaard onder DATA_DIR/audio_cache; stel AUDIO_CACHE_DIR in om te overschrijven.
+_DATA_DIR = os.environ.get("DATA_DIR", os.path.join(os.path.dirname(__file__), "data"))
+AUDIO_CACHE_DIR = os.environ.get("AUDIO_CACHE_DIR", os.path.join(_DATA_DIR, "audio_cache"))
+AUDIO_CACHE_TTL = int(os.environ.get("AUDIO_CACHE_TTL", str(7 * 24 * 3600)))  # 7 dagen
+
+
+def _video_sleutel(url):
+    """Stabiele cache-sleutel voor een video-URL (YouTube-ID of MD5-hash)."""
+    m = re.search(r"(?:v=|youtu\.be/|/embed/|/v/)([A-Za-z0-9_-]{11})", url)
+    return m.group(1) if m else hashlib.md5(url.encode()).hexdigest()[:16]
+
+
+def _cache_ophalen(sleutel):
+    """Geef het gecachede audiopad als het bestaat en nog vers is, anders None."""
+    if not os.path.isdir(AUDIO_CACHE_DIR):
+        return None
+    grens = time.time() - AUDIO_CACHE_TTL
+    for naam in os.listdir(AUDIO_CACHE_DIR):
+        if naam.startswith(sleutel + "."):
+            pad = os.path.join(AUDIO_CACHE_DIR, naam)
+            try:
+                if os.path.isfile(pad) and os.path.getmtime(pad) >= grens:
+                    return pad
+            except OSError:
+                pass
+    return None
+
+
+def _cache_opslaan(sleutel, bron):
+    """Kopieer het audiobestand naar de cache; geeft het cachedpad terug."""
+    os.makedirs(AUDIO_CACHE_DIR, exist_ok=True)
+    ext = os.path.splitext(bron)[1] or ".m4a"
+    doel = os.path.join(AUDIO_CACHE_DIR, sleutel + ext)
+    shutil.copy2(bron, doel)
+    return doel
+
+
+def _cache_opruimen():
+    """Verwijder gecachede audiobestanden ouder dan AUDIO_CACHE_TTL seconden."""
+    if not os.path.isdir(AUDIO_CACHE_DIR):
+        return
+    grens = time.time() - AUDIO_CACHE_TTL
+    for naam in os.listdir(AUDIO_CACHE_DIR):
+        pad = os.path.join(AUDIO_CACHE_DIR, naam)
+        try:
+            if os.path.isfile(pad) and os.path.getmtime(pad) < grens:
+                os.remove(pad)
+        except OSError:
+            pass
 
 
 def _ffmpeg():
@@ -65,6 +120,7 @@ def ffmpeg_diagnose():
 
 
 def _download_audio(url, map_):
+    ffmpeg_bin = _ffmpeg()
     opties = ts.basis_opties()
     opties.update(
         {
@@ -76,13 +132,24 @@ def _download_audio(url, map_):
             "format": "bestaudio[abr<=64]/bestaudio[ext=m4a]/bestaudio/best",
             "outtmpl": os.path.join(map_, "audio.%(ext)s"),
             # Residentiële proxy's zijn traag en haperen: ruime timeout + veel
-            # herpogingen, zodat een korte stilval de download niet laat mislukken
-            # (anders viel hij terug op Supadata).
+            # herpogingen, zodat een korte stilval de download niet laat mislukken.
             "socket_timeout": int(os.environ.get("YTDLP_SOCKET_TIMEOUT", "120")),
             "retries": int(os.environ.get("YTDLP_RETRIES", "20")),
             "fragment_retries": int(os.environ.get("YTDLP_RETRIES", "20")),
             "file_access_retries": 10,
             "continuedl": True,
+            # ffmpeg als externe downloader: één persistente HTTP-verbinding voor
+            # het hele bestand. Voorkomt dat de roterende proxy halverwege van IP
+            # wisselt, waarna het YouTube-CDN de gesigneerde URL afwijst (403/SSL).
+            "external_downloader": "ffmpeg",
+            "external_downloader_args": {
+                "ffmpeg_i": [
+                    "-reconnect", "1",
+                    "-reconnect_streamed", "1",
+                    "-reconnect_delay_max", "30",
+                ]
+            },
+            "ffmpeg_location": os.path.dirname(ffmpeg_bin),
         }
     )
     with yt_dlp.YoutubeDL(opties) as ydl:
@@ -91,6 +158,27 @@ def _download_audio(url, map_):
     if not bestanden:
         raise RuntimeError("De audio kon niet worden gedownload.")
     return bestanden[0]
+
+
+def _download_audio_gecached(url, map_):
+    """Download audio met cache: als hetzelfde bestand binnen 7 dagen al gedownload
+    is, kopieer het uit de cache in plaats van opnieuw te downloaden via de proxy.
+    """
+    sleutel = _video_sleutel(url)
+    gecached = _cache_ophalen(sleutel)
+    if gecached:
+        ext = os.path.splitext(gecached)[1]
+        doel = os.path.join(map_, "audio" + ext)
+        shutil.copy2(gecached, doel)
+        return doel
+    # Niet in cache: downloaden en daarna opslaan.
+    bron = _download_audio(url, map_)
+    try:
+        _cache_opruimen()  # verwijder verlopen bestanden opportunistisch
+        _cache_opslaan(sleutel, bron)
+    except Exception:  # noqa: BLE001
+        pass  # cache-fout blokkeert de verwerking niet
+    return bron
 
 
 def _knip(ffmpeg, bron, start, eind, doel):
@@ -232,7 +320,7 @@ def transcribeer_preek(url, tijden, voortgang=None):
     ffmpeg = _ffmpeg()
     with tempfile.TemporaryDirectory() as tmp:
         meld("Audio van de dienst downloaden...")
-        bron = _download_audio(url, tmp)
+        bron = _download_audio_gecached(url, tmp)
 
         # Knip elk preekdeel; splits een te lang deel op in stukken onder de
         # API-limiet. Onthoud per stuk bij welk preekdeel het hoort.
@@ -281,7 +369,7 @@ def transcribeer_hele_video(url, voortgang=None):
     ffmpeg = _ffmpeg()
     with tempfile.TemporaryDirectory() as tmp:
         meld("Audio van de dienst downloaden...")
-        bron = _download_audio(url, tmp)
+        bron = _download_audio_gecached(url, tmp)
         duur = _duur_van(ffmpeg, bron)
         stukken = []
         if duur:
