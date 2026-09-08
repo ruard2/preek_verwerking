@@ -180,24 +180,27 @@ def _basis_opties():
         # --legacy-server-connect vermijdt SSLV3_ALERT_HANDSHAKE_FAILURE.
         "legacyserverconnect": True,
     }
-    # ios/mweb geven CDN-URLs die niet IP-gebonden zijn — werkt op server-IPs
-    # en via residentiële proxies zonder extra PO-token. Web-client vereist
-    # wél een PO-token en krijgt anders 403 bij de download.
-    youtube_args: dict = {
-        "player_client": ["ios", "mweb", "web"],
-    }
-
-    # Optioneel: PO-token-provider (bgutil) als extra maatregel.
-    # Alleen nodig als ios/mweb ook worden geblokkeerd.
     pot_url = os.environ.get("POT_PROVIDER_URL")
     if pot_url:
-        youtube_args["fetch_pot"] = ["always"]
+        # Met POT-provider: web-client eerst — de enige client die livestream-VODs
+        # ondersteunt én via POT geblokkeerde datacenter-IPs omzeilt.
+        # ios/mweb als terugval voor het geval web toch geblokt is.
         opties["extractor_args"] = {
             "youtubepot-bgutilhttp": {"base_url": [pot_url.rstrip("/")]},
-            "youtube": youtube_args,
+            "youtube": {
+                "fetch_pot": ["always"],
+                "player_client": ["web", "ios", "mweb"],
+            },
         }
     else:
-        opties["extractor_args"] = {"youtube": youtube_args}
+        # Zonder POT, alleen proxy: ios/mweb vereisen geen PO-token en geven
+        # CDN-URLs die niet IP-gebonden zijn. Let op: livestream-VODs kunnen
+        # "No video formats found" geven — dan is een POT-provider nodig.
+        opties["extractor_args"] = {
+            "youtube": {
+                "player_client": ["ios", "mweb"],
+            },
+        }
     # Optioneel: al het YouTube-verkeer via een (residentiële) proxy leiden.
     # Meest betrouwbare oplossing als het datacenter-IP geblokkeerd blijft.
     proxy = os.environ.get("YTDLP_PROXY")
