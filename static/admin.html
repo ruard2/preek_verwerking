@@ -5,90 +5,18 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>AfterSermon</title>
 <style>
-  :root {
-    --groen: #2c5f2d; --rand: #e2e2dd; --tekst: #23231f;
-    --grijs: #6b6b64; --bg: #faf9f5; --kaart: #ffffff;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --groen: #7bb87c; --rand: #33332e; --tekst: #ecebe4;
-      --grijs: #a5a59b; --bg: #17171a; --kaart: #1f1f22;
-    }
-  }
-  * { box-sizing: border-box; }
-  body {
-    font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-    max-width: 42rem; margin: 0 auto; padding: 2.5rem 1.25rem 4rem; line-height: 1.6;
-    background: var(--bg); color: var(--tekst);
-  }
-  h1, h2 { letter-spacing: -.01em; }
-  .icoonbalk { display: flex; gap: .5rem; justify-content: flex-end; margin: .4rem 0 1.4rem; }
-  .icoonknop { width: 44px !important; height: 44px !important; display: grid !important;
-    place-items: center; margin: 0 !important; padding: 0 !important; box-shadow: none !important;
-    background: var(--kaart) !important; color: var(--groen) !important;
-    border: 1px solid var(--rand) !important; border-radius: .6rem !important; }
-  .icoonknop:hover { background: #eef4f0 !important; }
-  .icoonknop.actief { background: var(--groen) !important; color: #fff !important; }
-  .aanlever-of { display: flex; align-items: center; gap: .8rem; color: var(--grijs);
-    font-size: .8rem; text-transform: uppercase; letter-spacing: .08em; margin: 1.6rem 0 1rem; }
-  .aanlever-of::before, .aanlever-of::after { content: ''; flex: 1; height: 1px; background: var(--rand); }
-  .stap { margin: 0 0 1.7rem; }
-  .stap-merk { display: block; margin-bottom: .1rem; }
-  .stapkaart { margin-top: 1rem; }
-  .stapnr { flex: none; width: 1.7rem; height: 1.7rem; border-radius: 999px; background: var(--groen);
-    color: #fff; font-weight: 800; font-size: .95rem; display: grid; place-items: center; }
-  .stapmerk { font-weight: 800; font-size: 1.15rem; line-height: 1; display: inline-flex; align-items: center; }
-  .stapkop b { font-size: 1.1rem; }
-  .stapkaart .stapbody[hidden] { display: none; }
-  .spinner { width: 1.05rem; height: 1.05rem; border: 2px solid var(--rand); border-top-color: var(--groen);
-    border-radius: 50%; display: inline-block; animation: spin .8s linear infinite; }
-  @keyframes spin { to { transform: rotate(360deg); } }
-  .logo-preview { max-height: 3rem; border: 1px solid var(--rand); border-radius: .4rem; padding: .3rem; background: #fff; }
-  .hero { border-top: 4px solid var(--groen); }
-  .cta-rij { display: flex; gap: .7rem; flex-wrap: wrap; margin: 1.1rem 0 0; }
-  .cta-knop { display: inline-block; text-decoration: none; padding: .72rem 1.5rem; border-radius: .5rem;
-    background: var(--groen); color: #fff; font-weight: 650; font-size: 1rem; }
-  .cta-knop:hover { filter: brightness(1.06); }
-  .cta-knop.secundair { background: transparent; color: var(--groen); border: 1px solid var(--rand); }
-  .editveld { display: block; margin: .15rem 0 .7rem; }
-  .editveld > span { display: block; font-size: .82rem; color: var(--grijs); margin-bottom: .15rem; }
-  .editveld input, .editveld textarea { width: 100%; font: inherit; padding: .5rem .6rem; border: 1px solid var(--rand);
-    border-radius: .45rem; background: var(--kaart); color: var(--tekst); box-sizing: border-box; }
-  .editveld textarea { min-height: 3.4rem; resize: vertical; line-height: 1.45; }
-  .dagkaart { border: 1px solid var(--rand); border-radius: .6rem; padding: .8rem 1rem; margin: .6rem 0; }
-  .dagkaart > h4 { margin: 0 0 .5rem; font-size: 1rem; color: var(--groen); }
-  .bronblok { white-space: pre-wrap; max-height: 22rem; overflow: auto; background: var(--soft);
-    border-radius: .5rem; padding: .8rem 1rem; font-size: .9rem; line-height: 1.5; }
-  h1 { font-size: 1.6rem; margin: 0 0 .3rem; color: var(--groen); }
-  h2 { font-size: 1.15rem; margin: 1.6rem 0 .6rem; }
-  .sub { color: var(--grijs); margin-top: 0; font-size: .95rem; }
-  label { display: block; font-size: .82rem; color: var(--grijs); margin: .7rem 0 .15rem;
-    text-transform: uppercase; letter-spacing: .05em; font-family: system-ui, sans-serif; }
-  input, select {
-    width: 100%; padding: .55rem .7rem; font-size: 1rem; font-family: inherit;
-    border: 1px solid var(--rand); border-radius: .45rem;
-    background: var(--kaart); color: var(--tekst);
-  }
-  .rij { display: flex; align-items: center; gap: .5rem; }
-  .rij input[type=checkbox] { width: auto; }
-  .rij label { margin: 0; text-transform: none; letter-spacing: 0; font-size: .95rem; color: var(--tekst); font-family: inherit; }
-  button {
-    margin-top: 1.1rem; padding: .6rem 1.3rem; font-size: 1rem; font-family: inherit;
-    border: none; border-radius: .45rem; background: var(--groen); color: #fff; cursor: pointer;
-  }
-  button.link {
-    background: none; color: var(--groen); padding: 0; margin: .8rem 0 0; text-decoration: underline;
-  }
-  .kaart { background: var(--kaart); border: 1px solid var(--rand); border-radius: .8rem; padding: 1.7rem 1.8rem; margin-top: 1.2rem; }
-  .tabs { display: flex; gap: .5rem; margin-top: 1rem; }
-  .tabs button { margin: 0; background: var(--kaart); color: var(--tekst); border: 1px solid var(--rand); }
-  .tabs button.actief { background: var(--groen); color: #fff; border-color: var(--groen); }
-  .melding { padding: .6rem .8rem; border-radius: .45rem; margin-top: 1rem; font-size: .95rem; }
-  .fout { background: #fdecea; color: #b0201a; }
-  .ok { background: #e9f5ea; color: #1f6b25; }
-  @media (prefers-color-scheme: dark) {
-    .fout { background: #3a1c1a; color: #f0a9a3; } .ok { background: #1c2a1c; color: #9fd6a3; }
-  }
+  /* admin.html — specifieke stijlen; basis via dashboard.css */
+  body { max-width: 44rem; margin: 0 auto; }
+
+  h1 { font-family: var(--font-serif); font-size: 1.6rem; margin: 0 0 .25rem; color: var(--brand); }
+  h2 { font-size: 1.1rem; margin: 1.5rem 0 .55rem; }
+  .sub { color: var(--muted); margin-top: 0; font-size: .95rem; }
+
+  /* Admin-tabs (bijv. Instellingen / Diensten) */
+  .tabs { display: flex; gap: .4rem; margin-top: 1rem; flex-wrap: wrap; }
+  .tabs button { margin: 0; background: var(--surface); color: var(--ink); border: 1px solid var(--line); }
+  .tabs button.actief { background: var(--brand); color: #fff; border-color: transparent; }
+
   .weg { display: none; }
 </style>
 <link rel="stylesheet" href="/static/dashboard.css">
