@@ -180,26 +180,24 @@ def _basis_opties():
         # --legacy-server-connect vermijdt SSLV3_ALERT_HANDSHAKE_FAILURE.
         "legacyserverconnect": True,
     }
-    # PO-token-provider (bgutil) tegen YouTube's botdetectie op server-IP's.
-    # Wijst naar een draaiende bgutil-ytdlp-pot-provider-service.
-    #
-    # Belangrijk: het token wordt alleen daadwerkelijk opgehaald en meegestuurd
-    # als (a) de PO-token-fetch geforceerd wordt ("fetch_pot": always) én (b) de
-    # web-client wordt gebruikt, die PO-tokens ondersteunt. Zonder deze twee
-    # laat yt-dlp op een geblokkeerd datacenter-IP het token liggen en volgt de
-    # "Sign in to confirm you're not a bot"-fout.
+    # ios/mweb geven CDN-URLs die niet IP-gebonden zijn — werkt op server-IPs
+    # en via residentiële proxies zonder extra PO-token. Web-client vereist
+    # wél een PO-token en krijgt anders 403 bij de download.
+    youtube_args: dict = {
+        "player_client": ["ios", "mweb", "web"],
+    }
+
+    # Optioneel: PO-token-provider (bgutil) als extra maatregel.
+    # Alleen nodig als ios/mweb ook worden geblokkeerd.
     pot_url = os.environ.get("POT_PROVIDER_URL")
     if pot_url:
+        youtube_args["fetch_pot"] = ["always"]
         opties["extractor_args"] = {
             "youtubepot-bgutilhttp": {"base_url": [pot_url.rstrip("/")]},
-            "youtube": {
-                "fetch_pot": ["always"],
-                # ios/mweb geven CDN-URLs die niet IP-gebonden zijn → werkt
-                # op server-IPs zonder 403 bij de daadwerkelijke download.
-                # web blijft als laatste optie voor metadata/ondertitels.
-                "player_client": ["ios", "mweb", "web"],
-            },
+            "youtube": youtube_args,
         }
+    else:
+        opties["extractor_args"] = {"youtube": youtube_args}
     # Optioneel: al het YouTube-verkeer via een (residentiële) proxy leiden.
     # Meest betrouwbare oplossing als het datacenter-IP geblokkeerd blijft.
     proxy = os.environ.get("YTDLP_PROXY")
