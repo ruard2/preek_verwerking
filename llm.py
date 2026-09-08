@@ -7,6 +7,10 @@ from openai import OpenAI
 
 MODEL = os.environ.get("OPENAI_MODEL", "gpt-5")
 SCHOON_MODEL = os.environ.get("OPENAI_SCHOON_MODEL", MODEL)
+# Extractie = letterlijk kopiëren van de preek uit een volledige-dienst transcript.
+# Geen creatieve taak → goedkoper model volstaat. gpt-4o-mini heeft 128k context
+# en 16k output — ruim genoeg voor een 45-min preek (~8k tokens output).
+EXTRAHEER_MODEL = os.environ.get("OPENAI_EXTRAHEER_MODEL", "gpt-4o-mini")
 
 SCHOON_PROMPT = """\
 Je krijgt een ruw, automatisch gegenereerd transcript van één christelijke preek.
@@ -485,18 +489,23 @@ def extraheer_en_schoon_preek(transcript: str) -> str:
     if not (transcript or "").strip():
         return transcript or ""
     client = OpenAI()
-    antwoord = client.chat.completions.create(
-        model=SCHOON_MODEL,  # zelfde model als schoon_transcript — snel en goedkoop
+    # gpt-4o-mini: goedkoop, 128k context, 16k output — voldoende voor 45-min preek.
+    # max_tokens werkt voor gpt-4o-mini; max_completion_tokens voor gpt-5/o-serie.
+    # We proberen max_completion_tokens en vallen terug op max_tokens bij een 400-fout.
+    kwargs = dict(
+        model=EXTRAHEER_MODEL,
         messages=[
             {"role": "system", "content": _EXTRAHEER_PROMPT},
             {"role": "user", "content": "--- VOLLEDIGE DIENST TRANSCRIPTIE ---\n" + transcript},
         ],
-        # Een 40-minuten preek is al gauw 7.000–9.500 tokens output; zonder limiet
-        # valt OpenAI terug op ~4.096 en kapt de tekst halverwege af.
-        # 16.384 is het model-maximum (GPT-4o / GPT-5).
-        # Nieuwere modellen (o-serie, gpt-5) vereisen max_completion_tokens i.p.v. max_tokens.
-        max_completion_tokens=16384,
     )
+    try:
+        antwoord = client.chat.completions.create(**kwargs, max_completion_tokens=16384)
+    except Exception as exc:
+        if "max_completion_tokens" in str(exc):
+            antwoord = client.chat.completions.create(**kwargs, max_tokens=16384)
+        else:
+            raise
     resultaat = (antwoord.choices[0].message.content or "").strip()
 
     # Verwijder de <analyse>…</analyse> redeneerblok — alleen de preektekst bewaren.
