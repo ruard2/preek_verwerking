@@ -127,11 +127,11 @@
 <body>
   <h1>AfterSermon — demo</h1>
   <div class="demo-banner">
-    <p><b>Dit is de verwerkingstool</b> — plak een preeklink en zie wat AfterSermon ervan maakt.
-    Dezelfde AI en transcriptie als het volledige product.</p>
-    <p>⏳ <b>Verwerken duurt even</b> — de preek wordt gedownload, getranscribeerd en geanalyseerd.
-    Als kerk stel je dit <b>één keer in</b>; daarna pikt AfterSermon na elke dienst de preek op
-    en stuurt automatisch overdenkingen, dagstukjes en vragen naar je gemeenteleden.</p>
+    <p><b>Dit is de verwerkingstool</b> — laad een kanaal, kies een dienst en ontvang alle resultaten
+    per e-mail. Dezelfde AI en transcriptie als het volledige product.</p>
+    <p>AfterSermon transcribeert de preek, maakt een <b>samenvatting</b>, <b>7 dagstukjes met vragen</b>,
+    <b>groepsvragen</b> en een <b>volledige preektekst</b> — en stuurt dit na elke dienst automatisch
+    naar je gemeenteleden.</p>
     <p><a href="/">→ Inloggen als gemeentelid</a> &nbsp;·&nbsp; <a href="/admin">→ Kerkbeheerder</a></p>
   </div>
   <p class="sub">Plak de link van een <b>YouTube-kanaal</b>, <b>Kerkdienstgemist-station</b>
@@ -293,7 +293,7 @@ function maakGroepen(diensten, isGepland) {
         knop.disabled = true;
         knop.title = 'Deze dienst is nog niet geweest.';
       } else {
-        knop.addEventListener('click', () => verwerk(d.url, `${kop.textContent} — ${d.label}`));
+        knop.addEventListener('click', () => toonEmailForm(d.url, d.label, kop.textContent));
       }
       kn.appendChild(knop);
     }
@@ -359,6 +359,95 @@ function el(tag, cls, tekst) {
   if (cls) e.className = cls;
   if (tekst != null) e.textContent = tekst;
   return e;
+}
+
+// ---- E-mail demo-formulier ----
+function toonEmailForm(url, label, datumLabel) {
+  lijstEl.style.display = 'none';
+  resultaatEl.innerHTML = '';
+  foutEl.textContent = '';
+
+  const balk = el('div', 'balk');
+  const terug = el('button', 'klein', '← Terug naar diensten');
+  terug.addEventListener('click', () => {
+    resultaatEl.innerHTML = '';
+    if (window._diensten) toonLijst(window._diensten); else lijstEl.style.display = '';
+  });
+  balk.appendChild(terug);
+  resultaatEl.appendChild(balk);
+
+  const kaart = el('div', 'kaart');
+  kaart.appendChild(el('h4', null, label));
+  if (datumLabel) {
+    const sub = el('p', null, datumLabel);
+    sub.style.cssText = 'margin:.1rem 0 .8rem;color:var(--muted);font-size:.88rem';
+    kaart.appendChild(sub);
+  }
+
+  const info = el('p', 'samenvatting',
+    'Vul je e-mailadres in — we verwerken de preek en sturen je alle resultaten toe. '
+    + 'Je ontvangt: samenvatting, 7 dagstukjes met vragen, groepsvragen en de volledige preektekst.');
+  info.style.marginBottom = '.8rem';
+  kaart.appendChild(info);
+
+  const emailInp = document.createElement('input');
+  emailInp.type = 'email';
+  emailInp.placeholder = 'jou@voorbeeld.nl';
+  emailInp.className = 'bewerkveld';
+  emailInp.style.marginBottom = '.6rem';
+  kaart.appendChild(emailInp);
+
+  const stuurKnop = el('button', 'klein primair', '→ Stuur mij de resultaten');
+  stuurKnop.style.marginTop = '.4rem';
+
+  async function verstuur() {
+    const email = emailInp.value.trim();
+    if (!email) { emailInp.focus(); return; }
+    stuurKnop.disabled = true;
+    stuurKnop.textContent = 'Bezig…';
+    foutEl.textContent = '';
+    try {
+      const r = await fetch('/api/demo/verwerk', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({url, email}),
+      });
+      if (!r.ok) throw new Error(await fouttekst(r, 'Aanmelden mislukt.'));
+      // Toon bevestigingsscherm
+      resultaatEl.innerHTML = '';
+      const balk2 = el('div', 'balk');
+      const terug2 = el('button', 'klein', '← Bekijk andere diensten');
+      terug2.addEventListener('click', () => {
+        resultaatEl.innerHTML = '';
+        if (window._diensten) toonLijst(window._diensten); else lijstEl.style.display = '';
+      });
+      balk2.appendChild(terug2);
+      resultaatEl.appendChild(balk2);
+
+      const bevestiging = el('div', 'kaart');
+      const ok = el('h4', null, '✅ Op weg!');
+      ok.style.color = 'var(--groen)';
+      bevestiging.appendChild(ok);
+      const msg = el('p', 'samenvatting',
+        `We verwerken de preek en sturen de resultaten naar ${email}. `
+        + 'Dit duurt een paar minuten — check ook je spammap.');
+      msg.style.marginBottom = '.6rem';
+      bevestiging.appendChild(msg);
+      bevestiging.appendChild(el('p', null, `Dienst: ${label}`));
+      resultaatEl.appendChild(bevestiging);
+    } catch (e) {
+      foutEl.textContent = e.message;
+      stuurKnop.disabled = false;
+      stuurKnop.textContent = '→ Stuur mij de resultaten';
+    }
+  }
+
+  stuurKnop.addEventListener('click', verstuur);
+  emailInp.addEventListener('keydown', (e) => { if (e.key === 'Enter') verstuur(); });
+  kaart.appendChild(stuurKnop);
+
+  resultaatEl.appendChild(kaart);
+  emailInp.focus();
 }
 
 function toonResultaat(taak) {

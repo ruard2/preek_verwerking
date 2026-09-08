@@ -32,6 +32,7 @@ import yt_dlp
 
 import admin
 import audio
+import brevo
 import db as database
 import kerkdienstgemist
 import kerkomroep
@@ -822,6 +823,208 @@ VERSIE = (
 )[:12]
 
 
+# ---- Demo: e-mail alle resultaten ----------------------------------------
+
+def _stuur_demo_email(naar_email: str, r: dict, groepsvragen=None):
+    """Bouw en verstuur een demo-e-mail met alle 4 uitvoertypes."""
+    data = r.get("data") or {}
+    preek_schoon = r.get("preek_schoon") or ""
+    video_id = r.get("video_id") or ""
+    base_url = _base_url_env()
+
+    titel = data.get("titel") or "Preek"
+    samenvatting = data.get("samenvatting") or ""
+    bijbelgedeelte = data.get("bijbelgedeelte") or ""
+    voorganger = data.get("voorganger") or ""
+    dagen = data.get("dagen") or []
+
+    # ---- Dagstukjes ----
+    dag_html = ""
+    dag_tekst = ""
+    for i, dag in enumerate(dagen[:7], 1):
+        d_titel = dag.get("titel") or ""
+        d_bijbel = dag.get("bijbeltekst") or ""
+        d_gedachte = dag.get("gedachte") or ""
+        d_vraag_v = dag.get("vraag_volwassenen") or ""
+        d_vraag_k = dag.get("vraag_kinderen") or ""
+        dag_html += f"""
+        <div style="margin:10px 0;padding:12px 14px;background:#f7f8ff;border-left:3px solid #5a67d8;border-radius:0 6px 6px 0">
+          <div style="font-weight:600;color:#3c4a8f;margin-bottom:4px">Dag {i} — {d_titel}</div>
+          <div style="font-style:italic;color:#555;font-size:13px;margin-bottom:4px">{d_bijbel}</div>
+          <div style="font-size:14px;margin-bottom:6px">{d_gedachte}</div>
+          <div style="font-size:12px;color:#3c4a8f;background:#e8eaff;padding:4px 8px;border-radius:4px;display:inline-block">❓ {d_vraag_v}</div>
+          {f'<div style="font-size:12px;color:#555;margin-top:4px">👦 {d_vraag_k}</div>' if d_vraag_k else ''}
+        </div>"""
+        dag_tekst += f"\nDAG {i} — {d_titel}\n{d_bijbel}\n{d_gedachte}\n❓ {d_vraag_v}\n"
+
+    # ---- Groepsvragen ----
+    gv_html = ""
+    gv_tekst = ""
+    if groepsvragen:
+        for cat, vragen in groepsvragen.items():
+            cat_label = {"terughalen": "Terughalen", "verdiepen": "Verdiepen",
+                         "landen": "Laten landen", "handen": "Handen en voeten"}.get(cat, cat)
+            gv_html += f'<div style="font-weight:600;color:#2d8a4e;margin:10px 0 4px">{cat_label}</div>'
+            for i, v in enumerate(vragen[:3], 1):
+                gv_html += f'<div style="font-size:13px;margin:3px 0;padding:4px 8px;background:#f0fff4;border-radius:4px">{i}. {v}</div>'
+            gv_tekst += f"\n{cat_label}:\n" + "\n".join(f"  {j+1}. {v}" for j, v in enumerate(vragen[:3]))
+
+    # ---- Preektekst excerpt ----
+    preek_excerpt = preek_schoon[:1200].rsplit(" ", 1)[0] + "…" if len(preek_schoon) > 1200 else preek_schoon
+
+    # ---- Download-links ----
+    dl_html = ""
+    if video_id:
+        dl_style = "display:inline-block;margin:4px 6px 4px 0;padding:8px 14px;background:#5a67d8;color:#fff;text-decoration:none;border-radius:6px;font-size:13px"
+        dl_html = f"""
+        <div style="margin-top:14px">
+          <a href="{base_url}/api/pdf/{video_id}" style="{dl_style}">📄 Weekboekje PDF</a>
+          <a href="{base_url}/api/preek/{video_id}.pdf" style="{dl_style}">📖 Volledige preektekst PDF</a>
+        </div>"""
+
+    # ---- Metadata-rij ----
+    meta_delen = []
+    if bijbelgedeelte:
+        meta_delen.append(bijbelgedeelte)
+    if voorganger:
+        meta_delen.append(f"Voorganger: {voorganger}")
+    meta_html = (" &nbsp;·&nbsp; ".join(meta_delen)) if meta_delen else ""
+
+    html = f"""<!DOCTYPE html>
+<html lang="nl">
+<head><meta charset="utf-8"></head>
+<body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:600px;margin:0 auto;color:#222">
+
+<div style="background:#5a67d8;color:#fff;padding:20px 24px;border-radius:8px 8px 0 0">
+  <div style="font-size:11px;text-transform:uppercase;letter-spacing:.1em;opacity:.75;margin-bottom:4px">AfterSermon — demo</div>
+  <h1 style="margin:0 0 6px;font-size:22px">{titel}</h1>
+  {f'<div style="font-size:13px;opacity:.85">{meta_html}</div>' if meta_html else ''}
+</div>
+
+<div style="padding:20px 24px;background:#fff;border:1px solid #e2e6ff;border-top:none;border-radius:0 0 8px 8px">
+
+  {'<h2 style="font-size:16px;margin:0 0 8px;color:#3c4a8f">Samenvatting</h2><p style="margin:0 0 16px;line-height:1.6">' + samenvatting + '</p>' if samenvatting else ''}
+
+  <h2 style="font-size:16px;margin:16px 0 6px;color:#3c4a8f">7 dagstukjes</h2>
+  {dag_html if dag_html else '<p style="color:#777;font-size:13px">Dagstukjes konden niet worden gegenereerd.</p>'}
+
+  {f'<h2 style="font-size:16px;margin:20px 0 6px;color:#2d8a4e">Groepsvragen</h2>{gv_html}' if gv_html else ''}
+
+  <h2 style="font-size:16px;margin:20px 0 6px;color:#3c4a8f">Preektekst (fragment)</h2>
+  <div style="font-size:13px;line-height:1.7;color:#444;background:#fafafa;padding:12px 14px;border-radius:6px;white-space:pre-wrap">{preek_excerpt}</div>
+
+  {dl_html}
+
+  <hr style="border:none;border-top:1px solid #e2e6ff;margin:24px 0">
+  <p style="font-size:12px;color:#888;margin:0">Dit is een automatisch gegenereerde demo van <b>AfterSermon</b>.
+  AfterSermon verwerkt elke week de preek van jouw kerk automatisch en stuurt
+  overdenkingen, dagstukjes en vragen naar je gemeenteleden.
+  <a href="{base_url}/admin" style="color:#5a67d8">Stel je kerk in →</a></p>
+</div>
+</body>
+</html>"""
+
+    tekst = f"""AfterSermon demo — {titel}
+{"=" * 50}
+{bijbelgedeelte}{" · " + voorganger if voorganger else ""}
+
+SAMENVATTING
+{samenvatting}
+
+7 DAGSTUKJES
+{dag_tekst}
+
+GROEPSVRAGEN
+{gv_tekst}
+
+PREEKTEKST (FRAGMENT)
+{preek_excerpt}
+
+---
+Downloads:
+- Weekboekje PDF: {base_url}/api/pdf/{video_id}
+- Preektekst PDF: {base_url}/api/preek/{video_id}.pdf
+"""
+
+    brevo.verzend(
+        naar_email=naar_email,
+        onderwerp=f"AfterSermon demo — {titel}",
+        html=html,
+        tekst=tekst,
+        van_naam="AfterSermon",
+    )
+
+
+def _demo_verwerk_en_mail(url: str, email: str):
+    """Verwerk een preek volledig en mail alle 4 uitvoertypes. Draait in achtergrond-thread."""
+    try:
+        log.info(f"[demo] Verwerking gestart: url={url} email={email}")
+
+        # Stap 1: zorg dat transcript + preek_schoon beschikbaar zijn (gebruikt cache).
+        r = verwerk_en_bewaar(url, meld=lambda s: log.info(f"[demo] {s}"), alleen_transcript=True)
+        video_id = r.get("video_id")
+        if not video_id:
+            raise ValueError("Kon geen video-id bepalen uit de opgegeven URL.")
+        log.info(f"[demo] Transcript klaar: video_id={video_id}")
+
+        # Stap 2: dagstukjes + samenvatting genereren vanuit het transcript.
+        # genereer_en_bewaar hergebruikt het opgeslagen transcript; transcriberen gebeurt
+        # NIET opnieuw. Als de cache al dagstukjes heeft, slaat dit ook al op de schijf.
+        opgeslagen = store.resultaat_ophalen(video_id) or {}
+        if not (opgeslagen.get("data") or {}).get("dagen"):
+            dag_res = genereer_en_bewaar(video_id, "dagstukjes")
+            log.info(f"[demo] Dagstukjes klaar: video_id={video_id}")
+        else:
+            dag_res = {"video_id": video_id, "data": opgeslagen["data"], "tekst": opgeslagen.get("tekst", "")}
+            log.info(f"[demo] Dagstukjes uit cache: video_id={video_id}")
+
+        # Stap 3: groepsvragen (met standaard-instellingen)
+        groepsvragen = None
+        try:
+            gv_res = genereer_groepsvragen_en_bewaar(video_id, {
+                "leeftijd": "Volwassenen",
+                "aantal": 8,
+                "categorieen": ["terughalen", "verdiepen", "landen", "handen"],
+            })
+            groepsvragen = gv_res.get("groepsvragen")
+            log.info(f"[demo] Groepsvragen klaar: video_id={video_id}")
+        except Exception as gv_fout:  # noqa: BLE001
+            log.warning(f"[demo] Groepsvragen mislukten (niet fataal): {gv_fout}")
+
+        # Stap 4: bouw e-mailresultaat (lees de meest recente versie van de store).
+        finaal = store.resultaat_ophalen(video_id) or {}
+        r_email = {**r, "data": finaal.get("data") or dag_res.get("data") or r.get("data")}
+        _stuur_demo_email(email, r_email, groepsvragen)
+        log.info(f"[demo] E-mail verstuurd naar {email}")
+    except Exception as fout:  # noqa: BLE001
+        log.error(f"[demo] Verwerking mislukt voor {url}: {fout}")
+        # Stuur foutmelding naar demo-gebruiker
+        try:
+            brevo.verzend(
+                naar_email=email,
+                onderwerp="AfterSermon demo — verwerking mislukt",
+                html=f"<p>Sorry, de verwerking van de preek is mislukt: {fout}</p>"
+                     "<p>Probeer het opnieuw op de <a href='" + _base_url_env() + "/demo'>demo-pagina</a>.</p>",
+                tekst=f"Sorry, de verwerking mislukt: {fout}",
+                van_naam="AfterSermon",
+            )
+        except Exception:  # noqa: BLE001
+            pass
+
+
+@app.post("/api/demo/verwerk")
+def demo_verwerk(body: dict):
+    """Demo-endpoint: verwerk een preek op de achtergrond en mail alle resultaten."""
+    url = (body or {}).get("url", "").strip()
+    email = (body or {}).get("email", "").strip()
+    if not url:
+        raise HTTPException(400, "Plak eerst een preeklink.")
+    if not email or not re.match(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
+        raise HTTPException(400, "Vul een geldig e-mailadres in.")
+    threading.Thread(target=_demo_verwerk_en_mail, args=(url, email), daemon=True).start()
+    return {"status": "ok"}
+
+
 @app.get("/api/diagnose")
 def diagnose():
     return {
@@ -972,7 +1175,9 @@ def _bestand(inhoud, media_type, bestandsnaam):
 
 def _ophalen_of_404(video_id):
     bewaard = store.resultaat_ophalen(video_id)
-    if not bewaard or not bewaard.get("data"):
+    # Gebruik `is None`-check: een lege dict {} (alleen-transcript-tussenstand)
+    # is wél geldig; ontbrekende sleutel (None) betekent "niet verwerkt".
+    if bewaard is None or bewaard.get("data") is None:
         raise HTTPException(404, "Voor deze dienst is nog geen verwerking beschikbaar.")
     return bewaard
 
