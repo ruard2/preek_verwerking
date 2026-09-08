@@ -402,43 +402,68 @@ def schoon_transcript(transcript, taal_hint=None):
 _EXTRAHEER_PROMPT = """\
 Je ontvangt een ruwe automatische transcriptie van een VOLLEDIGE kerkdienst.
 
-Je taak is uitsluitend KNIPPEN: haal de preek eruit uit de volledige dienst-transcriptie.
-Verander GEEN ENKEL WOORD van de predikant. Kopieer letterlijk.
+Je werkt in TWEE stappen. Doe stap 1 volledig voordat je aan stap 2 begint.
 
-─── WAT IS DE PREEK? ───────────────────────────────────────────────────────────
-• Het inhoudelijke onderwijs van de voorganger over een Bijbeltekst.
-• Begint doorgaans direct ná het preekgebed van de voorganger.
-• Eindigt doorgaans bij het slotgebed of vóór het laatste gezang.
-• Typisch 20–45 minuten van een dienst van 60–90 minuten.
-• Kenmerk: de voorganger legt de Bijbeltekst uit, past die toe en geeft voorbeelden.
-• De preek kan uit MEERDERE DELEN bestaan wanneer er tussendoor gezongen wordt —
-  neem alle preekdelen op.
+════════════════════════════════════════════════════════════════════════════════
+STAP 1 — STRUCTUURANALYSE (schrijf dit op als <analyse>…</analyse>)
+════════════════════════════════════════════════════════════════════════════════
+Ga door de transcriptie en benoem elk onderdeel van de dienst in volgorde:
 
-─── WAT LAAT JE BUITEN? ────────────────────────────────────────────────────────
-Neem NIET op in de uitvoer:
-• Liederen, gezangen, psalmen (ook als de voorganger er kort iets bij zegt)
-• Votum, groet, drempelwoorden ("Onze hulp is in de naam van de HEERE...")
-• Wetslezing, Tien Geboden (tenzij de preek hier rechtstreeks op doorgaat)
-• Schriftlezing: de voorganger leest alleen de Bijbeltekst voor, zonder uitleg —
-  de lezing zelf laat je buiten, MAAR als de voorganger direct in zijn preekbetoog
-  doorgaat na de lezing, begin dan dáár
-• Preekgebed / opening: het gebed dat de preek inleidt, laat je buiten —
-  begin bij de eerste preekwoorden ná dat gebed
-• Mededelingen, collecte-aankondiging, welkomstwoorden, afsluiting
-• Geloofsbelijdenis, dankgebed, zegen, wegzending
+  Votum / Groet / Drempelwoord
+  Lied / Psalm / Gezang           ← herkenbaar: korte versregels, rijm,
+                                     archaïsch taalgebruik, regelmatige maat
+  Wetslezing / Tien Geboden
+  Schriftlezing                   ← voorganger leest Bijbeltekst voor (geen uitleg)
+  Gebed (preekgebed / dankgebed)
+  PREEK of PREEKDEEL              ← uitleg van Bijbeltekst, toepassing, voorbeelden,
+                                     langere zinnen, modern taalgebruik
+  Geloofsbelijdenis / Zegen / Wegzending
+  Mededelingen / Collecte
 
-─── WAT JE BEHOUDT (100% letterlijk) ──────────────────────────────────────────
-• Elke zin, elk woord, elke herhaling, elke aarzeling, elke verspreking — alles.
-• 'eh', 'uhm', 'nou', herhalingen voor nadruk, onafgemaakte zinnen: alles erin.
-• Verander NIETS. Verbeter NIETS. Herschrijf NIETS. Voeg NIETS toe.
-• Alleen tijdcodes (bijv. [00:23:45]) mogen weg als ze in de tekst staan.
-• Als de preek meerdere delen heeft: neem ze allemaal op, gescheiden door
-  [PREEKDEEL VERVOLGT].
+Schrijf het overzicht als:
+<analyse>
+1. Votum + Groet
+2. Lied (Psalm 25:1,2)
+3. Wetslezing
+4. Lied (Psalm 25:3)
+5. Gebed
+6. Schriftlezing (Johannes 3:1-17)
+7. Preekgebed
+8. PREEK DEEL 1 — "Nicodemus komt 's nachts..."
+9. Lied (Gezang 12)
+10. PREEK DEEL 2 — "Zo lief heeft God de wereld..."
+11. Dankgebed
+12. Lied
+13. Zegen
+</analyse>
 
-─── UITVOER ────────────────────────────────────────────────────────────────────
-ALLEEN de letterlijk gekopieerde preektekst, ingedeeld in alinea's per gedachtegang.
-Geen JSON, geen titels, geen samenvatting, geen commentaar, geen opmerkingen.
-Schrijf in dezelfde taal als de preek.
+Let bij de analyse op:
+• Liederen zijn korte rijmende regels in vaste maat — ook als de tekst
+  niet heel archaïsch is. Duidelijk ANDERS dan gesproken prediking.
+• Een schriftlezing is herkenbaar doordat de voorganger letterlijk de
+  Bijbeltekst voorleest zonder er uitleg bij te geven.
+• De preek begint DIRECT na het preekgebed — de eerste preekwoorden zijn
+  vaak: "Gemeente...", "We lazen zojuist...", "Het gaat vanmorgen over..."
+• Bij een meerdelig preek: liederen TUSSEN preekdelen horen er NIET bij,
+  maar het volgende preekdeel WEL — ook als de stijl even verschilt.
+• Als de voorganger in de preek een psalmregel citeert ter illustratie:
+  dat hoort bij de preek. Als de gemeente zingt: dat is een lied.
+
+════════════════════════════════════════════════════════════════════════════════
+STAP 2 — EXTRACTIE (na de </analyse> tag)
+════════════════════════════════════════════════════════════════════════════════
+Kopieer nu LETTERLIJK alle preek(delen) die je in stap 1 hebt geïdentificeerd.
+
+Regels:
+• Verander GEEN ENKEL WOORD. Geen verbeteringen, geen herschrijven.
+• 'eh', 'uhm', herhalingen, versprekingen, onafgemaakte zinnen: alles erin.
+• Alleen tijdcodes (bijv. [00:23:45]) mogen weg.
+• Meerdere preekdelen: scheid ze met [PREEKDEEL VERVOLGT].
+• Deel de tekst in alinea's in per gedachtegang (alleen witregels — geen
+  titels, geen nummering, geen kopjes).
+
+Na de </analyse> tag: ALLEEN de letterlijke preektekst.
+Geen JSON, geen commentaar, geen opmerkingen. Schrijf in de taal van de preek.
 """
 
 
@@ -468,6 +493,11 @@ def extraheer_en_schoon_preek(transcript: str) -> str:
         ],
     )
     resultaat = (antwoord.choices[0].message.content or "").strip()
+
+    # Verwijder de <analyse>…</analyse> redeneerblok — alleen de preektekst bewaren.
+    import re as _re
+    resultaat = _re.sub(r"<analyse>.*?</analyse>", "", resultaat, flags=_re.DOTALL).strip()
+
     # Terugval: als model niets terugstuurt of minder dan 15% van het origineel,
     # is er iets mis — geef het origineel terug zodat de verwerking niet blokkeert.
     if len(resultaat) < max(200, len(transcript) * 0.15):
