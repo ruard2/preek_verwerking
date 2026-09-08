@@ -939,25 +939,18 @@ def _demo_verwerk_en_mail(url: str, email: str):
     try:
         log.info(f"[demo] Verwerking gestart: url={url} email={email}")
 
-        # Stap 1: zorg dat transcript + preek_schoon beschikbaar zijn (gebruikt cache).
-        r = verwerk_en_bewaar(url, meld=lambda s: log.info(f"[demo] {s}"), alleen_transcript=True)
+        # Stap 1: volledig verwerken — transcript → preek extraheren → dagstukjes +
+        # samenvatting in één keer, identiek aan de admin-route.
+        # GEEN alleen_transcript=True: dat slaat de extractiestap over waardoor voor
+        # YouTube-livestreams de volledige kerktranscriptie (incl. liederen/gebeden)
+        # als grondslag wordt gebruikt i.p.v. de geëxtraheerde preektekst.
+        r = verwerk_en_bewaar(url, meld=lambda s: log.info(f"[demo] {s}"))
         video_id = r.get("video_id")
         if not video_id:
             raise ValueError("Kon geen video-id bepalen uit de opgegeven URL.")
-        log.info(f"[demo] Transcript klaar: video_id={video_id}")
+        log.info(f"[demo] Verwerking klaar: video_id={video_id}")
 
-        # Stap 2: dagstukjes + samenvatting genereren vanuit het transcript.
-        # genereer_en_bewaar hergebruikt het opgeslagen transcript; transcriberen gebeurt
-        # NIET opnieuw. Als de cache al dagstukjes heeft, slaat dit ook al op de schijf.
-        opgeslagen = store.resultaat_ophalen(video_id) or {}
-        if not (opgeslagen.get("data") or {}).get("dagen"):
-            dag_res = genereer_en_bewaar(video_id, "dagstukjes")
-            log.info(f"[demo] Dagstukjes klaar: video_id={video_id}")
-        else:
-            dag_res = {"video_id": video_id, "data": opgeslagen["data"], "tekst": opgeslagen.get("tekst", "")}
-            log.info(f"[demo] Dagstukjes uit cache: video_id={video_id}")
-
-        # Stap 3: groepsvragen (met standaard-instellingen)
+        # Stap 2: groepsvragen (extra, met standaard-instellingen; niet fataal als mislukt).
         groepsvragen = None
         try:
             gv_res = genereer_groepsvragen_en_bewaar(video_id, {
@@ -970,9 +963,9 @@ def _demo_verwerk_en_mail(url: str, email: str):
         except Exception as gv_fout:  # noqa: BLE001
             log.warning(f"[demo] Groepsvragen mislukten (niet fataal): {gv_fout}")
 
-        # Stap 4: bouw e-mailresultaat (lees de meest recente versie van de store).
+        # Stap 3: lees meest recente store-versie (groepsvragen kunnen erin zitten).
         finaal = store.resultaat_ophalen(video_id) or {}
-        r_email = {**r, "data": finaal.get("data") or dag_res.get("data") or r.get("data")}
+        r_email = {**r, "data": finaal.get("data") or r.get("data")}
         log.info(f"[demo] E-mail voorbereiden voor {email}...")
         _stuur_demo_email(email, r_email, groepsvragen)
         log.info(f"[demo] E-mail verstuurd naar {email}")
