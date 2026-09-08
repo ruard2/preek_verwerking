@@ -194,7 +194,10 @@ def _basis_opties():
             "youtubepot-bgutilhttp": {"base_url": [pot_url.rstrip("/")]},
             "youtube": {
                 "fetch_pot": ["always"],
-                "player_client": ["web", "default"],
+                # ios/mweb geven CDN-URLs die niet IP-gebonden zijn → werkt
+                # op server-IPs zonder 403 bij de daadwerkelijke download.
+                # web blijft als laatste optie voor metadata/ondertitels.
+                "player_client": ["ios", "mweb", "web"],
             },
         }
     # Optioneel: al het YouTube-verkeer via een (residentiële) proxy leiden.
