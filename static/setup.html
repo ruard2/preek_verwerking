@@ -339,8 +339,40 @@ async function laadKanaal() {
   if (knop) { knop.disabled = true; knop.textContent = 'Laden…'; }
   try {
     const r = await fetch('/api/kanaal?' + new URLSearchParams({ url }));
-    if (!r.ok) throw new Error('Kanaal kon niet worden geladen.');
+    if (!r.ok) {
+      const d = await r.json().catch(() => ({}));
+      throw new Error(d.detail || 'Kanaal kon niet worden geladen.');
+    }
     const data = await r.json();
+    if (data.soort === 'enkel') {
+      // Kanaal-detect mislukt — vraag om de kanaal-URL zelf
+      if (knop) { knop.disabled = false; knop.textContent = 'Verbinden →'; }
+      const inp = document.getElementById('kanaal-url');
+      if (inp) {
+        inp.style.borderColor = 'var(--warn, #e67e22)';
+        inp.title = 'Plak de kanaal-URL, niet een losse preeklink';
+      }
+      const bestaand = document.getElementById('enkel-hint');
+      if (!bestaand) {
+        const hint = document.createElement('p');
+        hint.id = 'enkel-hint';
+        hint.className = 'info-tekst';
+        hint.style.color = 'var(--warn, #e67e22)';
+        hint.innerHTML =
+          'Dit lijkt een link naar één enkele preek. Plak de <strong>kanaal-URL</strong> ' +
+          '(de pagina met alle uitzendingen), zodat AfterSermon elke week automatisch ' +
+          'de nieuwste dienst kan ophalen.<br>' +
+          '<em>Voorbeeld YouTube: youtube.com/@mijnkerk</em><br>' +
+          '<em>Voorbeeld KDG: kerkdienstgemist.nl/stations/123</em><br>' +
+          '<em>Voorbeeld Kerkomroep: kerkomroep.nl/kerken/456</em>';
+        knop.after(hint);
+      }
+      return;
+    }
+    // Kanaal gevonden (ook als het via enkel-detect is afgeleid)
+    document.getElementById('enkel-hint')?.remove();
+    const inp = document.getElementById('kanaal-url');
+    if (inp) { inp.style.borderColor = ''; inp.title = ''; }
     state.kanaalUrl = data.kanaal || url;
     openStap(2);
   } catch (e) {

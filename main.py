@@ -768,14 +768,30 @@ def diagnose():
 
 @app.get("/api/kanaal")
 def kanaal(url: str = "", vernieuw: bool = False):
-    """Herken een geplakte link: kanaal → dienstenlijst; enkele preek → verwerken."""
+    """Herken een geplakte link: kanaal → dienstenlijst; enkele preek → verwerken.
+
+    Bij een enkelvoudige preeklink proberen we automatisch het bijbehorende kanaal
+    te vinden (werkt voor alle drie platforms). Als dat lukt, geven we de volledige
+    dienstenlijst terug — de beheerder hoeft dan niet apart de kanaal-URL te zoeken.
+    """
     url = (url or "").strip()
     if not url:
         raise HTTPException(400, "Plak eerst een kanaal- of preeklink.")
     typ, soort = _classificeer(url)
     if typ is None:
-        raise HTTPException(400, "Geef een YouTube- of Kerkdienstgemist-link op.")
+        raise HTTPException(400, "Geef een YouTube-, Kerkdienstgemist- of Kerkomroep-link op.")
     if soort == "enkel":
+        kanaal_url = _kanaal_van_enkele(url)
+        if kanaal_url:
+            kanaal_typ, _ = _classificeer(kanaal_url)
+            return {
+                "soort": "lijst",
+                "kanaal": kanaal_url,
+                "enkel_url": url,          # originele preeklink bewaren voor referentie
+                "diensten": _laad_diensten(kanaal_typ or typ, kanaal_url, vernieuw),
+            }
+        # Kanaal-detect mislukt (onverwachte URL-vorm): geef de enkel-URL terug
+        # zodat de UI de beheerder om de kanaal-URL kan vragen.
         return {"soort": "enkel", "url": url}
     return {
         "soort": "lijst",
@@ -787,9 +803,27 @@ def kanaal(url: str = "", vernieuw: bool = False):
 def _kanaal_van_enkele(url):
     """Best-effort: leid het kanaal (streams-tabblad) af van één preeklink.
 
-    Alleen YouTube — daar geeft yt-dlp het kanaal-URL van de video. Voor andere
-    bronnen geven we None terug (dan vraagt de UI zelf om de kanaal-link)."""
+    - YouTube: yt-dlp geeft het kanaal-URL van de video.
+    - Kerkdienstgemist: station-id zit in de recording-URL; geen API nodig.
+    - Kerkomroep: kerk-id zit in de audio-URL; geen API nodig.
+    """
     u = (url or "").lower()
+
+    # Kerkdienstgemist: .../stations/{id}/events/recording/{rid} → .../stations/{id}
+    if kerkdienstgemist.is_kerkdienstgemist(url) and "/recording/" in u:
+        m = kerkdienstgemist.STATION_RE.search(url)
+        if m:
+            return f"https://kerkdienstgemist.nl/stations/{m.group(1)}"
+        return None
+
+    # Kerkomroep: .../kerken/{id}/audio/{sid} → .../kerken/{id}
+    if kerkomroep.is_kerkomroep(url) and "/audio/" in u:
+        m = kerkomroep.KERK_RE.search(url)
+        if m:
+            return f"https://kerkomroep.nl/kerken/{m.group(1)}"
+        return None
+
+    # YouTube: yt-dlp haalt het kanaal-URL op via de video-info.
     if not ("youtube.com" in u or "youtu.be" in u):
         return None
     try:
