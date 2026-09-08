@@ -9,26 +9,22 @@ MODEL = os.environ.get("OPENAI_MODEL", "gpt-5")
 SCHOON_MODEL = os.environ.get("OPENAI_SCHOON_MODEL", MODEL)
 
 SCHOON_PROMPT = """\
-Je krijgt een ruw, automatisch gegenereerd transcript van één christelijke preek
-en maakt daarvan een betrouwbare, goed leesbare versie van de VOLLEDIGE preek.
+Je krijgt een ruw, automatisch gegenereerd transcript van één christelijke preek.
+Jouw taak: kopieer de VOLLEDIGE preek letterlijk — verander GEEN enkel woord.
 
 Regels:
-* Behoud alle inhoud, boodschap, argumentatie en voorbeelden van de spreker.
-* Vat NIET samen en kort NIET in — dit is de hele preek, alleen opgeschoond.
-* Verander de theologische strekking niet en voeg niets toe (geen nieuwe ideeën,
-  voorbeelden of conclusies).
-* Verwijder tijdcodes, stopwoorden ('eh', 'uhm'), versprekingen en zelfcorrecties.
-* Verwijder onnodige woordherhalingen die geen nadruk dienen.
-* Deel de tekst in logische alinea's in.
-* Herstel duidelijke transcriptiefouten en corrigeer namen van Bijbelboeken en
-  Bijbelse personen. Maak onzekere details niet stilzwijgend zeker.
+* Kopieer elke zin, elk woord, elke herhaling, elke verspreking, elk 'eh'/'uhm' —
+  precies zoals de predikant het zei. 100% letterlijk.
+* Vat NIET samen, kort NIET in, verbeter NIETS, herschrijf NIETS.
+* Verander de theologische strekking niet en voeg niets toe.
+* Alleen tijdcodes (bijv. [00:23:45]) mogen worden verwijderd als ze in de tekst staan.
+* Deel de tekst in logische alinea's in per gedachtegang, maar verander de woorden niet.
+* Herstel alleen flagrante herkenningsfouten in namen van Bijbelboeken of Bijbelse
+  personen waarbij de context 100% zeker is — wees terughoudend.
 * Als de preek uit meerdere delen bestaat (gemarkeerd met [VOLGEND PREEKDEEL]),
   voeg die samen tot één doorlopende tekst; laat de markering zelf weg.
-* BEWAAR het taalkleed, de zinsbouw en de woordkeuze van de predikant — herschrijf
-  GEEN spreektaal naar formeel geschreven Nederlands. De tekst moet klinken als de
-  predikant zelf, niet als een geredigeerd artikel.
 
-Uitvoer: ALLEEN de opgeschoonde preektekst als lopende alinea's. Geen titel,
+Uitvoer: ALLEEN de letterlijk gekopieerde preektekst als lopende alinea's. Geen titel,
 geen kopjes, geen samenvatting, geen commentaar, geen opsomming — puur de preek.
 Schrijf in dezelfde taal als de preek.
 """
@@ -40,24 +36,16 @@ Je ontvangt een ruwe, automatisch gegenereerde transcriptie van een christelijke
 
 Verwerk de aangeleverde tekst in twee stappen.
 
-Stap 1 – Transcript opschonen
-Maak eerst intern een betrouwbare, goed leesbare versie van het transcript.
-Houd je daarbij aan de volgende regels:
+Stap 1 – Transcript lezen (intern)
+Lees het transcript zorgvuldig. De tekst is 100% letterlijk — alle woorden van de
+predikant, inclusief herhalingen, aarzelingen en spreektaal. Gebruik het als bron.
 
-* Behoud de inhoud, boodschap, argumentatie en voorbeelden van de spreker.
-* Verander de theologische strekking niet.
-* Verwijder tijdcodes.
-* Verwijder onnodige herhalingen, stopwoorden ('eh', 'uhm') en versprekingen.
-* Herstel flagrante transcriptiefouten en incomplete zinnen, maar bewaar de eigen
-  spreekstijl, zinsbouw en woordkeuze van de predikant — herschrijf GEEN spreektaal
-  naar formeel geschreven tekst. De stem van de predikant moet herkenbaar blijven.
-* Deel lange tekstblokken logisch in.
-* Herstel duidelijke transcriptiefouten.
-* Corrigeer namen van Bijbelboeken en Bijbelse personen.
-* Controleer of genoemde Bijbelteksten en verwijzingen logisch kloppen met de context.
+* Verander NIETS aan de woorden van de predikant.
+* Verwijder alleen tijdcodes als die aanwezig zijn.
+* Noteer intern: centrale boodschap, structuur, Bijbelteksten, voorbeelden.
+* Schrijf het transcript NIET opnieuw uit — gebruik het puur als bronmateriaal.
 * Voeg geen nieuwe theologische ideeën, voorbeelden of conclusies toe.
-* Maak onzekerheden niet stilzwijgend zeker. Laat twijfelachtige details liever algemeen weg of formuleer voorzichtig.
-* Schrijf de opgeschoonde transcriptie niet volledig uit in het eindresultaat, tenzij daar afzonderlijk om wordt gevraagd. Gebruik deze versie als basis voor de verdere verwerking.
+* Maak onzekerheden niet stilzwijgend zeker.
 
 Stap 2 – Preekverwerking maken
 Maak op basis van het opgeschoonde transcript de volgende onderdelen:
@@ -414,10 +402,8 @@ def schoon_transcript(transcript, taal_hint=None):
 _EXTRAHEER_PROMPT = """\
 Je ontvangt een ruwe automatische transcriptie van een VOLLEDIGE kerkdienst.
 
-Je doet TWEEdingen in één stap:
-1. LOKALISEER en EXTRAHEER de preek (of alle preekdelen) uit de transcriptie.
-2. VERWIJDER transcriptie-artefacten (tijdcodes, stopwoorden, versprekingen) —
-   maar bewaar de eigen stem, stijl en woordkeuze van de voorganger volledig.
+Je taak is uitsluitend KNIPPEN: haal de preek eruit uit de volledige dienst-transcriptie.
+Verander GEEN ENKEL WOORD van de predikant. Kopieer letterlijk.
 
 ─── WAT IS DE PREEK? ───────────────────────────────────────────────────────────
 • Het inhoudelijke onderwijs van de voorganger over een Bijbeltekst.
@@ -441,26 +427,16 @@ Neem NIET op in de uitvoer:
 • Mededelingen, collecte-aankondiging, welkomstwoorden, afsluiting
 • Geloofsbelijdenis, dankgebed, zegen, wegzending
 
-─── HOE SCHOON JE OP? ──────────────────────────────────────────────────────────
-• Verwijder tijdcodes, stopwoorden ('eh', 'uhm', 'ja'), duidelijke versprekingen
-  en onmiddellijke zelfcorrecties (bv. "hij ging — ze gingen").
-• Verwijder woordelijke herhalingen die alleen opvulling zijn, niet nadruk.
-• Deel de tekst in logische alinea's in.
-• Herstel flagrante transcriptiefouten en corrigeer Bijbelboek-namen en
-  namen van Bijbelse personen.
-• Behoud ALLE inhoud, boodschap, argumentatie en voorbeelden van de voorganger.
-• Voeg NIETS toe (geen nieuwe ideeën, conclusies of uitleg die er niet in zat).
-
-BEWAAR HET TAALKLEED VAN DE PREDIKANT:
-• Laat de zinsbouw, woordkeuze en spreekstijl van de voorganger intact.
-• Herschrijf GEEN spreektaal naar formeel geschreven Nederlands.
-• Als de predikant een woord of uitdrukking herhaalt voor nadruk, laat dat staan.
-• De tekst moet klinken als de predikant zelf — niet als een geredigeerd artikel.
+─── WAT JE BEHOUDT (100% letterlijk) ──────────────────────────────────────────
+• Elke zin, elk woord, elke herhaling, elke aarzeling, elke verspreking — alles.
+• 'eh', 'uhm', 'nou', herhalingen voor nadruk, onafgemaakte zinnen: alles erin.
+• Verander NIETS. Verbeter NIETS. Herschrijf NIETS. Voeg NIETS toe.
+• Alleen tijdcodes (bijv. [00:23:45]) mogen weg als ze in de tekst staan.
 • Als de preek meerdere delen heeft: neem ze allemaal op, gescheiden door
   [PREEKDEEL VERVOLGT].
 
 ─── UITVOER ────────────────────────────────────────────────────────────────────
-ALLEEN de opgeschoonde preektekst als lopende alinea's.
+ALLEEN de letterlijk gekopieerde preektekst, ingedeeld in alinea's per gedachtegang.
 Geen JSON, geen titels, geen samenvatting, geen commentaar, geen opmerkingen.
 Schrijf in dezelfde taal als de preek.
 """
