@@ -17,14 +17,16 @@ Regels:
 * Vat NIET samen en kort NIET in — dit is de hele preek, alleen opgeschoond.
 * Verander de theologische strekking niet en voeg niets toe (geen nieuwe ideeën,
   voorbeelden of conclusies).
-* Verwijder tijdcodes, herhalingen, stopwoorden en versprekingen.
-* Maak kromme of onafgemaakte zinnen grammaticaal correct; zet spreektaal om in
-  natuurlijk, goedlopend geschreven tekst in de taal van de preek.
+* Verwijder tijdcodes, stopwoorden ('eh', 'uhm'), versprekingen en zelfcorrecties.
+* Verwijder onnodige woordherhalingen die geen nadruk dienen.
 * Deel de tekst in logische alinea's in.
 * Herstel duidelijke transcriptiefouten en corrigeer namen van Bijbelboeken en
   Bijbelse personen. Maak onzekere details niet stilzwijgend zeker.
 * Als de preek uit meerdere delen bestaat (gemarkeerd met [VOLGEND PREEKDEEL]),
   voeg die samen tot één doorlopende tekst; laat de markering zelf weg.
+* BEWAAR het taalkleed, de zinsbouw en de woordkeuze van de predikant — herschrijf
+  GEEN spreektaal naar formeel geschreven Nederlands. De tekst moet klinken als de
+  predikant zelf, niet als een geredigeerd artikel.
 
 Uitvoer: ALLEEN de opgeschoonde preektekst als lopende alinea's. Geen titel,
 geen kopjes, geen samenvatting, geen commentaar, geen opsomming — puur de preek.
@@ -45,9 +47,10 @@ Houd je daarbij aan de volgende regels:
 * Behoud de inhoud, boodschap, argumentatie en voorbeelden van de spreker.
 * Verander de theologische strekking niet.
 * Verwijder tijdcodes.
-* Verwijder onnodige herhalingen, stopwoorden en versprekingen.
-* Maak onafgemaakte of kromme zinnen grammaticaal correct.
-* Zet spreektaal om in natuurlijk, goedlopend geschreven tekst in de taal van de preek.
+* Verwijder onnodige herhalingen, stopwoorden ('eh', 'uhm') en versprekingen.
+* Herstel flagrante transcriptiefouten en incomplete zinnen, maar bewaar de eigen
+  spreekstijl, zinsbouw en woordkeuze van de predikant — herschrijf GEEN spreektaal
+  naar formeel geschreven tekst. De stem van de predikant moet herkenbaar blijven.
 * Deel lange tekstblokken logisch in.
 * Herstel duidelijke transcriptiefouten.
 * Corrigeer namen van Bijbelboeken en Bijbelse personen.
@@ -413,7 +416,8 @@ Je ontvangt een ruwe automatische transcriptie van een VOLLEDIGE kerkdienst.
 
 Je doet TWEEdingen in één stap:
 1. LOKALISEER en EXTRAHEER de preek (of alle preekdelen) uit de transcriptie.
-2. SCHOON de geëxtraheerde preektekst op tot vloeiende, leesbare lopende tekst.
+2. VERWIJDER transcriptie-artefacten (tijdcodes, stopwoorden, versprekingen) —
+   maar bewaar de eigen stem, stijl en woordkeuze van de voorganger volledig.
 
 ─── WAT IS DE PREEK? ───────────────────────────────────────────────────────────
 • Het inhoudelijke onderwijs van de voorganger over een Bijbeltekst.
@@ -438,15 +442,20 @@ Neem NIET op in de uitvoer:
 • Geloofsbelijdenis, dankgebed, zegen, wegzending
 
 ─── HOE SCHOON JE OP? ──────────────────────────────────────────────────────────
-• Verwijder tijdcodes, herhalingen, stopwoorden en versprekingen.
-• Maak onafgemaakte of grammaticaal kreupele zinnen correct.
-• Zet spreektaal om in natuurlijk, goed leesbaar geschreven Nederlands (of de
-  taal van de preek).
+• Verwijder tijdcodes, stopwoorden ('eh', 'uhm', 'ja'), duidelijke versprekingen
+  en onmiddellijke zelfcorrecties (bv. "hij ging — ze gingen").
+• Verwijder woordelijke herhalingen die alleen opvulling zijn, niet nadruk.
 • Deel de tekst in logische alinea's in.
 • Herstel flagrante transcriptiefouten en corrigeer Bijbelboek-namen en
   namen van Bijbelse personen.
 • Behoud ALLE inhoud, boodschap, argumentatie en voorbeelden van de voorganger.
 • Voeg NIETS toe (geen nieuwe ideeën, conclusies of uitleg die er niet in zat).
+
+BEWAAR HET TAALKLEED VAN DE PREDIKANT:
+• Laat de zinsbouw, woordkeuze en spreekstijl van de voorganger intact.
+• Herschrijf GEEN spreektaal naar formeel geschreven Nederlands.
+• Als de predikant een woord of uitdrukking herhaalt voor nadruk, laat dat staan.
+• De tekst moet klinken als de predikant zelf — niet als een geredigeerd artikel.
 • Als de preek meerdere delen heeft: neem ze allemaal op, gescheiden door
   [PREEKDEEL VERVOLGT].
 
