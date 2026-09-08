@@ -491,6 +491,10 @@ def extraheer_en_schoon_preek(transcript: str) -> str:
             {"role": "system", "content": _EXTRAHEER_PROMPT},
             {"role": "user", "content": "--- VOLLEDIGE DIENST TRANSCRIPTIE ---\n" + transcript},
         ],
+        # Een 40-minuten preek is al gauw 7.000–9.500 tokens output; zonder limiet
+        # valt OpenAI terug op ~4.096 en kapt de tekst halverwege af.
+        # 16.384 is het model-maximum (GPT-4o / GPT-5).
+        max_tokens=16384,
     )
     resultaat = (antwoord.choices[0].message.content or "").strip()
 
