@@ -97,6 +97,9 @@ class Church(Base):
     # Kwaliteitsknoppen voor de overdenkingen: toon en lengte.
     toon: Mapped[str] = mapped_column(String(20), default="warm")
     lengte: Mapped[str] = mapped_column(String(20), default="middel")
+    # Taal van de uitvoer: 'auto' = taal van de preek (aanbevolen), of een ISO-code
+    # zoals 'nl', 'en', 'af' om altijd in die taal te schrijven.
+    uitvoer_taal: Mapped[str] = mapped_column(String(10), default="auto")
     # Welke uitvoer(en) de kerk maakt, komma-gescheiden. Keuze uit:
     # dagstukjes, preeksamenvatting, preektranscript, nabespreking.
     uitvoer_typen: Mapped[str] = mapped_column(String(120), default="dagstukjes")
@@ -182,6 +185,8 @@ class Subscriber(Base):
     # Welke uitvoer(en) dit lid wil ontvangen (komma-gescheiden, deel van wat de
     # kerk aanbiedt). Leeg = alles wat de kerk stuurt.
     uitvoer_voorkeur: Mapped[str] = mapped_column(String(120), default="")
+    # Taal van de uitvoer voor dit lid: '' = gebruik de kerk-instelling, anders ISO-code.
+    uitvoer_taal: Mapped[str] = mapped_column(String(10), default="")
     # Push-abonnement (browser) als JSON-tekst; leeg = geen push. Het gekozen
     # kanaal ("email" | "push" | "beide") staat in het bestaande veld `kanaal`.
     push_abonnement: Mapped[str] = mapped_column(Text, default="")

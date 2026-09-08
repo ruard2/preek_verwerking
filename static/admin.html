@@ -28,6 +28,7 @@
   <div id="inhoud"></div>
 
 <script src="/static/ui-i18n.js"></script>
+<script src="/static/talen.js"></script>
 <script>
 const inhoud = document.getElementById('inhoud');
 const meldingEl = document.getElementById('melding');
@@ -241,10 +242,12 @@ function toonDashboard(mij) {
         citaat_volledig: document.getElementById('citaat_volledig').value !== 'ref',
         bijbelvertaling: val('bijbelvertaling'),
         accentkleur: val('accentkleur'),
-        toon: val('toon'), lengte: val('lengte')
+        toon: val('toon'), lengte: val('lengte'),
+        uitvoer_taal: val('uitvoer_taal') || 'auto'
       });
       if (mij) {
         mij.accentkleur = val('accentkleur'); mij.toon = val('toon'); mij.lengte = val('lengte');
+        mij.uitvoer_taal = val('uitvoer_taal') || 'auto';
       }
       mij.kanaal_url = kanaalUrl;
       mij.auto_verwerken = document.getElementById('autoverwerk').checked;
@@ -330,6 +333,23 @@ function toonDashboard(mij) {
   [['kort', T('Kort')], ['middel', T('Gemiddeld')], ['lang', T('Uitgebreid')]]
     .forEach(o => ln.appendChild(el('option', {value: o[0]}, o[1])));
   ln.value = mij.lengte || 'middel'; stijl.appendChild(ln);
+
+  // ── Uitvoer-taal ──────────────────────────────────────────────────────────
+  stijl.appendChild(el('label', {htmlFor: 'uitvoer_taal'}, T('Taal van de overdenkingen')));
+  const taalWrap = el('div', {id: 'uitvoer-taal-kerk-wrap'});
+  stijl.appendChild(taalWrap);
+  stijl.appendChild(el('p', {className: 'sub'},
+    T('"Zelfde als de preek" is de standaard — de AI detecteert de preektaal automatisch. Kies een vaste taal als je altijd in één taal wilt schrijven, ongeacht de preek.')));
+  if (window.maakTaalSelect) {
+    const taalSel = maakTaalSelect('uitvoer_taal', mij.uitvoer_taal || 'auto', true);
+    // 'auto' optie aanpassen: bij kerk is '' = auto
+    taalWrap.appendChild(taalSel);
+  } else {
+    const taalInp = el('input', {id: 'uitvoer_taal', type: 'text', placeholder: 'auto'});
+    taalInp.value = mij.uitvoer_taal || 'auto';
+    taalWrap.appendChild(taalInp);
+  }
+
   kaart.insertBefore(stijl, knop);
 
   basisPane.appendChild(kaart);
@@ -652,6 +672,7 @@ function _kanaalBody(mij, wijziging) {
     inschrijf_taal: mij.inschrijf_taal || 'auto', communicatie_taal: mij.communicatie_taal || 'nl',
     citaat_volledig: mij.citaat_volledig !== false, bijbelvertaling: mij.bijbelvertaling || 'vrij',
     accentkleur: mij.accentkleur || '#2c5f2d', toon: mij.toon || 'warm', lengte: mij.lengte || 'middel',
+    uitvoer_taal: mij.uitvoer_taal || 'auto',
     uitvoer_typen: (mij.uitvoer_typen && mij.uitvoer_typen.length) ? mij.uitvoer_typen : ['dagstukjes'],
     bezorg_typen: mij.bezorg_typen || [],
     nabespreking_schema: mij.nabespreking_schema || 'mee',

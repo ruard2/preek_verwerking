@@ -131,6 +131,8 @@ def werk_voorkeuren_bij(db, sub, **velden):
         sub.ontvang_dag = int(velden["ontvang_dag"]) % 7
     if velden.get("ontvang_tijd"):
         sub.ontvang_tijd = velden["ontvang_tijd"]
+    if "uitvoer_taal" in velden:
+        sub.uitvoer_taal = (velden["uitvoer_taal"] or "").strip().lower()
     db.commit()
     return sub
 

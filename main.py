@@ -374,14 +374,20 @@ def _genereer_basis(bron_info, bijbel, typen, meld):
     Zo slaan we de dure 7-daagse generatie over als de kerk geen dagstukjes wil.
     """
     transcript = bron_info["transcript"]
+    # bijbel kan taal_hint bevatten (kerkinstelling); bron_info heeft eigen taal_hint
+    # (detectie/upload). Kerkinstelling wint; verwijder uit bijbel-copy om dubbele kwarg te voorkomen.
+    bijbel_schoon = dict(bijbel or {})
+    taal_hint_kerk = bijbel_schoon.pop("taal_hint", None)
+    taal_hint_bron = bron_info.get("taal_hint")
     gemeen = dict(
-        welkom=bron_info.get("welkom"), taal_hint=bron_info.get("taal_hint"),
+        welkom=bron_info.get("welkom"),
+        taal_hint=taal_hint_kerk or taal_hint_bron,  # kerkinstelling overrides bron
         extra_context=bron_info.get("extra_context"),
         volledige_dienst=bron_info.get("volledige_dienst", False),
     )
     if "dagstukjes" in typen:
         meld("Weekboekje maken met AI — dit kan enkele minuten duren...")
-        data = verwerk_preek(transcript, **gemeen, **(bijbel or {}))
+        data = verwerk_preek(transcript, **gemeen, **bijbel_schoon)
         bijbeltekst.verrijk_dagen(data, bijbel or {})
     else:
         meld("Kernpunten van de preek samenvatten...")
@@ -392,19 +398,25 @@ def _genereer_basis(bron_info, bijbel, typen, meld):
 
 
 def bijbel_van_kerk(kerk):
-    """Bouw de verwerk-opties (Bijbeltekst + stijl) uit een Church-record.
+    """Bouw de verwerk-opties (Bijbeltekst + stijl + taal) uit een Church-record.
 
     Het resultaat wordt als **kwargs aan verwerk_preek doorgegeven: citaat_volledig,
-    vertaling, toon en lengte. Verdraagt None (losse verwerking zonder kerk) → dan
-    de standaardwaarden van verwerk_preek.
+    vertaling, toon, lengte en taal_hint. Verdraagt None (losse verwerking zonder
+    kerk) → dan de standaardwaarden van verwerk_preek.
+
+    taal_hint is None als uitvoer_taal='auto' (model detecteert de preektaal zelf);
+    anders de ISO-code die de kerk heeft ingesteld (harde eis).
     """
     if kerk is None:
         return None
+    uitvoer_taal = getattr(kerk, "uitvoer_taal", "auto") or "auto"
     return {
         "citaat_volledig": getattr(kerk, "citaat_volledig", True),
         "vertaling": getattr(kerk, "bijbelvertaling", "vrij") or "vrij",
         "toon": getattr(kerk, "toon", "warm") or "warm",
         "lengte": getattr(kerk, "lengte", "middel") or "middel",
+        # Geeft None door als 'auto': model detecteert de preektaal zelf.
+        "taal_hint": None if uitvoer_taal == "auto" else uitvoer_taal,
     }
 
 
@@ -577,14 +589,20 @@ def verwerk_tekst_en_bewaar(video_id, tekst, titel_hint=None, volledige_dienst=F
     gegenereerd (alleen opgeslagen), zodat de gebruiker daarna zelf kiest.
     """
     typen = parse_uitvoer(uitvoer_typen)
+    # taal_hint: uit de bijbel-opties (kerk-instelling) of None (auto-detect).
+    # Verwijder taal_hint uit bijbel-copy om dubbele kwarg te voorkomen bij **-spreading.
+    bijbel_schoon = dict(bijbel or {})
+    taal_hint_upload = bijbel_schoon.pop("taal_hint", None)
     if alleen_transcript:
         data = {"taal": None, "titel": (titel_hint or "Preek"), "bijbelgedeelte": "",
                 "voorganger": None, "samenvatting": "", "dagen": [], "voorbereid": True}
     elif "dagstukjes" in typen:
-        data = verwerk_preek(tekst, volledige_dienst=volledige_dienst, **(bijbel or {}))
+        data = verwerk_preek(tekst, volledige_dienst=volledige_dienst,
+                             taal_hint=taal_hint_upload, **bijbel_schoon)
         bijbeltekst.verrijk_dagen(data, bijbel or {})
     else:
-        data = llm_maak_basis(tekst, volledige_dienst=volledige_dienst)
+        data = llm_maak_basis(tekst, volledige_dienst=volledige_dienst,
+                              taal_hint=taal_hint_upload)
     if titel_hint and not data.get("titel"):
         data["titel"] = titel_hint
     # Bij upload is de aangeleverde tekst zelf de (geschreven) preek.
@@ -668,12 +686,19 @@ def genereer_en_bewaar(video_id, wat, bijbel=None):
     volledig = bool((bewaard.get("bron_info") or {}).get("volledige_dienst"))
     data = dict(bewaard.get("data") or {})
     data.pop("voorbereid", None)
+    # Gebruik de eerder gedetecteerde preektaal als fallback; kerk-instelling wint.
+    # Verwijder taal_hint uit bijbel-copy om dubbele kwarg te voorkomen bij **-spreading.
+    bijbel_schoon = dict(bijbel or {})
+    taal_hint_kerk = bijbel_schoon.pop("taal_hint", None)
+    opgeslagen_taal = data.get("taal") or (bewaard.get("bron_info") or {}).get("taal_hint")
+    taal_hint_gen = taal_hint_kerk or opgeslagen_taal
     if wat == "dagstukjes":
-        gegenereerd = verwerk_preek(bron, volledige_dienst=volledig, **(bijbel or {}))
+        gegenereerd = verwerk_preek(bron, volledige_dienst=volledig,
+                                    taal_hint=taal_hint_gen, **bijbel_schoon)
         bijbeltekst.verrijk_dagen(gegenereerd, bijbel or {})
         data = gegenereerd
     elif wat == "samenvatting":
-        basis = llm_maak_basis(bron, volledige_dienst=volledig)
+        basis = llm_maak_basis(bron, volledige_dienst=volledig, taal_hint=taal_hint_gen)
         for k in ("taal", "titel", "bijbelgedeelte", "voorganger", "samenvatting"):
             if basis.get(k):
                 data[k] = basis[k]

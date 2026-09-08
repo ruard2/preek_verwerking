@@ -423,6 +423,7 @@ class KanaalBody(BaseModel):
     accentkleur: str = "#2c5f2d"
     toon: str = "warm"
     lengte: str = "middel"
+    uitvoer_taal: str = "auto"
     uitvoer_typen: list[str] = ["dagstukjes"]
     bezorg_typen: list[str] = []
     nabespreking_schema: str = "mee"
@@ -465,6 +466,7 @@ class VoorkeurBody(BaseModel):
     ontvang_dag: int = 0
     ontvang_tijd: str = "07:00"
     uitvoer_voorkeur: list[str] = []
+    uitvoer_taal: str = ""
 
 
 # ---- E-mails ----
@@ -597,6 +599,7 @@ def mij(request: Request, db=Depends(get_db)):
         "accentkleur": kerk.accentkleur or "#2c5f2d",
         "toon": kerk.toon or "warm",
         "lengte": kerk.lengte or "middel",
+        "uitvoer_taal": getattr(kerk, "uitvoer_taal", "auto") or "auto",
         "uitvoer_typen": (kerk.uitvoer_typen or "dagstukjes").split(","),
         "bezorg_typen": (kerk.bezorg_typen or "").split(",") if (kerk.bezorg_typen or "").strip() else [],
         "nabespreking_schema": getattr(kerk, "nabespreking_schema", "mee") or "mee",
@@ -658,6 +661,10 @@ def kanaal(body: KanaalBody, request: Request, db=Depends(get_db)):
     kerk.accentkleur = kleur if re.fullmatch(r"#[0-9a-fA-F]{6}", kleur) else "#2c5f2d"
     kerk.toon = body.toon if body.toon in {"warm", "nuchter", "toegankelijk", "verdiepend"} else "warm"
     kerk.lengte = body.lengte if body.lengte in {"kort", "middel", "lang"} else "middel"
+    # uitvoer_taal: 'auto' of een geldige ISO-taalcode (2–10 tekens, letters + koppeltekens).
+    _taal = (body.uitvoer_taal or "auto").strip().lower()
+    import re as _re
+    kerk.uitvoer_taal = _taal if (_taal == "auto" or _re.fullmatch(r"[a-z]{2,3}(-[a-z]{2,8})?", _taal)) else "auto"
     _geldig = {"dagstukjes", "preeksamenvatting", "preektranscript", "nabespreking"}
     _uitvoer = [t for t in (body.uitvoer_typen or []) if t in _geldig]
     kerk.uitvoer_typen = ",".join(_uitvoer) if _uitvoer else "dagstukjes"
@@ -1502,10 +1509,14 @@ def voorkeuren_opslaan(body: VoorkeurBody, db=Depends(get_db)):
     sub = subscribers.op_voorkeur_token(db, body.token)
     if not sub:
         raise HTTPException(404, "Onbekende of verlopen link.")
+    import re as _re
+    _taal = (body.uitvoer_taal or "").strip().lower()
+    _taal_schoon = _taal if (_taal == "" or _re.fullmatch(r"[a-z]{2,3}(-[a-z]{2,8})?", _taal)) else ""
     subscribers.werk_voorkeuren_bij(
         db, sub, naam=body.naam, telefoon=body.telefoon, frequentie=body.frequentie,
         dienstvoorkeur=body.dienstvoorkeur, uitvoer_voorkeur=body.uitvoer_voorkeur,
         ontvang_dag=body.ontvang_dag, ontvang_tijd=body.ontvang_tijd,
+        uitvoer_taal=_taal_schoon,
     )
     return {"ok": True}
 
@@ -1661,6 +1672,9 @@ def gebruiker_mij(request: Request):
         kerk = db.get(Church, sub.kerk_id)
         beschikbaar = [t.strip() for t in (getattr(kerk, "uitvoer", "") or "").split(",") if t.strip()] if kerk else []
         gekozen = [t.strip() for t in (sub.uitvoer_voorkeur or "").split(",") if t.strip()]
+        # uitvoer_taal: eigen keuze van het lid, of anders de kerk-standaard ('auto' = preektaal).
+        uitvoer_taal_sub   = getattr(sub,  "uitvoer_taal", "") or ""
+        uitvoer_taal_kerk  = getattr(kerk, "uitvoer_taal", "auto") or "auto" if kerk else "auto"
         return {
             "sub_id": sub.id,
             "naam": sub.naam,
@@ -1674,6 +1688,8 @@ def gebruiker_mij(request: Request):
             "accentkleur": getattr(kerk, "accentkleur", None) if kerk else None,
             "heeft_wachtwoord": bool(sub.wachtwoord_hash),
             "voorkeur_token": sub.voorkeur_token,
+            "uitvoer_taal": uitvoer_taal_sub,
+            "uitvoer_taal_kerk": uitvoer_taal_kerk,
         }
     finally:
         db.close()

@@ -135,6 +135,7 @@
   .privacy a { color: var(--muted); text-decoration: none; }
   .privacy a:hover { color: var(--brand); }
 </style>
+<script src="/static/talen.js"></script>
 <link rel="manifest" href="/static/manifest.json">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#1c5e39">
@@ -392,6 +393,12 @@ function bouwPortaal(mij) {
         <option value="avond">Alleen de avonddienst</option>
       </select>
 
+      <label for="uitvoer-taal">Taal van de overdenkingen</label>
+      <div id="uitvoer-taal-wrap"></div>
+      <p style="font-size:.78rem;color:var(--muted);margin:.2rem 0 0">
+        "Zelfde als de preek" is de aanbevolen instelling — de AI schrijft dan automatisch in de taal van de dienst.
+      </p>
+
       <button id="opslaan-knop" onclick="doOpslaanVoorkeuren()">Voorkeuren opslaan →</button>
     </div>
 
@@ -416,6 +423,13 @@ function bouwPortaal(mij) {
 
   document.getElementById('freq').value   = mij.frequentie    || 'wekelijks';
   document.getElementById('dienst').value = mij.dienstvoorkeur || 'beide';
+
+  // Taalveld inladen
+  const taalWrap = document.getElementById('uitvoer-taal-wrap');
+  if (taalWrap && window.maakTaalSelect) {
+    const sel = maakTaalSelect('uitvoer-taal', mij.uitvoer_taal || '');
+    taalWrap.appendChild(sel);
+  }
 }
 
 async function doOpslaanVoorkeuren() {
@@ -430,6 +444,7 @@ async function doOpslaanVoorkeuren() {
       frequentie:       document.getElementById('freq').value,
       dienstvoorkeur:   document.getElementById('dienst').value,
       uitvoer_voorkeur: gekozen,
+      uitvoer_taal:     document.getElementById('uitvoer-taal')?.value || '',
     });
     toon('ok', 'Opgeslagen! Je ontvangt je overdenkingen ' +
       (document.getElementById('freq').value === 'dagelijks' ? 'dagelijks' : 'wekelijks') +

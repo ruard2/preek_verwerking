@@ -268,6 +268,23 @@ def _stijl_instructie(toon, lengte):
     return f"\nSTIJL: schrijf de overdenkingen in een {t} toon. {l}\n"
 
 
+def _harde_taalinstructie(taal: str) -> str:
+    """Geeft een onontkoombare taalinstructie terug als gebruikertekst.
+
+    Wordt als eerste regel van de user-message geplaatst zodat het model hem
+    niet kan negeren. De ISO-code staat er twee keer in: eenmaal als tekst,
+    eenmaal als expliciete sleutel-waarde voor het JSON-veld 'taal'.
+    """
+    return (
+        f"\n\n⚠ HARDE TAALEIS (niet onderhandelbaar): schrijf de VOLLEDIGE uitvoer "
+        f"— titel, bijbelgedeelte, samenvatting, alle zeven daggedeelten, alle vragen — "
+        f"UITSLUITEND in de taal met ISO-code '{taal}'. "
+        f"Zet ook het JSON-veld \"taal\" op \"{taal}\". "
+        f"Gebruik GEEN andere taal, ook niet als de preek in een andere taal lijkt te zijn. "
+        f"Dit is een absolute systeemeis.\n\n"
+    )
+
+
 def verwerk_preek(transcript, welkom=None, taal_hint=None, extra_context=None,
                   volledige_dienst=False, citaat_volledig=True, vertaling="vrij",
                   toon="warm", lengte="middel"):
@@ -294,10 +311,7 @@ def verwerk_preek(transcript, welkom=None, taal_hint=None, extra_context=None,
             "de betreffende velden en verzin niets anders):\n" + extra_context + "\n"
         )
     if taal_hint:
-        inhoud += (
-            f"\nDe preek is (automatisch gedetecteerd) in de taal met code "
-            f"'{taal_hint}'. Schrijf de volledige uitvoer in die taal.\n"
-        )
+        inhoud += _harde_taalinstructie(taal_hint)
     if welkom:
         inhoud += (
             "\n--- FRAGMENT WELKOMSTWOORD (alleen voor de naam van de "
@@ -382,10 +396,7 @@ def schoon_transcript(transcript, taal_hint=None):
     client = OpenAI()
     inhoud = ""
     if taal_hint:
-        inhoud += (
-            f"De preek is in de taal met code '{taal_hint}'. Schrijf de "
-            "opgeschoonde preek in díé taal.\n\n"
-        )
+        inhoud += _harde_taalinstructie(taal_hint)
     inhoud += "--- RUW TRANSCRIPT ---\n" + transcript
     antwoord = client.chat.completions.create(
         model=SCHOON_MODEL,
@@ -430,7 +441,7 @@ def hergenereer_dag(data, dag_index, bron="", toon="warm", lengte="middel",
         "aanvult en niet in herhaling valt.\n"
         + _bijbel_instructie(citaat_volledig, vertaling)
         + _stijl_instructie(toon, lengte)
-        + f"\nSchrijf in de taal met code '{taal}'.\n"
+        + _harde_taalinstructie(taal)
         + "\n".join(context)
     )
     if bron:
@@ -539,10 +550,7 @@ def maak_basis(transcript, welkom=None, taal_hint=None, extra_context=None,
             "niets anders):\n" + extra_context + "\n"
         )
     if taal_hint:
-        inhoud += (
-            f"\nDe preek is in de taal met code '{taal_hint}'. Schrijf de uitvoer "
-            "in die taal.\n"
-        )
+        inhoud += _harde_taalinstructie(taal_hint)
     if welkom:
         inhoud += (
             "\n--- FRAGMENT WELKOMSTWOORD (alleen voor de naam van de "
@@ -586,7 +594,7 @@ def maak_nabespreking(bron, bijbelgedeelte=None, titel=None, samenvatting=None,
     client = OpenAI()
     inhoud = ""
     if taal_hint:
-        inhoud += f"De preek is in de taal met code '{taal_hint}'. Schrijf de vragen in díé taal.\n"
+        inhoud += _harde_taalinstructie(taal_hint)
     if titel:
         inhoud += f"Titel: {titel}\n"
     if bijbelgedeelte:
@@ -673,7 +681,7 @@ def maak_groepsvragen(bron, categorieen, aantal=10, leeftijd=None, bijbelgedeelt
     )
     inhoud = ""
     if taal_hint:
-        inhoud += f"Schrijf de vragen in de taal met code '{taal_hint}'.\n"
+        inhoud += _harde_taalinstructie(taal_hint)
     if leeftijd:
         inhoud += f"Pas taal, toon en voorbeelden aan op de leeftijdsgroep: {leeftijd}.\n"
     if titel:
