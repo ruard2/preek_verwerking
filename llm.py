@@ -408,6 +408,88 @@ def schoon_transcript(transcript, taal_hint=None):
     return (antwoord.choices[0].message.content or "").strip()
 
 
+_EXTRAHEER_PROMPT = """\
+Je ontvangt een ruwe automatische transcriptie van een VOLLEDIGE kerkdienst.
+
+Je doet TWEEdingen in één stap:
+1. LOKALISEER en EXTRAHEER de preek (of alle preekdelen) uit de transcriptie.
+2. SCHOON de geëxtraheerde preektekst op tot vloeiende, leesbare lopende tekst.
+
+─── WAT IS DE PREEK? ───────────────────────────────────────────────────────────
+• Het inhoudelijke onderwijs van de voorganger over een Bijbeltekst.
+• Begint doorgaans direct ná het preekgebed van de voorganger.
+• Eindigt doorgaans bij het slotgebed of vóór het laatste gezang.
+• Typisch 20–45 minuten van een dienst van 60–90 minuten.
+• Kenmerk: de voorganger legt de Bijbeltekst uit, past die toe en geeft voorbeelden.
+• De preek kan uit MEERDERE DELEN bestaan wanneer er tussendoor gezongen wordt —
+  neem alle preekdelen op.
+
+─── WAT LAAT JE BUITEN? ────────────────────────────────────────────────────────
+Neem NIET op in de uitvoer:
+• Liederen, gezangen, psalmen (ook als de voorganger er kort iets bij zegt)
+• Votum, groet, drempelwoorden ("Onze hulp is in de naam van de HEERE...")
+• Wetslezing, Tien Geboden (tenzij de preek hier rechtstreeks op doorgaat)
+• Schriftlezing: de voorganger leest alleen de Bijbeltekst voor, zonder uitleg —
+  de lezing zelf laat je buiten, MAAR als de voorganger direct in zijn preekbetoog
+  doorgaat na de lezing, begin dan dáár
+• Preekgebed / opening: het gebed dat de preek inleidt, laat je buiten —
+  begin bij de eerste preekwoorden ná dat gebed
+• Mededelingen, collecte-aankondiging, welkomstwoorden, afsluiting
+• Geloofsbelijdenis, dankgebed, zegen, wegzending
+
+─── HOE SCHOON JE OP? ──────────────────────────────────────────────────────────
+• Verwijder tijdcodes, herhalingen, stopwoorden en versprekingen.
+• Maak onafgemaakte of grammaticaal kreupele zinnen correct.
+• Zet spreektaal om in natuurlijk, goed leesbaar geschreven Nederlands (of de
+  taal van de preek).
+• Deel de tekst in logische alinea's in.
+• Herstel flagrante transcriptiefouten en corrigeer Bijbelboek-namen en
+  namen van Bijbelse personen.
+• Behoud ALLE inhoud, boodschap, argumentatie en voorbeelden van de voorganger.
+• Voeg NIETS toe (geen nieuwe ideeën, conclusies of uitleg die er niet in zat).
+• Als de preek meerdere delen heeft: neem ze allemaal op, gescheiden door
+  [PREEKDEEL VERVOLGT].
+
+─── UITVOER ────────────────────────────────────────────────────────────────────
+ALLEEN de opgeschoonde preektekst als lopende alinea's.
+Geen JSON, geen titels, geen samenvatting, geen commentaar, geen opmerkingen.
+Schrijf in dezelfde taal als de preek.
+"""
+
+
+def extraheer_en_schoon_preek(transcript: str) -> str:
+    """Extraheer de preek uit een volledige-dienst transcriptie én schoon hem meteen op.
+
+    Combineert twee stappen in één LLM-aanroep:
+    1. AI lokaliseert het preekgedeelte (ook bij meerdere preekdelen)
+    2. AI levert meteen de opgeschoonde, leesbare preektekst
+
+    Dit vervangt zowel de (onbetrouwbare) heuristische blokdetectie in transcript.py
+    als de aparte schoon_transcript-stap — alles in één gerichte call.
+
+    Bij een fout of leeg resultaat wordt het originele transcript teruggegeven
+    zodat de verwerking gewoon doorgaat (minder mooi maar niet geblokkeerd).
+    """
+    if not os.environ.get("OPENAI_API_KEY"):
+        raise RuntimeError("OPENAI_API_KEY is niet ingesteld.")
+    if not (transcript or "").strip():
+        return transcript or ""
+    client = OpenAI()
+    antwoord = client.chat.completions.create(
+        model=SCHOON_MODEL,  # zelfde model als schoon_transcript — snel en goedkoop
+        messages=[
+            {"role": "system", "content": _EXTRAHEER_PROMPT},
+            {"role": "user", "content": "--- VOLLEDIGE DIENST TRANSCRIPTIE ---\n" + transcript},
+        ],
+    )
+    resultaat = (antwoord.choices[0].message.content or "").strip()
+    # Terugval: als model niets terugstuurt of minder dan 15% van het origineel,
+    # is er iets mis — geef het origineel terug zodat de verwerking niet blokkeert.
+    if len(resultaat) < max(200, len(transcript) * 0.15):
+        return transcript
+    return resultaat
+
+
 def hergenereer_dag(data, dag_index, bron="", toon="warm", lengte="middel",
                     citaat_volledig=True, vertaling="vrij"):
     """Genereer één dag-overdenking opnieuw, passend bij het weekthema.

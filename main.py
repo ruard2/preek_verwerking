@@ -49,6 +49,7 @@ from llm import maak_nabespreking as llm_maak_nabespreking
 from llm import maak_groepsvragen as llm_maak_groepsvragen
 from llm import normaliseer as llm_normaliseer
 from llm import schoon_transcript as llm_schoon_transcript
+from llm import extraheer_en_schoon_preek as llm_extraheer_en_schoon_preek
 from transcript import (
     haal_preek_segmentatie,
     lijst_diensten,
@@ -372,8 +373,33 @@ def _genereer_basis(bron_info, bijbel, typen, meld):
     """Maak de basis (dagstukjes via verwerk_preek, of een lichte basis zonder dagen).
 
     Zo slaan we de dure 7-daagse generatie over als de kerk geen dagstukjes wil.
+
+    Bij volledige_dienst=True wordt eerst een dedicated extractiestap gedaan die
+    de preektekst uit de hele dienst haalt EN meteen opschoont. Dat geeft verwerk_preek
+    een gerichte, schone preek in plaats van een onbewerkte dienst-transcriptie.
+    Het resultaat van de extractie wordt ook teruggegeven als 'preek_schoon'
+    zodat de aparte schoon_transcript-stap later overgeslagen kan worden.
     """
     transcript = bron_info["transcript"]
+    volledige_dienst = bron_info.get("volledige_dienst", False)
+
+    # ── Stap 0: bij volledige dienst eerst preek extraheren + opschonen ───────
+    # Dit vervangt de onbetrouwbare heuristische blokdetectie in transcript.py
+    # én de aparte schoon_transcript-stap — alles in één gerichte LLM-call.
+    preek_schoon_uit_extractie = None
+    if volledige_dienst:
+        meld("Preekgedeelte uit de volledige dienst halen en opschonen...")
+        preek_schoon_uit_extractie = llm_extraheer_en_schoon_preek(transcript)
+        # Gebruik de geëxtraheerde preek voor verdere verwerking.
+        # Als de extractie mislukte (terugval = origineel), werkt verwerk_preek
+        # nog steeds — dan via de VOLLEDIGE_DIENST_INSTRUCTIE in het prompt.
+        transcript_voor_verwerking = preek_schoon_uit_extractie
+        # Na extractie weten we zeker dat het alleen de preek is.
+        volledige_dienst_voor_verwerking = False
+    else:
+        transcript_voor_verwerking = transcript
+        volledige_dienst_voor_verwerking = False
+
     # bijbel kan taal_hint bevatten (kerkinstelling); bron_info heeft eigen taal_hint
     # (detectie/upload). Kerkinstelling wint; verwijder uit bijbel-copy om dubbele kwarg te voorkomen.
     bijbel_schoon = dict(bijbel or {})
@@ -383,17 +409,20 @@ def _genereer_basis(bron_info, bijbel, typen, meld):
         welkom=bron_info.get("welkom"),
         taal_hint=taal_hint_kerk or taal_hint_bron,  # kerkinstelling overrides bron
         extra_context=bron_info.get("extra_context"),
-        volledige_dienst=bron_info.get("volledige_dienst", False),
+        volledige_dienst=volledige_dienst_voor_verwerking,
     )
     if "dagstukjes" in typen:
         meld("Weekboekje maken met AI — dit kan enkele minuten duren...")
-        data = verwerk_preek(transcript, **gemeen, **bijbel_schoon)
+        data = verwerk_preek(transcript_voor_verwerking, **gemeen, **bijbel_schoon)
         bijbeltekst.verrijk_dagen(data, bijbel or {})
     else:
         meld("Kernpunten van de preek samenvatten...")
-        data = llm_maak_basis(transcript, **gemeen)
+        data = llm_maak_basis(transcript_voor_verwerking, **gemeen)
     if bron_info.get("liturgie"):
         data["liturgie"] = bron_info["liturgie"]
+    # Geef de reeds-opgeschoonde preektekst mee zodat de aanroeper de aparte
+    # schoon_transcript-stap kan overslaan.
+    data["_preek_schoon_uit_extractie"] = preek_schoon_uit_extractie
     return data
 
 
@@ -554,12 +583,18 @@ def verwerk_en_bewaar(url, herverwerk=False, meld=None, bijbel=None, uitvoer_typ
         data = _genereer_basis(bron_info, bijbel, typen, meld)
 
     # 4. Opgeschoonde, herbruikbare preektekst — ook één keer: hergebruik indien aanwezig.
+    # Bij volledige_dienst heeft _genereer_basis de extractie + opschoning al gedaan;
+    # gebruik dat resultaat en sla de aparte schoon_transcript-stap over.
+    preek_uit_extractie = data.pop("_preek_schoon_uit_extractie", None)
     if not preek_schoon:
-        try:
-            meld("Volledige preektekst opschonen...")
-            preek_schoon = llm_schoon_transcript(transcript_ruw, data.get("taal"))
-        except Exception:  # noqa: BLE001 — zonder schone preek gaan we gewoon door
-            preek_schoon = ""
+        if preek_uit_extractie:
+            preek_schoon = preek_uit_extractie
+        else:
+            try:
+                meld("Volledige preektekst opschonen...")
+                preek_schoon = llm_schoon_transcript(transcript_ruw, data.get("taal"))
+            except Exception:  # noqa: BLE001 — zonder schone preek gaan we gewoon door
+                preek_schoon = ""
 
     # 5. Alleen de gekozen extra uitvoer(en) maken (transcript, nabespreking).
     if not alleen_transcript:
@@ -593,26 +628,38 @@ def verwerk_tekst_en_bewaar(video_id, tekst, titel_hint=None, volledige_dienst=F
     # Verwijder taal_hint uit bijbel-copy om dubbele kwarg te voorkomen bij **-spreading.
     bijbel_schoon = dict(bijbel or {})
     taal_hint_upload = bijbel_schoon.pop("taal_hint", None)
+
+    # Bij een volledige dienst: eerst preek extraheren + opschonen,
+    # dan verwerken als gewone (niet-volledige) preek.
+    preek_schoon_upload = tekst  # standaard: uploadtekst is de preek zelf
+    if volledige_dienst and not alleen_transcript:
+        preek_schoon_upload = llm_extraheer_en_schoon_preek(tekst)
+        tekst_voor_verwerking = preek_schoon_upload
+        volledige_dienst_vlag = False
+    else:
+        tekst_voor_verwerking = tekst
+        volledige_dienst_vlag = volledige_dienst
+
     if alleen_transcript:
         data = {"taal": None, "titel": (titel_hint or "Preek"), "bijbelgedeelte": "",
                 "voorganger": None, "samenvatting": "", "dagen": [], "voorbereid": True}
     elif "dagstukjes" in typen:
-        data = verwerk_preek(tekst, volledige_dienst=volledige_dienst,
+        data = verwerk_preek(tekst_voor_verwerking, volledige_dienst=volledige_dienst_vlag,
                              taal_hint=taal_hint_upload, **bijbel_schoon)
         bijbeltekst.verrijk_dagen(data, bijbel or {})
     else:
-        data = llm_maak_basis(tekst, volledige_dienst=volledige_dienst,
+        data = llm_maak_basis(tekst_voor_verwerking, volledige_dienst=volledige_dienst_vlag,
                               taal_hint=taal_hint_upload)
     if titel_hint and not data.get("titel"):
         data["titel"] = titel_hint
-    # Bij upload is de aangeleverde tekst zelf de (geschreven) preek.
+    # Bij upload is de aangeleverde (of geëxtraheerde) tekst de preek.
     if not alleen_transcript:
-        _pas_uitvoer_toe(data, typen, tekst, tekst, lambda _s: None)
+        _pas_uitvoer_toe(data, typen, preek_schoon_upload, tekst, lambda _s: None)
     rendered = render.naar_tekst(data)
     payload = {
         "data": data, "tekst": rendered,
         "meta": {"transcriptie_bron": "geüpload document"},
-        "ondertitel": titel_hint, "transcript_ruw": tekst, "preek_schoon": tekst,
+        "ondertitel": titel_hint, "transcript_ruw": tekst, "preek_schoon": preek_schoon_upload,
     }
     store.resultaat_opslaan(video_id, payload)
     return data
