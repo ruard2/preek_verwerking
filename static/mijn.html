@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AfterSermon — Mijn overdenkingen</title>
+<style>
+  :root {
+    --groen:#2c5f2d; --groen-licht:#eaf3ea; --rand:#e2e2dd;
+    --tekst:#23231f; --grijs:#6b6b64; --bg:#faf9f5; --kaart:#fff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --groen:#7bb87c; --groen-licht:#1c2a1c; --rand:#33332e;
+      --tekst:#ecebe4; --grijs:#a5a59b; --bg:#17171a; --kaart:#1f1f22;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: Georgia, serif; max-width: 34rem;
+    margin: 0 auto; padding: 2.5rem 1.25rem 4rem;
+    background: var(--bg); color: var(--tekst); line-height: 1.65;
+  }
+
+  /* ── merk ── */
+  .merk { display:flex; align-items:center; gap:.6rem; margin-bottom:2rem; }
+  .merk-naam { font-size:1.05rem; font-weight:700; color:var(--groen); font-family:system-ui,sans-serif; }
+  .merk-admin { margin-left:auto; font-size:.8rem; color:var(--grijs); text-decoration:none; }
+  .merk-admin:hover { color:var(--tekst); }
+
+  /* ── titels ── */
+  h1 { font-size:1.6rem; margin:0 0 .25rem; color:var(--tekst); }
+  .sub { color:var(--grijs); margin:0 0 1.5rem; font-size:.95rem; }
+
+  /* ── kaart ── */
+  .kaart { background:var(--kaart); border:1px solid var(--rand); border-radius:.75rem;
+    padding:1.4rem; margin-bottom:1rem; }
+  .kaart + .kaart { margin-top:.75rem; }
+
+  /* ── labels ── */
+  label { display:block; font-size:.78rem; color:var(--grijs); margin:.85rem 0 .15rem;
+    text-transform:uppercase; letter-spacing:.05em; font-family:system-ui,sans-serif; }
+  label:first-child { margin-top:0; }
+
+  /* ── inputs ── */
+  input, select {
+    width:100%; padding:.55rem .7rem; font-size:1rem; font-family:inherit;
+    border:1px solid var(--rand); border-radius:.45rem;
+    background:var(--kaart); color:var(--tekst); outline:none;
+    transition:border-color .15s;
+  }
+  input:focus, select:focus { border-color:var(--groen); }
+
+  /* ── knoppen ── */
+  .knop {
+    display:inline-block; padding:.62rem 1.3rem; font-size:1rem; font-family:inherit;
+    border:none; border-radius:.45rem; cursor:pointer;
+    background:var(--groen); color:#fff; text-decoration:none; margin-top:1rem;
+  }
+  .knop:hover { opacity:.88; }
+  .knop.sec { background:none; color:var(--groen); border:1.5px solid var(--groen); }
+  .knop.gevaaar { background:none; color:#b0201a; border:none; padding:0; font-size:.9rem; margin-top:.5rem; }
+  .knop.klein { padding:.42rem .9rem; font-size:.9rem; margin-top:.5rem; }
+
+  /* ── berichten ── */
+  .melding { padding:.65rem .9rem; border-radius:.45rem; margin:.8rem 0; font-size:.93rem; }
+  .ok  { background:#e9f5ea; color:#1f6b25; }
+  .fout { background:#fdecea; color:#b0201a; }
+  @media (prefers-color-scheme:dark) {
+    .ok  { background:#1c2a1c; color:#9fd6a3; }
+    .fout { background:#3a1c1a; color:#f0a9a3; }
+  }
+
+  /* ── uitvoer blokjes ── */
+  .uitvoer-groep { display:flex; flex-direction:column; gap:.4rem; margin:.3rem 0 .5rem; }
+  .uitvoer-blok { border:1.5px solid var(--rand); border-radius:.5rem; padding:.65rem .85rem;
+    transition:border-color .15s; }
+  .uitvoer-blok:has(.uitvoer-chk:checked) { border-color:var(--groen); background:rgba(44,95,45,.05); }
+  .uitvoer-optie { display:flex; align-items:flex-start; gap:.55rem; margin:0; cursor:pointer;
+    text-transform:none; letter-spacing:normal; font-size:.95rem; color:var(--tekst); }
+  .uitvoer-optie input { width:auto; flex:none; margin-top:.2rem; accent-color:var(--groen); }
+  .uitvoer-naam { display:block; font-weight:600; font-size:.95rem; }
+  .uitvoer-omschr { display:block; font-size:.8rem; color:var(--grijs); margin-top:.1rem; line-height:1.4; }
+
+  /* ── kerkzoeker ── */
+  .zoek-rij { display:flex; gap:.5rem; margin:.3rem 0; }
+  .zoek-rij input { flex:1; margin:0; }
+  .zoek-rij button { flex:none; margin:0; }
+  .kerk-resultaat { list-style:none; margin:.4rem 0 0; padding:0; }
+  .kerk-resultaat li { padding:.4rem .6rem; border-radius:.4rem; cursor:pointer;
+    font-size:.92rem; }
+  .kerk-resultaat li:hover { background:var(--groen-licht); color:var(--groen); }
+
+  /* ── link-stijlen ── */
+  a.link { color:var(--groen); }
+  .kerk-naam-tag { font-weight:700; color:var(--groen); }
+  .scheidslijn { border:none; border-top:1px solid var(--rand); margin:1.2rem 0; }
+  .privacy { margin-top:2.5rem; font-size:.8rem; }
+  .privacy a { color:var(--grijs); }
+
+  /* ── inlog-tabs ── */
+  .tabs { display:flex; gap:0; margin-bottom:-.1rem; }
+  .tab { padding:.5rem 1.1rem; font-size:.9rem; font-family:system-ui,sans-serif; cursor:pointer;
+    border:1px solid var(--rand); background:var(--bg); border-radius:.5rem .5rem 0 0;
+    color:var(--grijs); border-bottom:none; }
+  .tab.actief { background:var(--kaart); color:var(--tekst); font-weight:600; }
+  .tab-inhoud { display:none; }
+  .tab-inhoud.actief { display:block; }
+
+  /* ── uitgelogd header ── */
+  .portaal-kop { text-align:center; padding:1rem 0 .5rem; margin-bottom:1.5rem; }
+  .portaal-kop h1 { font-size:2rem; }
+  .portaal-kop .sub { font-size:1rem; }
+</style>
+<link rel="manifest" href="/static/manifest.json">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#167455">
+</head>
+<body>
+
+<div class="merk">
+  <span class="merk-naam">AfterSermon</span>
+  <a href="/admin" class="merk-admin">Beheerder →</a>
+</div>
+
+<div id="melding"></div>
+<div id="inhoud"></div>
+
+<p class="privacy"><a href="/privacy">Privacyverklaring</a></p>
+
+<script>
+const meldingEl = document.getElementById('melding');
+const inhoud    = document.getElementById('inhoud');
+
+const params = new URLSearchParams(location.search);
+
+function toon(soort, tekst) {
+  meldingEl.innerHTML = `<div class="melding ${soort}">${tekst}</div>`;
+}
+async function api(methode, pad, data) {
+  const r = await fetch(pad, {
+    method: methode,
+    headers: data ? {'Content-Type':'application/json'} : undefined,
+    body: data ? JSON.stringify(data) : undefined,
+  });
+  const json = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(json.detail || 'Er ging iets mis.');
+  return json;
+}
+
+const UITVOER_LABEL = {
+  dagstukjes:        'Dagstukjes',
+  preeksamenvatting: 'Samenvatting',
+  nabespreking:      'Vragen voor groepen',
+  preektranscript:   'Preektekst',
+};
+const UITVOER_OMSCHR = {
+  dagstukjes:        'Zeven korte overdenkingen — één per dag, met Bijbeltekst en vragen.',
+  preeksamenvatting: 'Samenvatting van 400–600 woorden met de lijn en boodschap van de preek.',
+  nabespreking:      'Vragen om als huisgroep of gezin de preek verder te bespreken.',
+  preektranscript:   'De volledige, opgeschoonde preektekst om rustig na te lezen.',
+};
+const ALLE_TYPEN = Object.keys(UITVOER_LABEL);
+
+// ── Hoofdlogica ─────────────────────────────────────────────────────────────
+
+async function init() {
+  // Reset-token in URL? Dan wachtwoord-reset-scherm tonen.
+  const resetToken = params.get('reset_token');
+  if (resetToken) { bouwReset(resetToken); return; }
+
+  // Wachtwoord-instellen-token (vanuit inschrijven/bevestiging)?
+  const instelToken = params.get('instel_token');
+  if (instelToken) { bouwWachtwoordInstellen(instelToken); return; }
+
+  try {
+    const mij = await api('GET', '/api/gebruiker/mij');
+    bouwPortaal(mij);
+  } catch {
+    bouwInloggen();
+  }
+}
+
+// ── Inlogscherm ─────────────────────────────────────────────────────────────
+
+function bouwInloggen() {
+  inhoud.innerHTML = `
+    <div class="portaal-kop">
+      <h1>Welkom terug</h1>
+      <p class="sub">Log in om je overdenkingen te ontvangen en je voorkeuren aan te passen.</p>
+    </div>
+    <div class="tabs">
+      <div class="tab actief" onclick="wisselTab('inlog',this)">Inloggen</div>
+      <div class="tab"       onclick="wisselTab('reset',this)">Wachtwoord vergeten</div>
+    </div>
+    <div class="kaart" style="border-radius:0 .75rem .75rem .75rem">
+      <div class="tab-inhoud actief" id="tab-inlog">
+        <label for="il-email">E-mailadres</label>
+        <input id="il-email" type="email" autocomplete="email" placeholder="naam@voorbeeld.nl">
+        <label for="il-ww">Wachtwoord</label>
+        <input id="il-ww" type="password" autocomplete="current-password">
+        <button class="knop" id="il-knop" onclick="doInloggen()">Inloggen →</button>
+        <p style="margin:.9rem 0 0;font-size:.88rem;color:var(--grijs)">
+          Nog geen account? Je ontvangt een aanmeldlink van je kerk.
+          Heb je die nooit gezien? <a class="link" href="#" onclick="wisselTabNaam('reset');return false">Vraag wachtwoord-herstel aan</a>.
+        </p>
+      </div>
+      <div class="tab-inhoud" id="tab-reset">
+        <p style="margin:0 0 .6rem;font-size:.9rem;color:var(--grijs)">
+          Vul je e-mailadres in. Je ontvangt een herstellink als je account bestaat.
+        </p>
+        <label for="rs-email">E-mailadres</label>
+        <input id="rs-email" type="email" placeholder="naam@voorbeeld.nl">
+        <button class="knop" id="rs-knop" onclick="doReset()">Herstelmail sturen →</button>
+      </div>
+    </div>
+  `;
+  document.getElementById('il-ww')?.addEventListener('keydown', e => {
+    if (e.key === 'Enter') doInloggen();
+  });
+}
+
+function wisselTab(id, el) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('actief'));
+  document.querySelectorAll('.tab-inhoud').forEach(t => t.classList.remove('actief'));
+  el?.classList.add('actief');
+  document.getElementById('tab-' + id)?.classList.add('actief');
+}
+function wisselTabNaam(id) {
+  const tabs = document.querySelectorAll('.tab');
+  const idx  = id === 'reset' ? 1 : 0;
+  tabs.forEach((t, i) => {
+    t.classList.toggle('actief', i === idx);
+    document.querySelectorAll('.tab-inhoud')[i]?.classList.toggle('actief', i === idx);
+  });
+}
+
+async function doInloggen() {
+  const knop = document.getElementById('il-knop');
+  const email = document.getElementById('il-email')?.value.trim();
+  const ww    = document.getElementById('il-ww')?.value;
+  if (!email || !ww) { toon('fout', 'Vul e-mailadres en wachtwoord in.'); return; }
+  knop.disabled = true; knop.textContent = 'Bezig…';
+  try {
+    await api('POST', '/api/gebruiker/inloggen', {email, wachtwoord: ww});
+    meldingEl.innerHTML = '';
+    const mij = await api('GET', '/api/gebruiker/mij');
+    bouwPortaal(mij);
+  } catch (e) {
+    toon('fout', e.message);
+    knop.disabled = false; knop.textContent = 'Inloggen →';
+  }
+}
+
+async function doReset() {
+  const knop = document.getElementById('rs-knop');
+  const email = document.getElementById('rs-email')?.value.trim();
+  if (!email) { toon('fout', 'Vul je e-mailadres in.'); return; }
+  knop.disabled = true; knop.textContent = 'Verzenden…';
+  try {
+    await api('POST', '/api/gebruiker/wachtwoord-reset-aanvragen', {email});
+    toon('ok', 'Als je e-mailadres bekend is, ontvang je een herstellink. Controleer ook je spam-map.');
+    knop.textContent = 'Verstuurd ✓';
+  } catch (e) {
+    toon('fout', e.message);
+    knop.disabled = false; knop.textContent = 'Herstelmail sturen →';
+  }
+}
+
+// ── Wachtwoord instellen / resetten ─────────────────────────────────────────
+
+function bouwWachtwoordInstellen(token) {
+  inhoud.innerHTML = `
+    <h1>Wachtwoord instellen</h1>
+    <p class="sub">Kies een wachtwoord om voortaan makkelijk in te loggen.</p>
+    <div class="kaart">
+      <label for="wi-ww">Nieuw wachtwoord</label>
+      <input id="wi-ww" type="password" autocomplete="new-password" placeholder="Minimaal 8 tekens">
+      <label for="wi-ww2">Herhaal wachtwoord</label>
+      <input id="wi-ww2" type="password" autocomplete="new-password">
+      <button class="knop" onclick="doWachtwoordViaToken('${token}')">Opslaan en inloggen →</button>
+    </div>
+  `;
+}
+
+async function doWachtwoordViaToken(token) {
+  const ww  = document.getElementById('wi-ww')?.value;
+  const ww2 = document.getElementById('wi-ww2')?.value;
+  if (!ww || !ww2) { toon('fout', 'Vul beide velden in.'); return; }
+  try {
+    await api('POST', '/api/gebruiker/wachtwoord-instellen-via-token?token=' + encodeURIComponent(token),
+      {wachtwoord: ww, bevestig: ww2});
+    meldingEl.innerHTML = '';
+    const mij = await api('GET', '/api/gebruiker/mij');
+    toon('ok', 'Wachtwoord opgeslagen. Je bent nu ingelogd.');
+    bouwPortaal(mij);
+  } catch (e) { toon('fout', e.message); }
+}
+
+function bouwReset(token) {
+  inhoud.innerHTML = `
+    <h1>Nieuw wachtwoord</h1>
+    <p class="sub">Kies een nieuw wachtwoord voor je AfterSermon-account.</p>
+    <div class="kaart">
+      <label for="nr-ww">Nieuw wachtwoord</label>
+      <input id="nr-ww" type="password" autocomplete="new-password" placeholder="Minimaal 8 tekens">
+      <label for="nr-ww2">Herhaal wachtwoord</label>
+      <input id="nr-ww2" type="password" autocomplete="new-password">
+      <button class="knop" onclick="doNieuwWachtwoord('${token}')">Opslaan en inloggen →</button>
+    </div>
+  `;
+}
+
+async function doNieuwWachtwoord(token) {
+  const ww  = document.getElementById('nr-ww')?.value;
+  const ww2 = document.getElementById('nr-ww2')?.value;
+  if (!ww || !ww2) { toon('fout', 'Vul beide velden in.'); return; }
+  try {
+    await api('POST', '/api/gebruiker/wachtwoord-reset', {token, wachtwoord: ww, bevestig: ww2});
+    meldingEl.innerHTML = '';
+    const mij = await api('GET', '/api/gebruiker/mij');
+    toon('ok', 'Wachtwoord gewijzigd. Je bent ingelogd.');
+    bouwPortaal(mij);
+  } catch (e) { toon('fout', e.message); }
+}
+
+// ── Portaal (ingelogd) ───────────────────────────────────────────────────────
+
+function bouwPortaal(mij) {
+  const beschikbaar = (mij.uitvoer_beschikbaar?.length ? mij.uitvoer_beschikbaar : ALLE_TYPEN);
+  const gekozen     = mij.uitvoer_voorkeur?.length ? mij.uitvoer_voorkeur : beschikbaar;
+
+  if (mij.accentkleur)
+    document.documentElement.style.setProperty('--groen', mij.accentkleur);
+
+  const uitvoerRijen = beschikbaar.map(x => {
+    const isDag = x === 'dagstukjes';
+    const isGekozen = gekozen.includes(x);
+    return `
+      <div class="uitvoer-blok">
+        <label class="uitvoer-optie">
+          <input type="checkbox" class="uitvoer-chk" value="${x}" ${isGekozen ? 'checked' : ''}>
+          <span>
+            <span class="uitvoer-naam">${UITVOER_LABEL[x] || x}</span>
+            <span class="uitvoer-omschr">${UITVOER_OMSCHR[x] || ''}</span>
+          </span>
+        </label>
+      </div>`;
+  }).join('');
+
+  inhoud.innerHTML = `
+    <h1>Hoi${mij.naam ? ', ' + mij.naam.split(' ')[0] : ''}!</h1>
+    <p class="sub">Je overdenkingen komen van <span class="kerk-naam-tag">${mij.kerk_naam || 'je kerk'}</span>.</p>
+
+    <div class="kaart">
+      <strong>Wat wil je ontvangen?</strong>
+      <div class="uitvoer-groep" style="margin-top:.6rem">${uitvoerRijen}</div>
+
+      <hr class="scheidslijn">
+
+      <label for="freq">Hoe vaak?</label>
+      <select id="freq">
+        <option value="wekelijks">Wekelijks — alles ineens op één dag</option>
+        <option value="dagelijks">Dagelijks — één overdenking per dag</option>
+      </select>
+
+      <label for="dienst">Welke dienst(en)?</label>
+      <select id="dienst">
+        <option value="beide">Beide diensten</option>
+        <option value="ochtend">Alleen de ochtenddienst</option>
+        <option value="avond">Alleen de avonddienst</option>
+      </select>
+
+      <button class="knop" id="opslaan-knop" onclick="doOpslaanVoorkeuren()">Voorkeuren opslaan →</button>
+    </div>
+
+    <div class="kaart" style="margin-top:.75rem">
+      <strong>Wachtwoord</strong>
+      <p style="margin:.4rem 0 .6rem;font-size:.9rem;color:var(--grijs)">
+        ${mij.heeft_wachtwoord
+          ? 'Je hebt een wachtwoord ingesteld. Je kunt het hieronder wijzigen.'
+          : 'Stel een wachtwoord in zodat je makkelijk kunt inloggen.'}
+      </p>
+      <label for="ww-nieuw">Nieuw wachtwoord</label>
+      <input id="ww-nieuw" type="password" autocomplete="new-password" placeholder="Minimaal 8 tekens">
+      <label for="ww-bevestig">Herhaal</label>
+      <input id="ww-bevestig" type="password" autocomplete="new-password">
+      <button class="knop klein" onclick="doWijzigWachtwoord()">Wachtwoord opslaan</button>
+    </div>
+
+    <div style="margin-top:1.1rem;text-align:right">
+      <button class="knop gevaaar" onclick="doUitloggen()">Uitloggen</button>
+    </div>
+  `;
+
+  document.getElementById('freq').value   = mij.frequentie   || 'wekelijks';
+  document.getElementById('dienst').value = mij.dienstvoorkeur || 'beide';
+}
+
+async function doOpslaanVoorkeuren() {
+  const knop = document.getElementById('opslaan-knop');
+  const gekozen = [...document.querySelectorAll('.uitvoer-chk:checked')].map(c => c.value);
+  if (!gekozen.length) { toon('fout', 'Kies minimaal één onderdeel.'); return; }
+  knop.disabled = true; knop.textContent = 'Opslaan…';
+  try {
+    const mij = await api('GET', '/api/gebruiker/mij');
+    await api('POST', '/api/voorkeuren', {
+      token:          mij.voorkeur_token,
+      frequentie:     document.getElementById('freq').value,
+      dienstvoorkeur: document.getElementById('dienst').value,
+      uitvoer_voorkeur: gekozen,
+    });
+    toon('ok', 'Opgeslagen! Je ontvangt je overdenkingen ' +
+      (document.getElementById('freq').value === 'dagelijks' ? 'dagelijks' : 'wekelijks') +
+      ' zodra ze klaar zijn.' +
+      (/* hint over controle */' Een kleine vertraging kan optreden als je kerk de inhoud eerst wil goedkeuren.'));
+    knop.textContent = 'Voorkeuren opslaan →';
+    knop.disabled = false;
+  } catch (e) {
+    toon('fout', e.message);
+    knop.disabled = false; knop.textContent = 'Voorkeuren opslaan →';
+  }
+}
+
+async function doWijzigWachtwoord() {
+  const ww  = document.getElementById('ww-nieuw')?.value;
+  const ww2 = document.getElementById('ww-bevestig')?.value;
+  if (!ww) { toon('fout', 'Vul een wachtwoord in.'); return; }
+  try {
+    await api('POST', '/api/gebruiker/wachtwoord-instellen', {wachtwoord: ww, bevestig: ww2});
+    toon('ok', 'Wachtwoord opgeslagen.');
+    document.getElementById('ww-nieuw').value = '';
+    document.getElementById('ww-bevestig').value = '';
+  } catch (e) { toon('fout', e.message); }
+}
+
+async function doUitloggen() {
+  await api('POST', '/api/gebruiker/uitloggen');
+  meldingEl.innerHTML = '';
+  bouwInloggen();
+}
+
+// ── Kerk zoeken / uitnodigen ─────────────────────────────────────────────────
+// (Momenteel bereikbaar via de inlogpagina als de kerk niet gevonden wordt.)
+// Bewust eenvoudig gehouden voor nu.
+
+// ── Start ────────────────────────────────────────────────────────────────────
+init();
+</script>
+</body>
+</html>

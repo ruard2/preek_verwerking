@@ -452,6 +452,8 @@ class InschrijvenBody(BaseModel):
     # Timing voor dagstukjes (ingesteld door de inschrijver zelf)
     ontvang_dag: int = 6        # dag van de week voor wekelijkse bundel (0=ma..6=zo)
     dagstukjes_tijd: str | None = None  # "HH:MM"; ontvang_tijd als dagstukjes gekozen
+    # Optioneel wachtwoord bij aanmelding (gemeentelid kan daarna inloggen op /mijn)
+    wachtwoord: str | None = None
 
 
 class VoorkeurBody(BaseModel):
@@ -1453,6 +1455,12 @@ def inschrijven(body: InschrijvenBody, request: Request, db=Depends(get_db)):
         )
     except subscribers.InschrijfFout as fout:
         raise HTTPException(400, str(fout))
+    # Sla optioneel wachtwoord op (gemeentelid kan daarna inloggen op /mijn).
+    if body.wachtwoord and len(body.wachtwoord) >= 8:
+        try:
+            subscribers.stel_wachtwoord_in(db, sub, body.wachtwoord)
+        except subscribers.InschrijfFout:
+            pass  # wachtwoord-validatie mislukt → negeren, aanmelding gaat door
     if not sub.bevestigd and sub.bevestig_token:
         link = f"{_basis_url(request)}/api/inschrijven/bevestig?token={sub.bevestig_token}"
         t = ui_i18n.messages(kerk.communicatie_taal)
@@ -1576,6 +1584,232 @@ def afmelden_pagina():
 
 
 @router.get("/")
+def homepage():
+    """Homepage → gebruikersportaal (gemeentelid). Beheerders gaan via /admin."""
+    return FileResponse("static/mijn.html", headers={"Cache-Control": "no-cache"})
+
+
 @router.get("/admin")
 def admin_pagina():
     return FileResponse("static/admin.html", headers={"Cache-Control": "no-cache"})
+
+
+@router.get("/mijn")
+def mijn_pagina():
+    return FileResponse("static/mijn.html", headers={"Cache-Control": "no-cache"})
+
+
+# ─── Gebruikers-API (gemeenteleden) ──────────────────────────────────────────
+
+_GEBRUIKER_SESSION = "sub_id"
+
+
+def _huidig_gebruiker(request: Request, db=None):
+    """Geeft de ingelogde Subscriber of None."""
+    sub_id = request.session.get(_GEBRUIKER_SESSION)
+    if not sub_id:
+        return None
+    if db is None:
+        db = SessionLocal()
+    return db.get(Subscriber, int(sub_id))
+
+
+class GebruikerInlogBody(BaseModel):
+    email: str
+    wachtwoord: str
+
+
+class GebruikerWachtwoordBody(BaseModel):
+    wachtwoord: str
+    bevestig: str
+
+
+class KerkUitnodigingBody(BaseModel):
+    kerk_naam: str
+    contactpersoon_email: str
+
+
+@router.post("/api/gebruiker/inloggen")
+def gebruiker_inloggen(body: GebruikerInlogBody, request: Request):
+    db = SessionLocal()
+    try:
+        gevonden = subscribers.inloggen_gebruiker(db, body.email, body.wachtwoord)
+        if not gevonden:
+            raise HTTPException(401, "E-mailadres of wachtwoord klopt niet.")
+        # Meerdere kerken voor dit e-mailadres? Eerste bevestigde kiezen.
+        sub = next((s for s in gevonden if s.bevestigd), gevonden[0])
+        request.session[_GEBRUIKER_SESSION] = sub.id
+        kerk = db.get(Church, sub.kerk_id)
+        return {"ok": True, "naam": sub.naam, "kerk": kerk.naam if kerk else ""}
+    finally:
+        db.close()
+
+
+@router.post("/api/gebruiker/uitloggen")
+def gebruiker_uitloggen(request: Request):
+    request.session.pop(_GEBRUIKER_SESSION, None)
+    return {"ok": True}
+
+
+@router.get("/api/gebruiker/mij")
+def gebruiker_mij(request: Request):
+    db = SessionLocal()
+    try:
+        sub = _huidig_gebruiker(request, db)
+        if not sub:
+            raise HTTPException(401, "Niet ingelogd.")
+        kerk = db.get(Church, sub.kerk_id)
+        beschikbaar = [t.strip() for t in (getattr(kerk, "uitvoer", "") or "").split(",") if t.strip()] if kerk else []
+        gekozen = [t.strip() for t in (sub.uitvoer_voorkeur or "").split(",") if t.strip()]
+        return {
+            "sub_id": sub.id,
+            "naam": sub.naam,
+            "email": sub.email,
+            "frequentie": sub.frequentie,
+            "dienstvoorkeur": sub.dienstvoorkeur,
+            "uitvoer_voorkeur": gekozen,
+            "uitvoer_beschikbaar": beschikbaar,
+            "kerk_id": sub.kerk_id,
+            "kerk_naam": kerk.naam if kerk else "",
+            "accentkleur": getattr(kerk, "accentkleur", None) if kerk else None,
+            "heeft_wachtwoord": bool(sub.wachtwoord_hash),
+            "voorkeur_token": sub.voorkeur_token,
+        }
+    finally:
+        db.close()
+
+
+@router.post("/api/gebruiker/wachtwoord-instellen")
+def gebruiker_wachtwoord_instellen(body: GebruikerWachtwoordBody, request: Request):
+    """Stel/wijzig wachtwoord voor de ingelogde gebruiker."""
+    db = SessionLocal()
+    try:
+        sub = _huidig_gebruiker(request, db)
+        if not sub:
+            raise HTTPException(401, "Niet ingelogd.")
+        if body.wachtwoord != body.bevestig:
+            raise HTTPException(400, "Wachtwoorden komen niet overeen.")
+        subscribers.stel_wachtwoord_in(db, sub, body.wachtwoord)
+        return {"ok": True}
+    except subscribers.InschrijfFout as e:
+        raise HTTPException(400, str(e)) from e
+    finally:
+        db.close()
+
+
+@router.post("/api/gebruiker/wachtwoord-instellen-via-token")
+def gebruiker_wachtwoord_via_token(
+    body: GebruikerWachtwoordBody,
+    request: Request,
+    token: str = "",
+):
+    """Stel wachtwoord in via voorkeur_token (vanuit inschrijven/bevestigings-mail)."""
+    db = SessionLocal()
+    try:
+        if body.wachtwoord != body.bevestig:
+            raise HTTPException(400, "Wachtwoorden komen niet overeen.")
+        sub = subscribers.op_voorkeur_token(db, token)
+        if not sub:
+            raise HTTPException(404, "Ongeldige of verlopen link.")
+        subscribers.stel_wachtwoord_in(db, sub, body.wachtwoord)
+        # Automatisch inloggen na instellen wachtwoord
+        request.session[_GEBRUIKER_SESSION] = sub.id
+        kerk = db.get(Church, sub.kerk_id)
+        return {"ok": True, "kerk_naam": kerk.naam if kerk else ""}
+    except subscribers.InschrijfFout as e:
+        raise HTTPException(400, str(e)) from e
+    finally:
+        db.close()
+
+
+class WachtwoordResetBody(BaseModel):
+    email: str
+
+
+class WachtwoordResetBevestigBody(BaseModel):
+    token: str
+    wachtwoord: str
+    bevestig: str
+
+
+@router.post("/api/gebruiker/wachtwoord-reset-aanvragen")
+def wachtwoord_reset_aanvragen(body: WachtwoordResetBody):
+    db = SessionLocal()
+    try:
+        sub, token = subscribers.start_wachtwoord_reset(db, body.email)
+        if sub and token:
+            base = os.environ.get("BASE_URL", "https://aftersermon.nl").rstrip("/")
+            link = f"{base}/mijn?reset_token={token}"
+            kerk = db.get(Church, sub.kerk_id)
+            _stuur_reset_mail(sub.email, sub.naam or "gemeentelid", link, getattr(kerk, "naam", "AfterSermon"))
+        # Altijd 200 (security: niet onthullen of het adres bestaat)
+        return {"ok": True}
+    finally:
+        db.close()
+
+
+@router.post("/api/gebruiker/wachtwoord-reset")
+def wachtwoord_reset(body: WachtwoordResetBevestigBody, request: Request):
+    db = SessionLocal()
+    try:
+        if body.wachtwoord != body.bevestig:
+            raise HTTPException(400, "Wachtwoorden komen niet overeen.")
+        sub = subscribers.reset_wachtwoord(db, body.token, body.wachtwoord)
+        if not sub:
+            raise HTTPException(400, "Ongeldige of verlopen herstelcode.")
+        request.session[_GEBRUIKER_SESSION] = sub.id
+        return {"ok": True}
+    except subscribers.InschrijfFout as e:
+        raise HTTPException(400, str(e)) from e
+    finally:
+        db.close()
+
+
+@router.get("/api/gebruiker/kerken")
+def gebruiker_zoek_kerken(q: str = ""):
+    db = SessionLocal()
+    try:
+        return {"kerken": subscribers.zoek_kerken(db, q)}
+    finally:
+        db.close()
+
+
+@router.post("/api/gebruiker/kerk-uitnodigen")
+def gebruiker_kerk_uitnodigen(body: KerkUitnodigingBody):
+    _stuur_kerk_uitnodiging(body.kerk_naam, body.contactpersoon_email)
+    return {"ok": True}
+
+
+def _stuur_reset_mail(email: str, naam: str, link: str, kerk_naam: str):
+    """Verstuur een wachtwoord-herstel e-mail naar het opgegeven adres."""
+    try:
+        html = (
+            f"<p>Hoi {naam},</p>"
+            f"<p>Je hebt een verzoek ingediend om je wachtwoord te herstellen voor AfterSermon ({kerk_naam}).</p>"
+            f"<p><a href='{link}' style='color:#2c5f2d;font-weight:700'>Stel een nieuw wachtwoord in →</a></p>"
+            f"<p style='color:#6b6b64;font-size:12px'>Deze link is 2 uur geldig. "
+            f"Heb je geen verzoek ingediend? Dan hoef je niets te doen.</p>"
+            f"<p style='color:#6b6b64;font-size:12px'>— AfterSermon</p>"
+        )
+        brevo.verzend(email, "Wachtwoord herstellen — AfterSermon", html)
+    except Exception:  # noqa: BLE001 — mail-fout mag de flow niet breken
+        pass
+
+
+def _stuur_kerk_uitnodiging(kerk_naam: str, contactpersoon_email: str):
+    """Stuur een uitnodiging naar een kerk-contactpersoon."""
+    try:
+        link = "https://www.communitytools.online/"
+        html = (
+            f"<p>Beste,</p>"
+            f"<p>Iemand van <strong>{kerk_naam}</strong> wil graag AfterSermon gebruiken — "
+            f"de dienst die automatisch overdenkingen, dagstukjes en vragen bij de preek maakt "
+            f"en verstuurt naar gemeenteleden.</p>"
+            f"<p>Een account aanmaken kost een paar minuten en gaat via CommunityTools:</p>"
+            f"<p><a href='{link}' style='color:#2c5f2d;font-weight:700'>Account aanmaken voor {kerk_naam} →</a></p>"
+            f"<p style='color:#6b6b64;font-size:12px'>Heb je vragen? Mail naar info@aftersermon.nl</p>"
+            f"<p style='color:#6b6b64;font-size:12px'>— AfterSermon</p>"
+        )
+        brevo.verzend(contactpersoon_email, f"Uitnodiging voor AfterSermon — {kerk_naam}", html)
+    except Exception:  # noqa: BLE001
+        pass

@@ -191,6 +191,10 @@ class Subscriber(Base):
     bevestigd: Mapped[bool] = mapped_column(Boolean, default=False)  # double opt-in
     bevestig_token: Mapped[str] = mapped_column(String(64), default="", index=True)
     voorkeur_token: Mapped[str] = mapped_column(String(64), default="", index=True)
+    # Eigen login voor de gebruiker (gemeentelid). Optioneel: leeg = geen login.
+    wachtwoord_hash: Mapped[str] = mapped_column(String(200), default="")
+    wachtwoord_reset_token: Mapped[str] = mapped_column(String(64), default="", index=True)
+    wachtwoord_reset_verloopt: Mapped[DateTime] = mapped_column(DateTime, nullable=True)
     aangemaakt: Mapped[DateTime] = mapped_column(DateTime, server_default=func.now())
 
     kerk: Mapped["Church"] = relationship(back_populates="inschrijvers")

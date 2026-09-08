@@ -1,10 +1,12 @@
 """Inschrijverlogica: aanmelden (double opt-in), bevestigen, voorkeuren, afmelden."""
 
 import secrets
+from datetime import datetime, timedelta
 
+import bcrypt
 from sqlalchemy import select
 
-from db import Subscriber
+from db import Church, Subscriber
 
 FREQUENTIES = ("wekelijks", "dagelijks")
 
@@ -136,3 +138,90 @@ def werk_voorkeuren_bij(db, sub, **velden):
 def afmelden(db, sub):
     db.delete(sub)
     db.commit()
+
+
+# ── Gebruikers-authenticatie (gemeenteleden) ─────────────────────────────────
+
+def _hash(wachtwoord: str) -> str:
+    return bcrypt.hashpw(wachtwoord.encode(), bcrypt.gensalt()).decode()
+
+
+def _check(wachtwoord: str, hash_: str) -> bool:
+    try:
+        return bool(hash_) and bcrypt.checkpw(wachtwoord.encode(), hash_.encode())
+    except (ValueError, TypeError):
+        return False
+
+
+def stel_wachtwoord_in(db, sub, wachtwoord: str):
+    """Sla een nieuw wachtwoord op voor een inschrijver."""
+    if len(wachtwoord or "") < 8:
+        raise InschrijfFout("Kies een wachtwoord van minstens 8 tekens.")
+    sub.wachtwoord_hash = _hash(wachtwoord)
+    sub.wachtwoord_reset_token = ""
+    sub.wachtwoord_reset_verloopt = None
+    db.commit()
+
+
+def inloggen_gebruiker(db, email: str, wachtwoord: str):
+    """Geeft lijst van Subscriber-rijen die bij dit e-mailadres + wachtwoord passen.
+
+    Eén e-mailadres kan bij meerdere kerken ingeschreven zijn (elk met eigen voorkeur).
+    Geeft lege lijst als inloggen mislukt.
+    """
+    email = (email or "").strip().lower()
+    subs = list(db.scalars(
+        select(Subscriber).where(Subscriber.email == email)
+    ))
+    return [s for s in subs if _check(wachtwoord, s.wachtwoord_hash or "")]
+
+
+def start_wachtwoord_reset(db, email: str):
+    """Maak een reset-token voor de inschrijver met dit e-mailadres.
+
+    Geeft (sub, token) of (None, None) als het adres niet gevonden wordt.
+    Werkt voor de eerste gevonden bevestigde inschrijver; is er geen
+    bevestigde, dan de eerste niet-bevestigde.
+    """
+    email = (email or "").strip().lower()
+    subs = list(db.scalars(select(Subscriber).where(Subscriber.email == email)))
+    if not subs:
+        return None, None
+    sub = next((s for s in subs if s.bevestigd), subs[0])
+    token = secrets.token_urlsafe(32)
+    sub.wachtwoord_reset_token = token
+    sub.wachtwoord_reset_verloopt = datetime.now() + timedelta(hours=2)
+    db.commit()
+    return sub, token
+
+
+def reset_wachtwoord(db, token: str, nieuw: str):
+    """Stel nieuw wachtwoord in via reset-token. Geeft Subscriber of None."""
+    if len(nieuw or "") < 8:
+        raise InschrijfFout("Kies een wachtwoord van minstens 8 tekens.")
+    sub = db.scalar(
+        select(Subscriber).where(Subscriber.wachtwoord_reset_token == token)
+    )
+    if (
+        not sub
+        or not token
+        or not sub.wachtwoord_reset_verloopt
+        or sub.wachtwoord_reset_verloopt < datetime.now()
+    ):
+        return None
+    stel_wachtwoord_in(db, sub, nieuw)
+    return sub
+
+
+def zoek_kerken(db, q: str, limit: int = 10):
+    """Zoek kerken op naam (bevat-zoekopdracht). Geeft lijst van dicts."""
+    q = (q or "").strip()
+    if not q:
+        return []
+    rijen = list(db.scalars(
+        select(Church)
+        .where(Church.naam.ilike(f"%{q}%"))
+        .order_by(Church.naam)
+        .limit(limit)
+    ))
+    return [{"id": k.id, "naam": k.naam} for k in rijen if k.inschrijving_open]
