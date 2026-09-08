@@ -182,14 +182,15 @@ def _basis_opties():
     }
     pot_url = os.environ.get("POT_PROVIDER_URL")
     if pot_url:
-        # Met POT-provider: web-client eerst — de enige client die livestream-VODs
-        # ondersteunt én via POT geblokkeerde datacenter-IPs omzeilt.
-        # ios/mweb als terugval voor het geval web toch geblokt is.
+        # web + default: de enige combinatie waarvan bevestigd is dat de download
+        # start voor livestream-VODs met POT + residentiële proxy.
+        # Meerdere clients in de lijst veroorzaken race-conditions waarbij yt-dlp
+        # al een client probeert vóór de POT klaar is → "No video formats found".
         opties["extractor_args"] = {
             "youtubepot-bgutilhttp": {"base_url": [pot_url.rstrip("/")]},
             "youtube": {
                 "fetch_pot": ["always"],
-                "player_client": ["web", "ios", "mweb"],
+                "player_client": ["web", "default"],
             },
         }
     else:
