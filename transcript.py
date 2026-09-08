@@ -176,6 +176,9 @@ def _basis_opties():
         # formaten. Zonder dit breekt "geen formaten beschikbaar" (bij de
         # web-client met cookies) onnodig de ondertitel-extractie af.
         "ignore_no_formats_error": True,
+        # Sommige proxyservers ondersteunen niet alle TLS-cipher-suites;
+        # --legacy-server-connect vermijdt SSLV3_ALERT_HANDSHAKE_FAILURE.
+        "legacyserverconnect": True,
     }
     # PO-token-provider (bgutil) tegen YouTube's botdetectie op server-IP's.
     # Wijst naar een draaiende bgutil-ytdlp-pot-provider-service.

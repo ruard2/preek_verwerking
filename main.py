@@ -305,19 +305,11 @@ def _transcribeer_kerkomroep(url, meld):
 def _transcribeer_youtube(url, meld):
     """YouTube-transcriptbron kiezen.
 
-    Met een residentiële proxy (YTDLP_PROXY) is onze eigen yt-dlp+Whisper-route
-    het goedkoopst (~$0,25/preek i.p.v. Supadata-credits); Supadata blijft de
-    automatische terugval. Zonder proxy: Supadata indien beschikbaar, anders
-    yt-dlp (dat op een geblokkeerd datacenter-IP kan falen).
+    Altijd via yt-dlp + Whisper (eigen proxy). Supadata wordt niet meer gebruikt
+    als fallback voor de audio-transcriptie — als yt-dlp faalt, gooit de fout
+    omhoog zodat het probleem zichtbaar is en opgelost kan worden.
     """
-    if ts.proxy_actief() or not supadata.beschikbaar():
-        try:
-            return _youtube_via_ytdlp(url, meld)
-        except Exception as fout:  # noqa: BLE001
-            if not supadata.beschikbaar():
-                raise
-            meld(f"Eigen download lukte niet ({fout}); terugval op Supadata...")
-    return _youtube_via_supadata(url, meld)
+    return _youtube_via_ytdlp(url, meld)
 
 
 def _youtube_via_supadata(url, meld):

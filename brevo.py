@@ -6,6 +6,7 @@ console gelogd — handig voor lokale ontwikkeling en testen.
 
 import json
 import os
+import urllib.error
 import urllib.request
 
 API = "https://api.brevo.com/v3/smtp/email"
@@ -49,6 +50,9 @@ def verzend(naar_email, onderwerp, html, tekst=None, van_naam=None, antwoord_naa
         payload["replyTo"] = {"email": antwoord_naar}
     if tekst:
         payload["textContent"] = tekst
+    import logging
+    _log = logging.getLogger("aftersermon.brevo")
+
     req = urllib.request.Request(
         API,
         data=json.dumps(payload).encode("utf-8"),
@@ -58,8 +62,15 @@ def verzend(naar_email, onderwerp, html, tekst=None, van_naam=None, antwoord_naa
             "Accept": "application/json",
         },
     )
-    with urllib.request.urlopen(req, timeout=30) as r:
-        r.read()
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r:
+            status = r.status
+            body = r.read().decode("utf-8", errors="replace")
+        _log.info(f"Brevo HTTP {status} → aan={naar_email} onderwerp={onderwerp!r} body={body[:200]}")
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")
+        _log.error(f"Brevo HTTP {exc.code} FOUT → aan={naar_email} body={body[:400]}")
+        raise
     return True
 
 
