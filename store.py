@@ -161,3 +161,16 @@ def resultaat_cache_wissen(video_id=None):
         _resultaat_cache.clear()
     else:
         _resultaat_cache.pop(video_id, None)
+
+
+def resultaat_verwijderen(video_id: str):
+    """Verwijder één preekresultaat volledig (schijf + in-memory cache).
+
+    Na verwijdering kan de preek opnieuw worden aangeleverd en verwerkt.
+    """
+    _resultaat_cache.pop(video_id, None)
+    pad = _resultaat_pad(video_id)
+    try:
+        os.remove(pad)
+    except FileNotFoundError:
+        pass  # al weg — geen fout

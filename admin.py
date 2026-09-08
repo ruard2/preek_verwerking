@@ -1080,6 +1080,18 @@ def logo_verwijder(request: Request, db=Depends(get_db)):
     return {"ok": True}
 
 
+@router.delete("/api/admin/preek/{video_id}")
+def preek_verwijder(video_id: str, request: Request, db=Depends(get_db)):
+    """Verwijder de opgeslagen preekverwerking (transcript + resultaat) van één dienst.
+
+    Enkel beschikbaar voor de kerk-beheerder. Nuttig om opnieuw te verwerken
+    met verbeterde extractie, of om een foutieve verwerking te wissen.
+    """
+    _vereis_kerk(request, db)
+    store.resultaat_verwijderen(video_id)
+    return {"ok": True, "video_id": video_id}
+
+
 @router.put("/api/admin/inschrijvers/{sub_id}")
 def inschrijver_wijzig(sub_id: int, body: InschrijverBody, request: Request, db=Depends(get_db)):
     kerk = _vereis_kerk(request, db)

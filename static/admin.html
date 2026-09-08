@@ -598,44 +598,38 @@ const HG_CATS = [
 const HG_LABEL = {terughalen: 'Terughalen', verdiepen: 'Verdiepen', landen: 'Laten landen', handen: 'Handen en voeten'};
 
 // =====================================================================
-//  Hoofdscherm = wizard van 5 stappen. Stap 1–3 zijn eenmalige instelling
-//  (blijven groen bij een volgende preek); stap 4–5 is het wekelijkse werk.
+//  Hoofdscherm = wizard van 2 stappen.
+//  Stap 1: preek aanleveren (of kanaal instellen voor automatisch ophalen)
+//  Stap 2: automatiseer het proces (eenmalig instellen)
+//  Versturing verloopt daarna volledig automatisch op schema.
 // =====================================================================
 function bouwHoofdscherm(mij, pane) {
   const T = s => AfterSermonI18n.text(s);
   pane.innerHTML = '';
-  const st = {videoId: null, heeftPreek: false, enkeleUrl: '', mij};   // de actieve preek
+  const st = {videoId: null, heeftPreek: false, enkeleUrl: '', mij};
 
   const banner = el('div', {className: 'kaart'});
   banner.style.cssText = 'background:var(--soft);border-left:4px solid var(--brand)';
-  banner.appendChild(el('p', {}, T('Stel stap 1 t/m 3 één keer in. Daarna staan ze bij elke volgende preek automatisch op groen — dan hoef je alleen nog te controleren en te versturen.')));
+  banner.appendChild(el('p', {}, T('Stel stap 1 en 2 één keer in. Daarna verloopt alles automatisch — de preek wordt opgehaald, verwerkt en verzonden op het door jou gekozen tijdstip.')));
   pane.appendChild(banner);
 
   const s1 = stapKaart(1, T('Preek aanleveren'));
-  const s2 = stapKaart(2, T('Kies wat je wil maken'));
-  const s3 = stapKaart(3, T('Automatiseer het proces'));
-  const s4 = stapKaart(4, T('Controleer en bewerk'));
-  const s5 = stapKaart(5, T('Verstuur'));
-  const stappen = [s1, s2, s3, s4, s5];
-  pane.append(s1.kaart, s2.kaart, s3.kaart, s4.kaart, s5.kaart);
+  const s3 = stapKaart(2, T('Automatiseer het proces'));
+  const stappen = [s1, s3];
+  pane.append(s1.kaart, s3.kaart);
 
-  // Accordeon: precies één stap open. Een stap afronden vouwt hem dicht en opent de volgende.
+  // Accordeon: precies één stap open.
   const wiz = {
     naar(i) {
       stappen.forEach((s, idx) => { s.body.hidden = idx !== i; });
-      if (i === 2 && st.stap3Auto) st.stap3Auto();   // ververs 'automatisch ophalen' met de zojuist ontdekte kanaal
-      if (i === 3) vulStap4(st.mij, st, s4, s5, this);
+      if (i === 1 && st.stap3Auto) st.stap3Auto();   // ververs 'automatisch ophalen' zodra kanaal bekend is
     },
-    voltooi(i, tekst) { stappen[i].merkGroen(tekst); this.naar(Math.min(i + 1, 4)); },
+    voltooi(i, tekst) { stappen[i].merkGroen(tekst); this.naar(Math.min(i + 1, 1)); },
   };
   stappen.forEach((s, idx) => { s.kop.onclick = () => wiz.naar(idx); });
-  st.s4 = s4; st.s5 = s5; st.wiz = wiz;
 
   bouwStap1(mij, s1, st, wiz);
-  bouwStap2(mij, s2, wiz);
   bouwStap3(mij, s3, st, wiz);
-  s4.leeg(T('Kies of lever eerst een preek aan bij stap 1.'));
-  s5.leeg(T('Beschikbaar zodra je de dagstukjes hebt gemaakt.'));
   wiz.naar(0);   // begin bij stap 1; de rest ingevouwen
 }
 
@@ -729,9 +723,9 @@ function bouwStap1(mij, s1, st, wiz) {
   const klaar = (videoId, heeftPreek) => {
     st.videoId = videoId; st.heeftPreek = heeftPreek;
     s1.merkGroen((mij.kanaal_url || '').trim() ? T('Automatisch via kanaal') : T('Preek aangeleverd'));
-    vulStap4(mij, st, st.s4, st.s5, wiz);   // vult/ververst stap 4 zodra verwerken klaar is
+    // Versturing verloopt automatisch op schema — geen verdere stappen nodig.
   };
-  // Verwerken begint: stap 1 gaat 'bezig' (spinner), klapt in en stap 2 opent vanzelf.
+  // Verwerken begint: stap 1 gaat 'bezig' (spinner); stap 2 opent zodat je de automatisering kunt instellen.
   const beginVerwerken = () => { s1.busy(''); wiz.naar(1); };
 
   verwerkKnop.onclick = () => stap1Verwerk(mij, st, linkveld.value.trim(), status, houder, klaar, beginVerwerken);
@@ -791,9 +785,23 @@ async function hs_recenteKies(container, kanaalUrl, klaar, beginVerwerken, wiz) 
       rij.appendChild(el('div', {}, (p.titel || 'Dienst') + (p.datum ? ' · ' + p.datum : '')));
       const st2 = el('span', {className: 'sub'});
       if (p.klaar) {
+        const knoppenRij = el('div'); knoppenRij.style.cssText = 'display:flex;gap:.4rem;flex-wrap:wrap';
         const b = el('button', {className: 'secundair'}, T('Kies deze preek'));
-        b.onclick = () => { klaar(p.video_id, p.heeft_preek); if (wiz) wiz.naar(3); };
-        rij.appendChild(b);
+        b.onclick = () => { klaar(p.video_id, p.heeft_preek); };
+        const opnieuwKnop = el('button', {className: 'secundair', title: T('Verwijder verwerking en verwerk opnieuw')}, '↻');
+        opnieuwKnop.style.cssText = 'opacity:.7;min-width:2.2rem;padding:.3rem .6rem';
+        opnieuwKnop.onclick = async () => {
+          if (!confirm(T('Verwerking verwijderen en opnieuw starten?'))) return;
+          opnieuwKnop.disabled = true;
+          try {
+            await fetch('/api/admin/preek/' + p.video_id, {method: 'DELETE'});
+            b.remove(); opnieuwKnop.remove();
+            if (beginVerwerken) beginVerwerken();
+            hs_startVerwerken(p.url, st2, klaar, null);
+          } catch (e) { toon('fout', e.message); opnieuwKnop.disabled = false; }
+        };
+        knoppenRij.append(b, opnieuwKnop);
+        rij.appendChild(knoppenRij);
       } else {
         const b = el('button', {className: 'secundair'}, T('Verwerken'));
         b.onclick = () => { b.remove(); rij.appendChild(st2); if (beginVerwerken) beginVerwerken(); hs_startVerwerken(p.url, st2, klaar, null); };
@@ -873,42 +881,19 @@ function bouwStap3(mij, s3, st, wiz) {
   st.stap3Auto = () => bouwStap3Auto(mij, st, autoSec);
   st.stap3Auto();
 
-  // (b) Wat gebeurt er met elke gekozen uitvoer? Alleen de types uit stap 2.
+  // (b) Verzendlijst
   s3.body.appendChild(_scheiding());
-  s3.body.appendChild(el('label', {}, T('Wat gebeurt er met elke uitvoer?')));
   s3.body.appendChild(el('p', {className: 'sub'},
-    T('Per onderdeel dat je in stap 2 koos: automatisch meesturen in de wekelijkse mail naar je verzendlijst, of alleen zelf maken en downloaden bij stap 4.')));
-  const s3gekozen = (mij.uitvoer_typen && mij.uitvoer_typen.length) ? mij.uitvoer_typen : ['dagstukjes'];
-  // Leeg bezorg_typen = oud gedrag: alles wat gemaakt wordt gaat mee.
-  const bezorgSet = new Set((mij.bezorg_typen && mij.bezorg_typen.length) ? mij.bezorg_typen : s3gekozen);
-  const bezorgKeuze = {};
-  let nabPlan = null;
-  ['dagstukjes', 'preeksamenvatting', 'nabespreking', 'preektranscript']
-    .filter(t => s3gekozen.includes(t))
-    .forEach(typ => {
-      const rij = el('div'); rij.style.cssText = 'display:flex;gap:.6rem;flex-wrap:wrap;align-items:center;justify-content:space-between;border:1px solid var(--rand);border-radius:.5rem;padding:.55rem .8rem;margin:.35rem 0';
-      rij.appendChild(el('b', {}, T(UITVOER_LABEL[typ])));
-      const sel = el('select');
-      sel.appendChild(el('option', {value: 'lijst'}, T('Automatisch naar verzendlijst')));
-      sel.appendChild(el('option', {value: 'download'}, T('Alleen downloaden (stap 4)')));
-      sel.value = bezorgSet.has(typ) ? 'lijst' : 'download';
-      bezorgKeuze[typ] = sel;
-      rij.appendChild(sel); s3.body.appendChild(rij);
-      // Groepsvragen krijgen een eigen planning (elke week of vaste datums).
-      if (typ === 'nabespreking') {
-        nabPlan = _nabesprekingPlanning(mij, sel);
-        s3.body.appendChild(nabPlan.panel);
-      }
-    });
-  s3.body.appendChild(el('p', {className: 'sub'},
-    T('Naar je verzendlijst: gemeenteleden schrijven zich in via een link/QR; jij krijgt zelf altijd een controle-kopie.')));
+    T('Gemeenteleden schrijven zich in via een link of QR-code. Ze kiezen zelf wat ze willen ontvangen (dagstukjes, samenvatting, groepsvragen of de volledige preektekst) en wanneer.')));
   const naar = el('button', {className: 'grijs'}, T('Beheer verzendlijst / QR-code')); naar.style.margin = '.2rem 0 .4rem';
   naar.onclick = () => window._naarVerzendlijst && window._naarVerzendlijst();
   s3.body.appendChild(naar);
   const orij = el('div', {className: 'rij'}); orij.style.marginTop = '.3rem';
   const ochk = el('input', {type: 'checkbox', checked: mij.inschrijving_open !== false});
-  orij.append(ochk, el('label', {}, T('Inschrijving open — gemeenteleden kunnen zich via de QR/link aanmelden en zelf kiezen wat ze willen ontvangen')));
+  orij.append(ochk, el('label', {}, T('Inschrijving open — gemeenteleden kunnen zich aanmelden via de QR/link')));
   s3.body.appendChild(orij);
+  const bezorgKeuze = {};   // leeg — alles gaat automatisch naar de lijst
+  let nabPlan = null;
 
   // (c) Wanneer?
   s3.body.appendChild(_scheiding());
@@ -944,24 +929,17 @@ function bouwStap3(mij, s3, st, wiz) {
 
   // Opslaan
   const samenvatting = () => (dag.options[dag.selectedIndex].text) + ' ' + tijd.value + ' · ' + (controle.value === 'nee' ? T('automatisch') : T('met goedkeuring'));
-  const knop = el('button', {}, T('Opslaan en verder')); knop.style.cssText = 'display:block;margin-top:1rem';
+  const knop = el('button', {}, T('Opslaan')); knop.style.cssText = 'display:block;margin-top:1rem';
   knop.onclick = async () => {
     knop.disabled = true;
-    const bezorg = Object.keys(bezorgKeuze).filter(t => bezorgKeuze[t].value === 'lijst');
-    const wijziging = {verzend_dag: +dag.value, verzend_tijd: tijd.value, auto_versturen: controle.value === 'nee', auto_verwerken: vchk.checked, accentkleur: kleur.value, bezorg_typen: bezorg, inschrijving_open: ochk.checked};
-    if (nabPlan && bezorgKeuze.nabespreking && bezorgKeuze.nabespreking.value === 'lijst') {
-      wijziging.nabespreking_schema = nabPlan.getSchema();
-      wijziging.nabespreking_datums = nabPlan.getSchema() === 'datums' ? nabPlan.getDatums() : [];
-    } else {
-      wijziging.nabespreking_schema = 'mee'; wijziging.nabespreking_datums = [];
-    }
+    const wijziging = {verzend_dag: +dag.value, verzend_tijd: tijd.value, auto_versturen: controle.value === 'nee', auto_verwerken: vchk.checked, accentkleur: kleur.value, inschrijving_open: ochk.checked};
     try {
       await bewaarInstellingen(mij, wijziging);
-      wiz.voltooi(2, samenvatting());
+      wiz.voltooi(1, samenvatting());
     } catch (e) { toon('fout', e.message); } finally { knop.disabled = false; }
   };
   s3.body.appendChild(knop);
-  s3.body.appendChild(el('p', {className: 'sub'}, '⚙ ' + T('Nog meer opties (afzender, taal, bijbelvertaling, toon) vind je bij Instellingen.')));
+  s3.body.appendChild(el('p', {className: 'sub'}, '⚙ ' + T('Meer opties (afzender, taal, bijbelvertaling, toon) vind je bij Instellingen.')));
   s3.merkGroen(samenvatting());
 }
 
