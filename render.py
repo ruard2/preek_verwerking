@@ -363,3 +363,108 @@ def groepsvragen_naar_pdf(data, ondertitel=None):
             flow.append(_p(f"{i}. {v}", s["tekst"]))
     doc.build(flow)
     return buf.getvalue()
+
+
+def samenvatting_naar_pdf(data, ondertitel=None):
+    """PDF met alleen de preeksamenvatting."""
+    L = labels(data.get("taal"))
+    s = _stijlen()
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buf, pagesize=A4,
+        leftMargin=2.2 * cm, rightMargin=2.2 * cm,
+        topMargin=2 * cm, bottomMargin=2 * cm,
+        title=f"{data.get('titel', '')} – {L['samenvatting']}",
+    )
+    flow = [_p(data.get("titel", ""), s["titel"])]
+    onder = []
+    if data.get("bijbelgedeelte"):
+        onder.append(f"{L['bijbelgedeelte']}: {data['bijbelgedeelte']}")
+    if data.get("voorganger"):
+        onder.append(f"{L['voorganger']}: {data['voorganger']}")
+    if ondertitel:
+        onder.append(ondertitel)
+    for regel in onder:
+        flow.append(_p(regel, s["onder"]))
+    flow.append(Spacer(1, 6))
+    flow.append(HRFlowable(width="100%", thickness=1.2, color=colors.HexColor("#2c5f2d")))
+    flow.append(_p(L["samenvatting"], s["kop"]))
+    flow.append(_p(data.get("samenvatting", ""), s["tekst"]))
+    doc.build(flow)
+    return buf.getvalue()
+
+
+def dagstukjes_naar_pdf(data, ondertitel=None):
+    """PDF met alleen de 7 dagstukjes."""
+    L = labels(data.get("taal"))
+    s = _stijlen()
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buf, pagesize=A4,
+        leftMargin=2.2 * cm, rightMargin=2.2 * cm,
+        topMargin=2 * cm, bottomMargin=2 * cm,
+        title=f"{data.get('titel', '')} – dagstukjes",
+    )
+    flow = [_p(data.get("titel", ""), s["titel"])]
+    onder = []
+    if data.get("bijbelgedeelte"):
+        onder.append(f"{L['bijbelgedeelte']}: {data['bijbelgedeelte']}")
+    if data.get("voorganger"):
+        onder.append(f"{L['voorganger']}: {data['voorganger']}")
+    if ondertitel:
+        onder.append(ondertitel)
+    for regel in onder:
+        flow.append(_p(regel, s["onder"]))
+    flow.append(Spacer(1, 6))
+    flow.append(HRFlowable(width="100%", thickness=1.2, color=colors.HexColor("#2c5f2d")))
+    for i, dag in enumerate(data.get("dagen", []), 1):
+        blok = [
+            _p(f"{L['dag']} {i} – {dag.get('titel', '')}", s["kop"]),
+            _p(L["bijbeltekst"], s["label"]),
+            _p(dag.get("bijbeltekst", ""), s["citaat"]),
+            _p(L["gedachte"], s["label"]),
+            _p(dag.get("gedachte", ""), s["tekst"]),
+            _p(L["vraag"], s["label"]),
+            _p(dag.get("vraag_volwassenen", ""), s["tekst"]),
+        ]
+        if dag.get("vraag_kinderen"):
+            blok += [
+                _p(L["vraag_kinderen"], s["label"]),
+                _p(dag["vraag_kinderen"], s["tekst"]),
+            ]
+        flow.append(KeepTogether(blok))
+    doc.build(flow)
+    return buf.getvalue()
+
+
+def demo_groepsvragen_naar_pdf(data, vragen_per_cat, ondertitel=None):
+    """PDF voor demo-groepsvragen (categorieën: terughalen/verdiepen/landen/handen)."""
+    L = labels(data.get("taal"))
+    s = _stijlen()
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buf, pagesize=A4,
+        leftMargin=2.2 * cm, rightMargin=2.2 * cm,
+        topMargin=2 * cm, bottomMargin=2 * cm,
+        title=f"{data.get('titel', '')} – groepsvragen",
+    )
+    flow = [_p(data.get("titel", ""), s["titel"])]
+    onder = []
+    if data.get("bijbelgedeelte"):
+        onder.append(f"{L['bijbelgedeelte']}: {data['bijbelgedeelte']}")
+    if data.get("voorganger"):
+        onder.append(f"{L['voorganger']}: {data['voorganger']}")
+    if ondertitel:
+        onder.append(ondertitel)
+    for regel in onder:
+        flow.append(_p(regel, s["onder"]))
+    flow.append(Spacer(1, 6))
+    flow.append(HRFlowable(width="100%", thickness=1.2, color=colors.HexColor("#2c5f2d")))
+    for cat, vragen in (vragen_per_cat or {}).items():
+        if not vragen:
+            continue
+        flow.append(_p(GROEPSLABELS.get(cat, cat), s["kop"]))
+        for i, v in enumerate(vragen, 1):
+            flow.append(_p(f"{i}. {v}", s["tekst"]))
+    doc.build(flow)
+    return buf.getvalue()

@@ -69,10 +69,11 @@ def _download_audio(url, map_):
     opties.update(
         {
             "skip_download": False,
-            # Alleen audio (klein + snel via de proxy, scheelt bandbreedte/kosten):
-            # m4a (itag 140, ~128 kbps) als eerste keus, anders elke audio-only stream,
-            # en pas als laatste redmiddel een gecombineerd formaat.
-            "format": "bestaudio[ext=m4a]/bestaudio[vcodec=none]/bestaudio/best",
+            # Alleen audio, zo klein mogelijk — ffmpeg converteert toch naar 16kHz
+            # mono 32kbps, dus hogere kwaliteit is pure verspilling van proxy-bandbreedte.
+            # Voorkeur: ≤64 kbps audio-only (itag 139 = 48k m4a, itag 249/250 = 50-70k opus).
+            # Valt terug op m4a (~128k), dan elke audio-only stream, dan best als laatste redmiddel.
+            "format": "bestaudio[abr<=64]/bestaudio[ext=m4a]/bestaudio/best",
             "outtmpl": os.path.join(map_, "audio.%(ext)s"),
             # Residentiële proxy's zijn traag en haperen: ruime timeout + veel
             # herpogingen, zodat een korte stilval de download niet laat mislukken

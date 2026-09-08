@@ -22,11 +22,12 @@ def _afzender(van_naam=None):
     }
 
 
-def verzend(naar_email, onderwerp, html, tekst=None, van_naam=None, antwoord_naar=None):
+def verzend(naar_email, onderwerp, html, tekst=None, van_naam=None, antwoord_naar=None, bijlagen=None):
     """Verstuur één e-mail. Geeft True bij verzonden, False bij (dev-)fallback.
 
     van_naam: weergavenaam van de afzender (meestal de kerknaam).
     antwoord_naar: Reply-To-adres (meestal het e-mailadres van de kerk).
+    bijlagen: lijst van {"content": base64str, "name": "bestand.pdf"} (Brevo-formaat).
     """
     sleutel = os.environ.get("BREVO_API_KEY")
     if not sleutel:
@@ -50,6 +51,8 @@ def verzend(naar_email, onderwerp, html, tekst=None, van_naam=None, antwoord_naa
         payload["replyTo"] = {"email": antwoord_naar}
     if tekst:
         payload["textContent"] = tekst
+    if bijlagen:
+        payload["attachment"] = bijlagen
     import logging
     _log = logging.getLogger("aftersermon.brevo")
 

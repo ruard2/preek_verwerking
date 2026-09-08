@@ -818,10 +818,12 @@ VERSIE = (
 # ---- Demo: e-mail alle resultaten ----------------------------------------
 
 def _stuur_demo_email(naar_email: str, r: dict, groepsvragen=None):
-    """Bouw en verstuur een demo-e-mail met alle 4 uitvoertypes."""
+    """Bouw en verstuur een demo-e-mail met alle 4 uitvoertypes als PDF-bijlagen."""
+    import base64
+    import render as _render
+
     data = r.get("data") or {}
     preek_schoon = r.get("preek_schoon") or ""
-    video_id = r.get("video_id") or ""
     base_url = _base_url_env()
 
     titel = data.get("titel") or "Preek"
@@ -830,57 +832,50 @@ def _stuur_demo_email(naar_email: str, r: dict, groepsvragen=None):
     voorganger = data.get("voorganger") or ""
     dagen = data.get("dagen") or []
 
-    # ---- Dagstukjes ----
-    dag_html = ""
-    dag_tekst = ""
-    for i, dag in enumerate(dagen[:7], 1):
-        d_titel = dag.get("titel") or ""
-        d_bijbel = dag.get("bijbeltekst") or ""
-        d_gedachte = dag.get("gedachte") or ""
-        d_vraag_v = dag.get("vraag_volwassenen") or ""
-        d_vraag_k = dag.get("vraag_kinderen") or ""
-        dag_html += f"""
-        <div style="margin:10px 0;padding:12px 14px;background:#f7f8ff;border-left:3px solid #5a67d8;border-radius:0 6px 6px 0">
-          <div style="font-weight:600;color:#3c4a8f;margin-bottom:4px">Dag {i} — {d_titel}</div>
-          <div style="font-style:italic;color:#555;font-size:13px;margin-bottom:4px">{d_bijbel}</div>
-          <div style="font-size:14px;margin-bottom:6px">{d_gedachte}</div>
-          <div style="font-size:12px;color:#3c4a8f;background:#e8eaff;padding:4px 8px;border-radius:4px;display:inline-block">❓ {d_vraag_v}</div>
-          {f'<div style="font-size:12px;color:#555;margin-top:4px">👦 {d_vraag_k}</div>' if d_vraag_k else ''}
-        </div>"""
-        dag_tekst += f"\nDAG {i} — {d_titel}\n{d_bijbel}\n{d_gedachte}\n❓ {d_vraag_v}\n"
+    # ---- 4 PDF-bijlagen genereren ----
+    bijlagen = []
 
-    # ---- Groepsvragen ----
-    gv_html = ""
-    gv_tekst = ""
+    if preek_schoon:
+        try:
+            pdf = _render.naar_preek_pdf(data, preek_schoon)
+            bijlagen.append({"content": base64.b64encode(pdf).decode(), "name": "preektekst.pdf"})
+        except Exception as e:  # noqa: BLE001
+            log.warning(f"[demo] preektekst PDF mislukt: {e}")
+
+    if samenvatting:
+        try:
+            pdf = _render.samenvatting_naar_pdf(data)
+            bijlagen.append({"content": base64.b64encode(pdf).decode(), "name": "samenvatting.pdf"})
+        except Exception as e:  # noqa: BLE001
+            log.warning(f"[demo] samenvatting PDF mislukt: {e}")
+
+    if dagen:
+        try:
+            pdf = _render.dagstukjes_naar_pdf(data)
+            bijlagen.append({"content": base64.b64encode(pdf).decode(), "name": "dagstukjes.pdf"})
+        except Exception as e:  # noqa: BLE001
+            log.warning(f"[demo] dagstukjes PDF mislukt: {e}")
+
     if groepsvragen:
-        for cat, vragen in groepsvragen.items():
-            cat_label = {"terughalen": "Terughalen", "verdiepen": "Verdiepen",
-                         "landen": "Laten landen", "handen": "Handen en voeten"}.get(cat, cat)
-            gv_html += f'<div style="font-weight:600;color:#2d8a4e;margin:10px 0 4px">{cat_label}</div>'
-            for i, v in enumerate(vragen[:3], 1):
-                gv_html += f'<div style="font-size:13px;margin:3px 0;padding:4px 8px;background:#f0fff4;border-radius:4px">{i}. {v}</div>'
-            gv_tekst += f"\n{cat_label}:\n" + "\n".join(f"  {j+1}. {v}" for j, v in enumerate(vragen[:3]))
+        try:
+            pdf = _render.demo_groepsvragen_naar_pdf(data, groepsvragen)
+            bijlagen.append({"content": base64.b64encode(pdf).decode(), "name": "groepsvragen.pdf"})
+        except Exception as e:  # noqa: BLE001
+            log.warning(f"[demo] groepsvragen PDF mislukt: {e}")
 
-    # ---- Preektekst excerpt ----
-    preek_excerpt = preek_schoon[:1200].rsplit(" ", 1)[0] + "…" if len(preek_schoon) > 1200 else preek_schoon
-
-    # ---- Download-links ----
-    dl_html = ""
-    if video_id:
-        dl_style = "display:inline-block;margin:4px 6px 4px 0;padding:8px 14px;background:#5a67d8;color:#fff;text-decoration:none;border-radius:6px;font-size:13px"
-        dl_html = f"""
-        <div style="margin-top:14px">
-          <a href="{base_url}/api/pdf/{video_id}" style="{dl_style}">📄 Weekboekje PDF</a>
-          <a href="{base_url}/api/preek/{video_id}.pdf" style="{dl_style}">📖 Volledige preektekst PDF</a>
-        </div>"""
-
-    # ---- Metadata-rij ----
+    # ---- Metadata ----
     meta_delen = []
     if bijbelgedeelte:
         meta_delen.append(bijbelgedeelte)
     if voorganger:
         meta_delen.append(f"Voorganger: {voorganger}")
     meta_html = (" &nbsp;·&nbsp; ".join(meta_delen)) if meta_delen else ""
+
+    # ---- Bijlagen-overzicht voor in de mail ----
+    bijlage_namen = [b["name"] for b in bijlagen]
+    bijlage_html = "".join(
+        f'<li style="margin:3px 0">{naam}</li>' for naam in bijlage_namen
+    )
 
     html = f"""<!DOCTYPE html>
 <html lang="nl">
@@ -895,23 +890,26 @@ def _stuur_demo_email(naar_email: str, r: dict, groepsvragen=None):
 
 <div style="padding:20px 24px;background:#fff;border:1px solid #e2e6ff;border-top:none;border-radius:0 0 8px 8px">
 
-  {'<h2 style="font-size:16px;margin:0 0 8px;color:#3c4a8f">Samenvatting</h2><p style="margin:0 0 16px;line-height:1.6">' + samenvatting + '</p>' if samenvatting else ''}
+  <p style="margin:0 0 16px;line-height:1.6">
+    Hierbij de vier AfterSermon-documenten voor <b>{titel}</b> als bijlage:
+  </p>
 
-  <h2 style="font-size:16px;margin:16px 0 6px;color:#3c4a8f">7 dagstukjes</h2>
-  {dag_html if dag_html else '<p style="color:#777;font-size:13px">Dagstukjes konden niet worden gegenereerd.</p>'}
+  <ul style="margin:0 0 20px;padding-left:1.4rem;line-height:1.8;font-size:14px">
+    {bijlage_html if bijlage_html else '<li>Geen bijlagen gegenereerd.</li>'}
+  </ul>
 
-  {f'<h2 style="font-size:16px;margin:20px 0 6px;color:#2d8a4e">Groepsvragen</h2>{gv_html}' if gv_html else ''}
+  <p style="font-size:13px;color:#555;line-height:1.6;margin:0 0 20px">
+    AfterSermon verwerkt elke week de preek van jouw kerk automatisch en stuurt
+    overdenkingen, dagstukjes en vragen naar je gemeenteleden.
+  </p>
 
-  <h2 style="font-size:16px;margin:20px 0 6px;color:#3c4a8f">Preektekst (fragment)</h2>
-  <div style="font-size:13px;line-height:1.7;color:#444;background:#fafafa;padding:12px 14px;border-radius:6px;white-space:pre-wrap">{preek_excerpt}</div>
-
-  {dl_html}
+  <a href="{base_url}/admin"
+     style="display:inline-block;padding:10px 18px;background:#5a67d8;color:#fff;text-decoration:none;border-radius:6px;font-size:14px">
+    Stel je kerk in →
+  </a>
 
   <hr style="border:none;border-top:1px solid #e2e6ff;margin:24px 0">
-  <p style="font-size:12px;color:#888;margin:0">Dit is een automatisch gegenereerde demo van <b>AfterSermon</b>.
-  AfterSermon verwerkt elke week de preek van jouw kerk automatisch en stuurt
-  overdenkingen, dagstukjes en vragen naar je gemeenteleden.
-  <a href="{base_url}/admin" style="color:#5a67d8">Stel je kerk in →</a></p>
+  <p style="font-size:12px;color:#888;margin:0">Dit is een automatisch gegenereerde demo van <b>AfterSermon</b>.</p>
 </div>
 </body>
 </html>"""
@@ -920,22 +918,10 @@ def _stuur_demo_email(naar_email: str, r: dict, groepsvragen=None):
 {"=" * 50}
 {bijbelgedeelte}{" · " + voorganger if voorganger else ""}
 
-SAMENVATTING
-{samenvatting}
+Hierbij de vier AfterSermon-documenten als bijlage:
+{chr(10).join("- " + n for n in bijlage_namen)}
 
-7 DAGSTUKJES
-{dag_tekst}
-
-GROEPSVRAGEN
-{gv_tekst}
-
-PREEKTEKST (FRAGMENT)
-{preek_excerpt}
-
----
-Downloads:
-- Weekboekje PDF: {base_url}/api/pdf/{video_id}
-- Preektekst PDF: {base_url}/api/preek/{video_id}.pdf
+Stel je kerk in: {base_url}/admin
 """
 
     brevo.verzend(
@@ -944,6 +930,7 @@ Downloads:
         html=html,
         tekst=tekst,
         van_naam="AfterSermon",
+        bijlagen=bijlagen or None,
     )
 
 

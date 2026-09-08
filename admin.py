@@ -896,6 +896,43 @@ def uitzendingen(request: Request, db=Depends(get_db)):
     return uit
 
 
+@router.post("/api/admin/uitzendingen/{video_id}/pauzeer")
+def uitzending_pauzeer(video_id: str, request: Request, db=Depends(get_db)):
+    """Zet goedkeuring terug naar concept: automatisch versturen wordt gepauzeerd."""
+    kerk = _vereis_kerk(request, db)
+    uit = db.scalar(
+        select(Uitzending).where(
+            Uitzending.video_id == video_id,
+            Uitzending.kerk_id == kerk.id,
+        )
+    )
+    if not uit:
+        raise HTTPException(404, "Uitzending niet gevonden.")
+    uit.goedgekeurd = False
+    uit.goedgekeurd_op = None
+    uit.goedgekeurd_door = ""
+    db.commit()
+    return {"ok": True, "video_id": video_id}
+
+
+@router.delete("/api/admin/uitzendingen/{video_id}")
+def uitzending_verwijder(video_id: str, request: Request, db=Depends(get_db)):
+    """Verwijder een geplande uitzending volledig: DB-record + opgeslagen resultaat."""
+    kerk = _vereis_kerk(request, db)
+    uit = db.scalar(
+        select(Uitzending).where(
+            Uitzending.video_id == video_id,
+            Uitzending.kerk_id == kerk.id,
+        )
+    )
+    if not uit:
+        raise HTTPException(404, "Uitzending niet gevonden.")
+    store.resultaat_verwijderen(video_id)
+    db.delete(uit)
+    db.commit()
+    return {"ok": True, "video_id": video_id}
+
+
 @router.get("/api/admin/scan-diagnose")
 def scan_diagnose(request: Request, db=Depends(get_db)):
     """Leg uit waarom de scan wel/geen diensten vindt (zonder te verwerken)."""
