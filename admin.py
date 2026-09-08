@@ -407,6 +407,7 @@ class KanaalBody(BaseModel):
     controle_emails: str = ""
     als_niet_gecheckt: str = "versturen"  # 'versturen' | 'blokkeren'
     waarschuwingstekst: str | None = None
+    aanlevermodus: str = ""          # 'kanaal' | 'handmatig' | ''
     # Bestaande velden (ook nog bruikbaar vanuit admin.html)
     auto_versturen: bool = False
     auto_verwerken: bool = False
@@ -605,6 +606,7 @@ def mij(request: Request, db=Depends(get_db)):
         "nabespreking_schema": getattr(kerk, "nabespreking_schema", "mee") or "mee",
         "nabespreking_datums": [d for d in (getattr(kerk, "nabespreking_datums", "") or "").split(",") if d],
         "inschrijving_open": bool(getattr(kerk, "inschrijving_open", True)),
+        "aanlevermodus": getattr(kerk, "aanlevermodus", "") or "",
     }
 
 
@@ -640,6 +642,10 @@ def kanaal(body: KanaalBody, request: Request, db=Depends(get_db)):
 
     # Aangepaste disclaimertekst (None = gebruik ingebouwde standaard).
     kerk.waarschuwingstekst = (body.waarschuwingstekst or None)
+
+    # Aanlevermodus: 'kanaal' of 'handmatig' (of '' = nog niet gekozen).
+    if body.aanlevermodus in {"kanaal", "handmatig", ""}:
+        kerk.aanlevermodus = body.aanlevermodus
 
     # ── Bestaande velden (ook bruikbaar vanuit admin.html) ────────────────────
     kerk.auto_verwerken = bool(body.auto_verwerken)

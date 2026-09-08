@@ -193,15 +193,6 @@ function toonDashboard(mij) {
   tz.value = mij.tijdzone || 'Europe/Amsterdam';
   kaart.appendChild(tz);
 
-  kaart.appendChild(el('label', {}, T('Verzenddag (wanneer de overdenkingen uitgaan)')));
-  const vdag = el('select', {id: 'vdag'});
-  vulWeekdagen(vdag, mij.verzend_dag || 0);
-  kaart.appendChild(vdag);
-  kaart.appendChild(el('p', {className:'sub'},
-    'Wekelijks = op deze dag het hele boekje; dagelijks = dag 1 op deze dag, daarna elke dag een deel.'));
-  kaart.appendChild(el('label', {}, 'Verzendtijd'));
-  kaart.appendChild(el('input', {id: 'vtijd', type: 'time', value: mij.verzend_tijd || '07:00'}));
-
   const rij0 = el('div', {className: 'rij'}); rij0.style.marginTop = '.9rem';
   const chk0 = el('input', {id: 'autoverwerk', type: 'checkbox', checked: !!mij.auto_verwerken});
   rij0.append(chk0, el('label', {htmlFor: 'autoverwerk'},
@@ -232,7 +223,6 @@ function toonDashboard(mij) {
       const kanaalUrl = val('kanaal');
       await post('/api/admin/kanaal', {
         kanaal_url: kanaalUrl, tijdzone: val('tz'),
-        verzend_dag: +val('vdag'), verzend_tijd: val('vtijd'),
         auto_versturen: document.getElementById('auto').checked,
         auto_verwerken: document.getElementById('autoverwerk').checked,
         versturen_zonder_goedkeuring: document.getElementById('zonder').checked,
@@ -243,11 +233,9 @@ function toonDashboard(mij) {
         bijbelvertaling: val('bijbelvertaling'),
         accentkleur: val('accentkleur'),
         toon: val('toon'), lengte: val('lengte'),
-        uitvoer_taal: val('uitvoer_taal') || 'auto'
       });
       if (mij) {
         mij.accentkleur = val('accentkleur'); mij.toon = val('toon'); mij.lengte = val('lengte');
-        mij.uitvoer_taal = val('uitvoer_taal') || 'auto';
       }
       mij.kanaal_url = kanaalUrl;
       mij.auto_verwerken = document.getElementById('autoverwerk').checked;
@@ -333,22 +321,6 @@ function toonDashboard(mij) {
   [['kort', T('Kort')], ['middel', T('Gemiddeld')], ['lang', T('Uitgebreid')]]
     .forEach(o => ln.appendChild(el('option', {value: o[0]}, o[1])));
   ln.value = mij.lengte || 'middel'; stijl.appendChild(ln);
-
-  // ── Uitvoer-taal ──────────────────────────────────────────────────────────
-  stijl.appendChild(el('label', {htmlFor: 'uitvoer_taal'}, T('Taal van de overdenkingen')));
-  const taalWrap = el('div', {id: 'uitvoer-taal-kerk-wrap'});
-  stijl.appendChild(taalWrap);
-  stijl.appendChild(el('p', {className: 'sub'},
-    T('"Zelfde als de preek" is de standaard — de AI detecteert de preektaal automatisch. Kies een vaste taal als je altijd in één taal wilt schrijven, ongeacht de preek.')));
-  if (window.maakTaalSelect) {
-    const taalSel = maakTaalSelect('uitvoer_taal', mij.uitvoer_taal || 'auto', true);
-    // 'auto' optie aanpassen: bij kerk is '' = auto
-    taalWrap.appendChild(taalSel);
-  } else {
-    const taalInp = el('input', {id: 'uitvoer_taal', type: 'text', placeholder: 'auto'});
-    taalInp.value = mij.uitvoer_taal || 'auto';
-    taalWrap.appendChild(taalInp);
-  }
 
   kaart.insertBefore(stijl, knop);
 
@@ -613,7 +585,8 @@ function bouwHoofdscherm(mij, pane) {
   banner.appendChild(el('p', {}, T('Stel stap 1 en 2 één keer in. Daarna verloopt alles automatisch — de preek wordt opgehaald, verwerkt en verzonden op het door jou gekozen tijdstip.')));
   pane.appendChild(banner);
 
-  const s1 = stapKaart(1, T('Preek aanleveren'));
+  const s1Titel = (mij.aanlevermodus === 'handmatig') ? T('Preek aanleveren') : T('Kanaal aanleveren');
+  const s1 = stapKaart(1, s1Titel);
   const s3 = stapKaart(2, T('Automatiseer het proces'));
   const stappen = [s1, s3];
   pane.append(s1.kaart, s3.kaart);
@@ -693,49 +666,174 @@ function vulWeekdagen(select, gekozenIndex) {
   select.value = String(gekozenIndex || 0);
 }
 
-// ---- Stap 1: preek aanleveren (link/upload). Zodra verwerken start: spinner + open stap 2. ----
+// ---- Stap 1: aanlevermodus kiezen of preek/kanaal aanleveren ----
 function bouwStap1(mij, s1, st, wiz) {
   const T = s => AfterSermonI18n.text(s);
   s1.body.innerHTML = '';
+  const modus = mij.aanlevermodus || '';
+
+  if (!modus) {
+    // ── Nog geen keuze: toon keuzemenu ──────────────────────────────────────
+    s1.body.appendChild(el('p', {className: 'sub'},
+      T('Kies hoe je AfterSermon wil gebruiken. Je kunt dit later altijd wijzigen via Instellingen.')));
+
+    const opties = el('div'); opties.style.cssText = 'display:flex;gap:1rem;flex-wrap:wrap;margin:.8rem 0';
+
+    function keuzeKaart(ico, titel, uitleg, aanbevolen) {
+      const k = el('div'); k.style.cssText = 'flex:1 1 14rem;border:2px solid var(--rand);border-radius:.6rem;padding:1rem;cursor:pointer;transition:border-color .15s';
+      if (aanbevolen) k.style.borderColor = 'var(--brand)';
+      k.appendChild(el('div', {}, ico + ' ' + titel)).style.cssText = 'font-weight:600;font-size:1.05rem;margin-bottom:.4rem';
+      if (aanbevolen) { const badge = el('span', {}, T('Aanbevolen')); badge.style.cssText = 'background:var(--brand);color:#fff;font-size:.75rem;padding:.1rem .5rem;border-radius:.3rem;margin-left:.5rem'; k.firstChild.appendChild(badge); }
+      k.appendChild(el('p', {className: 'sub'}, uitleg));
+      k.onmouseenter = () => { k.style.borderColor = 'var(--brand)'; };
+      k.onmouseleave = () => { k.style.borderColor = aanbevolen ? 'var(--brand)' : 'var(--rand)'; };
+      return k;
+    }
+
+    const kanaalKaart = keuzeKaart('📡', T('Kanaal koppelen'),
+      T('AfterSermon haalt elke week automatisch de preek van je YouTube- of Kerkdienstgemist-kanaal. Volledig hands-off — maar de AI moet de juiste preek selecteren en het audio correct transcriberen.'), true);
+    const handmatigKaart = keuzeKaart('📤', T('Wekelijks zelf aanleveren'),
+      T('Jij levert elke week de preeklink of een bestand aan. Meer controle: jij bepaalt precies welke preek verwerkt wordt.'), false);
+
+    opties.append(kanaalKaart, handmatigKaart); s1.body.appendChild(opties);
+
+    kanaalKaart.onclick = async () => {
+      await bewaarInstellingen(mij, {aanlevermodus: 'kanaal'});
+      bouwStap1(mij, s1, st, wiz);
+    };
+    handmatigKaart.onclick = async () => {
+      await bewaarInstellingen(mij, {aanlevermodus: 'handmatig'});
+      bouwStap1(mij, s1, st, wiz);
+    };
+    return;
+  }
+
+  if (modus === 'handmatig') {
+    // ── Handmatig: preek aanleveren ──────────────────────────────────────────
+    s1.body.appendChild(el('p', {className: 'sub'},
+      T('Plak de link van een preek — of upload een audio- of tekstbestand.')));
+
+    const linkrij = el('div'); linkrij.style.cssText = 'display:flex;gap:.6rem;margin:.8rem 0 .2rem;flex-wrap:wrap';
+    const linkveld = el('input', {placeholder: 'https://…'}); linkveld.style.cssText = 'flex:1 1 18rem';
+    const verwerkKnop = el('button', {}, T('Verwerk'));
+    linkrij.append(linkveld, verwerkKnop); s1.body.appendChild(linkrij);
+
+    s1.body.appendChild(el('div', {className: 'aanlever-of'}, T('of')));
+    const uprij = el('div'); uprij.style.cssText = 'display:flex;gap:.6rem;align-items:center;flex-wrap:wrap';
+    const upIn = el('input', {type: 'file', accept: '.pdf,.docx,.txt,.mp3,.m4a,.wav,.ogg'}); upIn.style.cssText = 'flex:1 1 16rem';
+    const upKnop = el('button', {className: 'secundair'}, T('Upload'));
+    uprij.append(upIn, upKnop); s1.body.appendChild(uprij);
+
+    const status = el('p', {className: 'sub'}); status.style.marginTop = '.8rem'; s1.body.appendChild(status);
+    const houder = el('div'); s1.body.appendChild(houder);
+
+    const klaar = (videoId, heeftPreek) => {
+      st.videoId = videoId; st.heeftPreek = heeftPreek;
+      s1.merkGroen(T('Preek aangeleverd'));
+    };
+    const beginVerwerken = () => { s1.busy(''); wiz.naar(1); };
+    verwerkKnop.onclick = () => stap1Verwerk(mij, st, linkveld.value.trim(), status, houder, klaar, beginVerwerken);
+    linkveld.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); verwerkKnop.click(); } });
+    upKnop.onclick = () => { if (!upIn.files[0]) { status.textContent = T('Kies eerst een bestand.'); return; } beginVerwerken(); hs_uploadPreek(upIn.files[0], status, klaar, null); };
+
+    wiz.naar(1);  // stap 2 direct openen zodat instellingen zichtbaar zijn
+    return;
+  }
+
+  // ── Kanaal modus ─────────────────────────────────────────────────────────
   const heeftKanaal = !!(mij.kanaal_url || '').trim();
 
   s1.body.appendChild(el('p', {className: 'sub'},
-    T('Plak de link van je kanaal of van één preek — of upload een bestand. Hoe en naar wie het verstuurd wordt, stel je in bij stap 3.')));
+    T('Plak de link van je YouTube- of Kerkdienstgemist-kanaal. AfterSermon haalt daarna elke week automatisch de preek op.')));
 
   const linkrij = el('div'); linkrij.style.cssText = 'display:flex;gap:.6rem;margin:.8rem 0 .2rem;flex-wrap:wrap';
   const linkveld = el('input', {placeholder: 'https://…', value: mij.kanaal_url || ''}); linkveld.style.cssText = 'flex:1 1 18rem';
-  const verwerkKnop = el('button', {}, T('Verwerk'));
-  linkrij.append(linkveld, verwerkKnop); s1.body.appendChild(linkrij);
-
-  s1.body.appendChild(el('div', {className: 'aanlever-of'}, T('of')));
-  const uprij = el('div'); uprij.style.cssText = 'display:flex;gap:.6rem;align-items:center;flex-wrap:wrap';
-  const upIn = el('input', {type: 'file', accept: '.pdf,.docx,.txt,.mp3,.m4a,.wav,.ogg'}); upIn.style.cssText = 'flex:1 1 16rem';
-  const upKnop = el('button', {className: 'secundair'}, T('Upload'));
-  uprij.append(upIn, upKnop); s1.body.appendChild(uprij);
-
-  const tip = el('p', {className: 'sub'}); tip.style.marginTop = '.8rem';
-  tip.innerHTML = '💡 ' + T('De eerste keer duurt even: de preek wordt gedownload, getranscribeerd en geanalyseerd. Zet bij stap 3 „automatisch ophalen" aan, dan gebeurt dit vanzelf na de dienst en hoef je nergens op te wachten.');
-  s1.body.appendChild(tip);
+  const instellenKnop = el('button', {}, heeftKanaal ? T('Wijzig') : T('Instellen'));
+  linkrij.append(linkveld, instellenKnop); s1.body.appendChild(linkrij);
 
   const status = el('p', {className: 'sub'}); status.style.marginTop = '.8rem'; s1.body.appendChild(status);
-  const houder = el('div'); s1.body.appendChild(houder);       // dienstenkeuze / recente lijst
-
-  const klaar = (videoId, heeftPreek) => {
-    st.videoId = videoId; st.heeftPreek = heeftPreek;
-    s1.merkGroen((mij.kanaal_url || '').trim() ? T('Automatisch via kanaal') : T('Preek aangeleverd'));
-    // Versturing verloopt automatisch op schema — geen verdere stappen nodig.
-  };
-  // Verwerken begint: stap 1 gaat 'bezig' (spinner); stap 2 opent zodat je de automatisering kunt instellen.
-  const beginVerwerken = () => { s1.busy(''); wiz.naar(1); };
-
-  verwerkKnop.onclick = () => stap1Verwerk(mij, st, linkveld.value.trim(), status, houder, klaar, beginVerwerken);
-  linkveld.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); verwerkKnop.click(); } });
-  upKnop.onclick = () => { if (!upIn.files[0]) { status.textContent = T('Kies eerst een bestand.'); return; } beginVerwerken(); hs_uploadPreek(upIn.files[0], status, klaar, null); };
+  const houder = el('div'); s1.body.appendChild(houder);
 
   if (heeftKanaal) {
     s1.merkGroen(T('Kanaal ingesteld'));
-    hs_recenteKies(houder, mij.kanaal_url, klaar, beginVerwerken, wiz);
+    // Vraag of ze een voorbeeld willen zien
+    _toonVoorbeeldVraag(mij, st, houder, wiz);
   }
+
+  instellenKnop.onclick = async () => {
+    const url = linkveld.value.trim();
+    if (!url) { status.textContent = T('Plak eerst een kanaallink.'); return; }
+    status.textContent = T('Link controleren…'); instellenKnop.disabled = true;
+    try {
+      const k = await fetch('/api/kanaal?url=' + encodeURIComponent(url)).then(r => r.ok ? r.json() : Promise.reject(r));
+      if (k.soort === 'lijst') {
+        await bewaarInstellingen(mij, {kanaal_url: url, aanlevermodus: 'kanaal'});
+        status.textContent = '';
+        s1.merkGroen(T('Kanaal ingesteld'));
+        instellenKnop.textContent = T('Wijzig');
+        houder.innerHTML = '';
+        _toonVoorbeeldVraag(mij, st, houder, wiz);
+        wiz.naar(1);
+      } else {
+        // Enkele preek-URL: verwerk direct
+        st.enkeleUrl = url;
+        s1.busy('');
+        wiz.naar(1);
+        hs_startVerwerken(k.url || url, status, (videoId, heeftPreek) => {
+          st.videoId = videoId; st.heeftPreek = heeftPreek;
+          s1.merkGroen(T('Preek aangeleverd'));
+        }, null);
+      }
+    } catch (e) {
+      let m = T('Kon de link niet lezen.');
+      if (e && typeof e.json === 'function') { try { m = await fouttekst(e, m); } catch (_) {} }
+      else if (e && e.message) m = e.message;
+      status.textContent = m;
+    } finally { instellenKnop.disabled = false; }
+  };
+  linkveld.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); instellenKnop.click(); } });
+}
+
+// Optionele "Wil je een voorbeeld zien?"-sectie na het instellen van het kanaal.
+function _toonVoorbeeldVraag(mij, st, container, wiz) {
+  const T = s => AfterSermonI18n.text(s);
+  container.innerHTML = '';
+  const wrap = el('div'); wrap.style.cssText = 'margin-top:.8rem;padding:.8rem 1rem;background:var(--soft);border-radius:.5rem';
+  wrap.appendChild(el('p', {}, '🔍 ' + T('Wil je zien hoe het resultaat eruitziet?')));
+  const rij = el('div'); rij.style.cssText = 'display:flex;gap:.6rem;margin-top:.5rem';
+  const ja = el('button', {className: 'secundair'}, T('Ja, toon een voorbeeld'));
+  const nee = el('button', {className: 'link'}, T('Nee, ga verder'));
+  rij.append(ja, nee);
+  wrap.appendChild(rij);
+  container.appendChild(wrap);
+
+  nee.onclick = () => { container.innerHTML = ''; };
+  ja.onclick = () => {
+    wrap.innerHTML = '';
+    const status2 = el('p', {className: 'sub'}); wrap.appendChild(status2);
+    const lijst = el('div'); wrap.appendChild(lijst);
+    const klaar = (videoId, heeftPreek) => {
+      st.videoId = videoId; st.heeftPreek = heeftPreek;
+      wrap.innerHTML = '';
+      _bouwVoorbeeldPanel(mij, st, wrap);
+    };
+    const beginVerwerken = () => {};
+    hs_recenteKies(lijst, mij.kanaal_url, klaar, beginVerwerken, wiz);
+  };
+}
+
+// Toont alle 4 uitvoervormen als inline preview (na verwerking vanuit de wizard).
+function _bouwVoorbeeldPanel(mij, st, container) {
+  const T = s => AfterSermonI18n.text(s);
+  container.innerHTML = '';
+  container.appendChild(el('p', {}, '✅ ' + T('Verwerkt! Hier een voorbeeld van de uitvoer:')));
+  const alle = ['dagstukjes', 'preeksamenvatting', 'nabespreking', 'preektranscript'];
+  alle.forEach(typ => {
+    const blok = el('div'); blok.style.cssText = 'border-top:1px solid var(--rand);padding:.8rem 0';
+    blok.appendChild(el('b', {}, T(UITVOER_LABEL[typ] || typ)));
+    container.appendChild(blok);
+    bouwUitvoer(mij, st, typ, blok, null, null);
+  });
 }
 
 async function stap1Verwerk(mij, st, url, status, houder, klaar, beginVerwerken) {
@@ -909,7 +1007,19 @@ function bouwStap3(mij, s3, st, wiz) {
   controle.onchange = syncEmailBlok;
   syncEmailBlok();
 
-  // (b) Kleur en logo
+  // (b) Bijbelvertaling
+  s3.body.appendChild(_scheiding());
+  s3.body.appendChild(el('label', {}, T('Bijbelvertaling')));
+  const bv = el('select'); bv.style.margin = '.3rem 0';
+  bv.appendChild(el('option', {value: 'vrij'}, T('Automatisch (publiek domein)')));
+  [['🇳🇱 Nederlands', [['nbv21', 'NBV21'], ['hsv', 'Herziene Statenvertaling (HSV)'], ['bgt', 'Bijbel in Gewone Taal (BGT)']]],
+   ['🇿🇦 Afrikaans', [['afr1953', 'Afrikaans 1953']]],
+   ['🇬🇧 English', [['kjv', 'King James Version (KJV)'], ['esv', 'English Standard Version (ESV)'], ['niv', 'New International Version (NIV)']]]]
+    .forEach(g => { const og = el('optgroup', {label: g[0]}); g[1].forEach(o => og.appendChild(el('option', {value: o[0]}, o[1]))); bv.appendChild(og); });
+  bv.value = mij.bijbelvertaling || 'vrij';
+  s3.body.appendChild(bv);
+
+  // (e) Kleur en logo
   s3.body.appendChild(_scheiding());
   s3.body.appendChild(el('label', {}, T('Kleur en logo (voor de e-mails en pagina\'s)')));
   const krij = el('div'); krij.style.cssText = 'display:flex;gap:1rem;flex-wrap:wrap;align-items:center;margin:.3rem 0 .4rem';
@@ -929,6 +1039,7 @@ function bouwStap3(mij, s3, st, wiz) {
       auto_versturen: !metControle,
       controle_emails: emailInp.value.trim(),
       als_niet_gecheckt: 'versturen',
+      bijbelvertaling: bv.value,
       accentkleur: kleur.value,
     };
     try {
@@ -937,7 +1048,23 @@ function bouwStap3(mij, s3, st, wiz) {
     } catch (e) { toon('fout', e.message); } finally { knop.disabled = false; }
   };
   s3.body.appendChild(knop);
-  s3.body.appendChild(el('p', {className: 'sub'}, '⚙ ' + T('Meer opties (verzendmoment, taal, bijbelvertaling, toon) vind je bij Instellingen.')));
+
+  // (f) Uitnodigingssectie
+  s3.body.appendChild(_scheiding());
+  const uitnodigSec = el('div');
+  uitnodigSec.appendChild(el('label', {}, T('Gemeenteleden uitnodigen')));
+  uitnodigSec.appendChild(el('p', {className: 'sub'},
+    T('Deel de link of QR-code zodat gemeenteleden zich aanmelden. Ze kiezen zelf wat ze willen ontvangen en kunnen hun voorkeuren altijd wijzigen.')));
+  const linkVeld2 = el('input', {readOnly: true, placeholder: T('Laden…')}); linkVeld2.style.cssText = 'width:100%;margin:.4rem 0';
+  uitnodigSec.appendChild(linkVeld2);
+  fetch('/api/admin/inschrijflink').then(r => r.json()).then(d => { linkVeld2.value = d.url; }).catch(() => {});
+  const qrRij = el('div'); qrRij.style.cssText = 'display:flex;gap:.8rem;flex-wrap:wrap;align-items:center;margin:.3rem 0';
+  const qrImg = el('img'); qrImg.src = '/api/admin/qr'; qrImg.style.cssText = 'width:120px;height:120px;border-radius:.4rem';
+  const qrDl = el('a', {href: '/api/admin/qr?download=true'}, T('QR downloaden')); qrDl.className = 'secundair';
+  qrDl.style.cssText = 'text-decoration:none;padding:.5rem 1rem;border-radius:.45rem';
+  qrRij.append(qrImg, qrDl); uitnodigSec.appendChild(qrRij);
+  s3.body.appendChild(uitnodigSec);
+
   s3.merkGroen(samenvatting());
   // bouwStap3Auto wordt niet meer gebruikt in de wizard — automatisch ophalen
   // is altijd aan als er een kanaal_url is (zie stap 1).

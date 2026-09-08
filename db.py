@@ -113,6 +113,9 @@ class Church(Base):
     # Staat de publieke inschrijving (QR/link) open? Uit = geen nieuwe aanmeldingen;
     # de kerk stelt dan zelf in wat er verstuurd wordt.
     inschrijving_open: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Hoe preken worden aangeleverd: 'kanaal' = automatisch ophalen, 'handmatig' = admin levert
+    # wekelijks zelf een link of bestand aan. Leeg = nog niet gekozen (wizard toont keuzemenu).
+    aanlevermodus: Mapped[str] = mapped_column(String(10), default="")
 
     # Wanneer vinden de diensten plaats? JSON-tekst: [{"dag": 6, "tijd": "10:00"}, ...]
     # dag 0=ma..6=zo (zelfde als Python weekday). Wordt gebruikt om slim te scannen.
