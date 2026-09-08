@@ -870,57 +870,48 @@ function bouwStap2(mij, s2, wiz) {
   s2.merkGroen(samenvatting());   // er is altijd een zinnige standaard (dagstukjes) — groen maar ingevouwen
 }
 
-// ---- Stap 3: automatiseren + verstuur-instellingen (naar wie / wanneer / controle / kleur / logo) ----
+// ---- Stap 2 (was stap 3): controle + kleur + logo ----
 function bouwStap3(mij, s3, st, wiz) {
   const T = s => AfterSermonI18n.text(s);
   s3.body.innerHTML = '';
 
-  // (a) Automatisch ophalen — ververst zichzelf zodra je een enkele preek hebt aangeleverd.
-  const autoSec = el('div');
-  s3.body.appendChild(autoSec);
-  st.stap3Auto = () => bouwStap3Auto(mij, st, autoSec);
-  st.stap3Auto();
+  // (a) Controle vóór verzenden?
+  s3.body.appendChild(el('label', {}, T('Wil je elke week zelf goedkeuren vóór verzending?')));
 
-  // (b) Verzendlijst
-  s3.body.appendChild(_scheiding());
-  s3.body.appendChild(el('p', {className: 'sub'},
-    T('Gemeenteleden schrijven zich in via een link of QR-code. Ze kiezen zelf wat ze willen ontvangen (dagstukjes, samenvatting, groepsvragen of de volledige preektekst) en wanneer.')));
-  const naar = el('button', {className: 'grijs'}, T('Beheer verzendlijst / QR-code')); naar.style.margin = '.2rem 0 .4rem';
-  naar.onclick = () => window._naarVerzendlijst && window._naarVerzendlijst();
-  s3.body.appendChild(naar);
-  const orij = el('div', {className: 'rij'}); orij.style.marginTop = '.3rem';
-  const ochk = el('input', {type: 'checkbox', checked: mij.inschrijving_open !== false});
-  orij.append(ochk, el('label', {}, T('Inschrijving open — gemeenteleden kunnen zich aanmelden via de QR/link')));
-  s3.body.appendChild(orij);
-  const bezorgKeuze = {};   // leeg — alles gaat automatisch naar de lijst
-  let nabPlan = null;
+  // AI-uitleg + aanbeveling
+  const uitleg = el('div');
+  uitleg.style.cssText = 'background:var(--soft);border-left:3px solid var(--brand);border-radius:.4rem;padding:.7rem 1rem;margin:.5rem 0 .8rem;font-size:.9rem';
+  uitleg.innerHTML = '<strong>🤖 ' + T('AfterSermon gebruikt AI') + '</strong><br>' +
+    T('De teksten worden automatisch gegenereerd op basis van de preek. De kwaliteit is goed genoeg om direct te versturen — je hoeft niets te controleren. Kies "volledig automatisch" en de AI doet het werk.') +
+    '<br><br><strong>' + T('Aanbevolen: geen controle.') + '</strong> ' +
+    T('Je bespaart jezelf wekelijks werk. Inschrijvers ontvangen de teksten altijd op tijd.');
+  s3.body.appendChild(uitleg);
 
-  // (c) Wanneer?
-  s3.body.appendChild(_scheiding());
-  s3.body.appendChild(el('label', {}, T('Wanneer gaat het wekelijks de deur uit?')));
-  const wrij = el('div'); wrij.style.cssText = 'display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;margin:.3rem 0 .8rem';
-  const dag = el('select');
-  vulWeekdagen(dag, mij.verzend_dag || 0);
-  const tijd = el('input', {type: 'time', value: mij.verzend_tijd || '07:00'}); tijd.style.maxWidth = '8rem';
-  wrij.append(el('span', {className: 'sub'}, T('Elke week op')), dag, el('span', {className: 'sub'}, T('om')), tijd);
-  s3.body.appendChild(wrij);
-
-  // (d) Controle vóór verzenden?
-  s3.body.appendChild(el('label', {}, T('Controle vóór verzenden?')));
   const controle = el('select');
-  controle.appendChild(el('option', {value: 'ja'}, T('Ik keur elke week eerst goed (ik krijg een mail)')));
-  controle.appendChild(el('option', {value: 'nee'}, T('Volledig automatisch versturen')));
-  controle.value = mij.auto_versturen ? 'nee' : 'ja';
+  controle.appendChild(el('option', {value: 'nee'}, '✅ ' + T('Volledig automatisch (aanbevolen)')));
+  controle.appendChild(el('option', {value: 'ja'}, T('Ik wil elke week eerst goedkeuren')));
+  controle.value = mij.auto_versturen === false && mij.controle_voor_verzending ? 'ja' : 'nee';
   s3.body.appendChild(controle);
 
-  const vrij = el('div', {className: 'rij'}); vrij.style.marginTop = '.8rem';
-  const vchk = el('input', {type: 'checkbox', checked: !!mij.auto_verwerken});
-  vrij.append(vchk, el('label', {}, T('Preken vooraf op de achtergrond verwerken (dan staan ze klaar als je inlogt)')));
-  s3.body.appendChild(vrij);
+  // Email voor goedkeuringsmail (alleen zichtbaar bij 'ja')
+  const emailBlok = el('div');
+  emailBlok.style.cssText = 'margin-top:.6rem;padding:.7rem 1rem;background:var(--soft);border-radius:.4rem';
+  emailBlok.appendChild(el('label', {}, T('Stuur de goedkeuringsmail naar:')));
+  const emailInp = el('input', {type: 'email', placeholder: mij.email || 'admin@kerk.nl',
+    value: mij.controle_emails || ''});
+  emailInp.style.cssText = 'width:100%;margin-top:.3rem';
+  const emailSub = el('p', {className: 'sub'});
+  emailSub.textContent = T('Laat leeg om de goedkeuringsmail naar je inlogadres te sturen (') + (mij.email || '') + T(').');
+  emailBlok.append(emailInp, emailSub);
+  s3.body.appendChild(emailBlok);
 
-  // (e) Kleur en logo
+  const syncEmailBlok = () => { emailBlok.hidden = controle.value !== 'ja'; };
+  controle.onchange = syncEmailBlok;
+  syncEmailBlok();
+
+  // (b) Kleur en logo
   s3.body.appendChild(_scheiding());
-  s3.body.appendChild(el('label', {}, T('Kleur en logo (voor de e-mails en boekjes)')));
+  s3.body.appendChild(el('label', {}, T('Kleur en logo (voor de e-mails en pagina\'s)')));
   const krij = el('div'); krij.style.cssText = 'display:flex;gap:1rem;flex-wrap:wrap;align-items:center;margin:.3rem 0 .4rem';
   const kleur = el('input', {type: 'color', value: mij.accentkleur || '#2c5f2d'}); kleur.style.cssText = 'width:3rem;height:2.4rem;border:1px solid var(--rand);border-radius:.4rem;background:none';
   krij.append(el('span', {className: 'sub'}, T('Accentkleur')), kleur);
@@ -928,19 +919,29 @@ function bouwStap3(mij, s3, st, wiz) {
   s3.body.appendChild(_logoRegel(mij));
 
   // Opslaan
-  const samenvatting = () => (dag.options[dag.selectedIndex].text) + ' ' + tijd.value + ' · ' + (controle.value === 'nee' ? T('automatisch') : T('met goedkeuring'));
+  const samenvatting = () => controle.value === 'nee' ? T('Volledig automatisch') : T('Met goedkeuring');
   const knop = el('button', {}, T('Opslaan')); knop.style.cssText = 'display:block;margin-top:1rem';
   knop.onclick = async () => {
     knop.disabled = true;
-    const wijziging = {verzend_dag: +dag.value, verzend_tijd: tijd.value, auto_versturen: controle.value === 'nee', auto_verwerken: vchk.checked, accentkleur: kleur.value, inschrijving_open: ochk.checked};
+    const metControle = controle.value === 'ja';
+    const wijziging = {
+      controle_voor_verzending: metControle,
+      auto_versturen: !metControle,
+      controle_emails: emailInp.value.trim(),
+      als_niet_gecheckt: 'versturen',
+      accentkleur: kleur.value,
+    };
     try {
       await bewaarInstellingen(mij, wijziging);
       wiz.voltooi(1, samenvatting());
     } catch (e) { toon('fout', e.message); } finally { knop.disabled = false; }
   };
   s3.body.appendChild(knop);
-  s3.body.appendChild(el('p', {className: 'sub'}, '⚙ ' + T('Meer opties (afzender, taal, bijbelvertaling, toon) vind je bij Instellingen.')));
+  s3.body.appendChild(el('p', {className: 'sub'}, '⚙ ' + T('Meer opties (verzendmoment, taal, bijbelvertaling, toon) vind je bij Instellingen.')));
   s3.merkGroen(samenvatting());
+  // bouwStap3Auto wordt niet meer gebruikt in de wizard — automatisch ophalen
+  // is altijd aan als er een kanaal_url is (zie stap 1).
+  st.stap3Auto = () => {};
 }
 
 function _scheiding() {
