@@ -53,6 +53,9 @@ def verzend(naar_email, onderwerp, html, tekst=None, van_naam=None, antwoord_naa
     import logging
     _log = logging.getLogger("aftersermon.brevo")
 
+    afzender = _afzender(van_naam)
+    _log.info(f"Versturen: van={afzender['email']} ({afzender['name']!r}) → aan={naar_email} onderwerp={onderwerp!r}")
+
     req = urllib.request.Request(
         API,
         data=json.dumps(payload).encode("utf-8"),

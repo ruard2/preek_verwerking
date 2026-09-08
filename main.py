@@ -986,11 +986,13 @@ def _demo_verwerk_en_mail(url: str, email: str):
         # Stap 4: bouw e-mailresultaat (lees de meest recente versie van de store).
         finaal = store.resultaat_ophalen(video_id) or {}
         r_email = {**r, "data": finaal.get("data") or dag_res.get("data") or r.get("data")}
+        log.info(f"[demo] E-mail voorbereiden voor {email}...")
         _stuur_demo_email(email, r_email, groepsvragen)
         log.info(f"[demo] E-mail verstuurd naar {email}")
     except Exception as fout:  # noqa: BLE001
-        log.error(f"[demo] Verwerking mislukt voor {url}: {fout}")
-        # Stuur foutmelding naar demo-gebruiker
+        log.error(f"[demo] Verwerking mislukt voor {url}: {fout}", exc_info=True)
+        # Stuur foutmelding naar demo-gebruiker — log elke stap zodat er geen silent fail is
+        log.info(f"[demo] Foutmail sturen naar {email}...")
         try:
             brevo.verzend(
                 naar_email=email,
@@ -1000,8 +1002,9 @@ def _demo_verwerk_en_mail(url: str, email: str):
                 tekst=f"Sorry, de verwerking mislukt: {fout}",
                 van_naam="AfterSermon",
             )
-        except Exception:  # noqa: BLE001
-            pass
+            log.info(f"[demo] Foutmail verstuurd naar {email}")
+        except Exception as mail_fout:  # noqa: BLE001
+            log.error(f"[demo] Foutmail OOK mislukt voor {email}: {mail_fout}", exc_info=True)
 
 
 @app.post("/api/demo/verwerk")
