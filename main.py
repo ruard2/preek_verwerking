@@ -90,14 +90,16 @@ def _base_url_env():
 def _startup():
     database.init_db()
     # Automatisering (scan → goedkeuring → gepland versturen). Lokaal standaard
-    # uit; op Railway aan. Forceer met AUTOMATISERING=aan / =uit.
+    # Achtergrond-lus tijdelijk volledig uitgeschakeld.
+    # Zet AUTOMATISERING=aan om hem terug in te schakelen.
     keuze = os.environ.get("AUTOMATISERING", "").lower()
-    aan = keuze == "aan" or (keuze != "uit" and bool(os.environ.get("RAILWAY_PUBLIC_DOMAIN")))
-    if aan:
+    if keuze == "aan":
         import automatisering
 
         automatisering.start(_base_url_env())
         print("[automatisering] achtergrond-lus gestart")
+    else:
+        print("[automatisering] uitgeschakeld")
 
 
 VIDEO_ID_RE = re.compile(r"(?:v=|youtu\.be/|/live/|/embed/|/shorts/)([A-Za-z0-9_-]{11})")
