@@ -39,7 +39,14 @@ SCAN_TERUG_DAGEN = 28
 # Hoeveel nieuwe diensten per tick maximaal verwerken (kosten/tijd spreiden).
 MAX_PER_TICK = 12
 # Niet eindeloos catch-uppen: alleen momenten van de afgelopen zoveel dagen.
-GRACE_DAGEN = 8
+# Klein houden (3 dagen) zodat we een korte serveruitval opvangen maar niet
+# retroactief weken aan diensten gaan versturen bij een herstart of eerste scan.
+GRACE_DAGEN = 3
+# Alleen recente diensten automatisch goedkeuren voor verzending. Historische
+# diensten (ouder dan deze grens) worden wél gescand en zichtbaar gemaakt in het
+# admin-paneel, maar NIET automatisch goedgekeurd — zo leveren we bij de eerste
+# scan of na een herstart nooit met terugwerkende kracht de hele back-catalogus.
+AUTO_GOEDKEUR_TERUG_DAGEN = 7
 INTERVAL_SECONDEN = 300
 
 
@@ -197,18 +204,27 @@ def scan_kerk(db, kerk, base_url, nu_lokaal=None, vernieuw=False):
         # Alleen vastleggen en aanklikbaar maken — NIET automatisch verwerken.
         # De (dure) transcript/AI-verwerking gebeurt pas op verzoek: als de
         # beheerder de dienst opent, of lui op het moment van bezorging.
+        #
+        # Historische diensten (ouder dan AUTO_GOEDKEUR_TERUG_DAGEN) worden wél
+        # opgeslagen zodat ze in het admin-paneel zichtbaar zijn, maar NIET
+        # automatisch goedgekeurd. Zo leveren we bij de eerste scan of na een
+        # herstart nooit met terugwerkende kracht de hele back-catalogus.
+        recent = (nu_lokaal.date() - datum) <= timedelta(days=AUTO_GOEDKEUR_TERUG_DAGEN)
+        goedgekeurd_auto = bool(kerk.auto_versturen) and recent
         uit = Uitzending(
             kerk_id=kerk.id, video_id=video_id, url=d["url"],
             titel=d.get("titel") or d.get("label") or "Dienst",
             datum=datum, week_start=komende_maandag(datum),
             dagdeel=dagdeel(d),
-            goedgekeurd=bool(kerk.auto_versturen),
+            goedgekeurd=goedgekeurd_auto,
             goedkeur_token=secrets.token_urlsafe(24),
         )
         db.add(uit)
         db.commit()
         verwerkt += 1
-        if not kerk.auto_versturen:
+        # Goedkeurmail alleen sturen voor recente diensten — niet voor de hele
+        # historische catalogus (zou een stortvloed aan mails veroorzaken).
+        if recent and not kerk.auto_versturen:
             _stuur_goedkeur_mail(kerk, uit, base_url)
     return verwerkt
 
