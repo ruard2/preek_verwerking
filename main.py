@@ -987,6 +987,178 @@ def _demo_verwerk_en_mail(url: str, email: str):
             log.error(f"[demo] Foutmail OOK mislukt voor {email}: {mail_fout}", exc_info=True)
 
 
+def _debug_transcribeer_en_mail(url: str, email: str, n_delen: int):
+    """Download audio, splits in n gelijke stukken, transcribeer elk rauw (geen filtering),
+    en stuur alles per mail als .txt bijlagen. Bedoeld om te zien wat Whisper werkelijk
+    teruggeeft en welke segmenten muziek vs. spraak zijn."""
+    import base64
+    import tempfile
+    from openai import OpenAI
+
+    log.info(f"[debug] transcriptie gestart: url={url} n_delen={n_delen} email={email}")
+    try:
+        ffmpeg = audio._ffmpeg()
+        client = OpenAI()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            # ── 1. Download ──────────────────────────────────────────────────
+            log.info("[debug] audio downloaden...")
+            bron = audio._download_audio_gecached(url, tmp)
+            duur = audio._duur_van(ffmpeg, bron)
+            grootte_mb = os.path.getsize(bron) / 1e6
+            log.info(f"[debug] gedownload: {grootte_mb:.1f}MB, duur={duur}s")
+            if not duur:
+                raise RuntimeError("Kon duur van audio niet bepalen via ffmpeg.")
+
+            # ── 2. Splits in n_delen gelijke stukken ─────────────────────────
+            deel_sec = duur / n_delen
+            bijlagen = []
+            samenvatting = [
+                f"URL:          {url}",
+                f"Duur:         {duur}s  ({duur//60:.0f}m {duur%60:.0f}s)",
+                f"Bestand:      {grootte_mb:.1f} MB",
+                f"Whisper model: {audio.TRANSCRIBE_MODEL}",
+                f"Aantal delen:  {n_delen}  (~{deel_sec/60:.1f} min elk)",
+                "",
+            ]
+
+            for i in range(n_delen):
+                start = i * deel_sec
+                stop = min((i + 1) * deel_sec, duur)
+                pad = os.path.join(tmp, f"deel_{i+1}.mp3")
+                log.info(f"[debug] knippen deel {i+1}: {start:.0f}s–{stop:.0f}s")
+                audio._knip(ffmpeg, bron, start, stop, pad)
+                deel_kb = os.path.getsize(pad) / 1024
+
+                # ── Rauwe transcriptie (geen verbose_json, geen filtering) ───
+                log.info(f"[debug] transcriberen deel {i+1}...")
+                with open(pad, "rb") as f:
+                    ruw_resp = client.audio.transcriptions.create(
+                        file=f, model=audio.TRANSCRIBE_MODEL, response_format="text"
+                    )
+                ruw_tekst = ruw_resp if isinstance(ruw_resp, str) else getattr(ruw_resp, "text", str(ruw_resp))
+                ruw_tekst = (ruw_tekst or "").strip()
+
+                # ── Verbose_json voor segment-scores ─────────────────────────
+                segment_regels = []
+                try:
+                    with open(pad, "rb") as f:
+                        vb = client.audio.transcriptions.create(
+                            file=f, model=audio.TRANSCRIBE_MODEL,
+                            response_format="verbose_json"
+                        )
+                    for s in (getattr(vb, "segments", None) or []):
+                        if isinstance(s, dict):
+                            t0 = s.get("start", 0); tx = s.get("text", "")
+                            nsp = s.get("no_speech_prob"); lp = s.get("avg_logprob")
+                        else:
+                            t0 = getattr(s, "start", 0); tx = getattr(s, "text", "")
+                            nsp = getattr(s, "no_speech_prob", None)
+                            lp = getattr(s, "avg_logprob", None)
+                        score = ""
+                        if nsp is not None:
+                            score += f" nsp={nsp:.2f}"
+                        if lp is not None:
+                            score += f" lp={lp:.2f}"
+                        muziek = " ← MUZIEK?" if (
+                            (nsp is not None and nsp > 0.5) or
+                            (lp is not None and lp < -1.2)
+                        ) else ""
+                        # Tijdstempel relatief aan start van het hele bestand
+                        abs_t = start + t0
+                        segment_regels.append(
+                            f"[{abs_t//60:.0f}m{abs_t%60:04.1f}s]{score}{muziek}  {tx}"
+                        )
+                except Exception as ve:
+                    segment_regels.append(f"(verbose_json niet beschikbaar: {ve})")
+
+                woordtelling = len(ruw_tekst.split())
+                samenvatting += [
+                    f"── Deel {i+1}/{n_delen}  ({start:.0f}s – {stop:.0f}s, {deel_kb:.0f} KB) ──",
+                    f"   Woorden:  {woordtelling}",
+                    f"   Begin:    {ruw_tekst[:120]}",
+                    f"   Einde:    ...{ruw_tekst[-120:]}",
+                    "",
+                ]
+
+                bijlage_inhoud = (
+                    f"DEEL {i+1}/{n_delen}  [{start:.0f}s – {stop:.0f}s]  ({deel_kb:.0f} KB)\n"
+                    f"Whisper model: {audio.TRANSCRIBE_MODEL}\n"
+                    f"Woorden (ruw): {woordtelling}\n"
+                    f"{'='*70}\n\n"
+                    f"RUWE TRANSCRIPTIE (response_format=text, geen filtering)\n"
+                    f"{'-'*70}\n"
+                    f"{ruw_tekst}\n\n"
+                    f"SEGMENT-SCORES (verbose_json)\n"
+                    f"{'-'*70}\n"
+                    f"Formaat: [MM:SS.s] nsp=no_speech_prob lp=avg_logprob  tekst\n"
+                    f"nsp > 0.5 of lp < -1.2 = verdacht (muziek/ruis)\n\n"
+                ) + "\n".join(segment_regels)
+
+                bijlagen.append({
+                    "content": base64.b64encode(bijlage_inhoud.encode("utf-8")).decode(),
+                    "name": f"deel_{i+1}_van_{n_delen}.txt",
+                })
+
+            samenvatting_tekst = "\n".join(samenvatting)
+            brevo.verzend(
+                naar_email=email,
+                onderwerp=f"[DEBUG] Transcriptie {_video_id(url) or 'video'} ({n_delen} delen)",
+                html=f"<pre style='font-family:monospace;font-size:12px'>{samenvatting_tekst}</pre>",
+                tekst=samenvatting_tekst,
+                van_naam="AfterSermon Debug",
+                bijlagen=bijlagen,
+            )
+            log.info(f"[debug] mail met {n_delen} bijlagen verstuurd naar {email}")
+
+    except Exception as fout:
+        log.error(f"[debug] transcriptie mislukt: {fout}", exc_info=True)
+        try:
+            brevo.verzend(
+                naar_email=email,
+                onderwerp="[DEBUG] Transcriptie mislukt",
+                html=f"<pre>{fout}</pre>",
+                tekst=str(fout),
+                van_naam="AfterSermon Debug",
+            )
+        except Exception:
+            pass
+
+
+@app.post("/api/debug/transcribeer")
+def debug_transcribeer(body: dict, request: Request):
+    """Debug-endpoint: download audio, splits in N delen, transcribeer elk rauw
+    en stuur alles als .txt bijlagen per mail.
+
+    Vereist een actieve admin-sessie ÓÓF de DEBUG_SLEUTEL env-variabele als
+    'sleutel' in de request-body. Stel DEBUG_SLEUTEL in Railway in als tijdelijke
+    sleutel; haal hem daarna weg.
+
+    Body: {url, email, sleutel?, n_delen? (standaard 5, max 10)}
+    """
+    sleutel_env = os.environ.get("DEBUG_SLEUTEL", "")
+    sleutel_req = (body or {}).get("sleutel", "").strip()
+    heeft_sessie = bool(request.session.get("kerk_id"))
+    sleutel_ok = sleutel_env and sleutel_req == sleutel_env
+
+    if not heeft_sessie and not sleutel_ok:
+        raise HTTPException(403, "Log in als admin of geef de DEBUG_SLEUTEL mee.")
+
+    url = (body or {}).get("url", "").strip()
+    email = (body or {}).get("email", "").strip()
+    n_delen = max(1, min(int((body or {}).get("n_delen", 5)), 10))
+
+    if not url:
+        raise HTTPException(400, "URL vereist.")
+    if not email or "@" not in email:
+        raise HTTPException(400, "Geldig e-mailadres vereist.")
+
+    threading.Thread(
+        target=_debug_transcribeer_en_mail, args=(url, email, n_delen), daemon=True
+    ).start()
+    return {"status": "gestart", "n_delen": n_delen, "email": email}
+
+
 @app.post("/api/demo/verwerk")
 def demo_verwerk(body: dict):
     """Demo-endpoint: verwerk een preek op de achtergrond en mail alle resultaten."""
