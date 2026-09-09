@@ -179,24 +179,13 @@ def _basis_opties():
     }
     pot_url = os.environ.get("POT_PROVIDER_URL")
     proxy = os.environ.get("YTDLP_PROXY")
-    if pot_url and not proxy:
-        # Zonder proxy (lokaal, rechtstreeks IP): web + default werkt goed en
-        # geeft de beste kwaliteit. IP-binding van CDN-URLs speelt dan geen rol.
+    if pot_url:
+        # web + default: bevestigd werkend voor livestream-VODs met POT + proxy.
         opties["extractor_args"] = {
             "youtubepot-bgutilhttp": {"base_url": [pot_url.rstrip("/")]},
             "youtube": {
                 "fetch_pot": ["always"],
                 "player_client": ["web", "default"],
-            },
-        }
-    elif pot_url and proxy:
-        # Met proxy: ios/mweb vereisen géén PO-token en geven CDN-URLs die NIET
-        # IP-gebonden zijn → proxy-rotatie veroorzaakt geen 403. We configureren
-        # de POT-provider wel zodat yt-dlp hem kan gebruiken als fallback.
-        opties["extractor_args"] = {
-            "youtubepot-bgutilhttp": {"base_url": [pot_url.rstrip("/")]},
-            "youtube": {
-                "player_client": ["ios", "mweb"],
             },
         }
     else:
@@ -210,6 +199,7 @@ def _basis_opties():
         }
     # Optioneel: al het YouTube-verkeer via een (residentiële) proxy leiden.
     # Meest betrouwbare oplossing als het datacenter-IP geblokkeerd blijft.
+    proxy = os.environ.get("YTDLP_PROXY")
     if proxy:
         opties["proxy"] = proxy
 
