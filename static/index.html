@@ -293,7 +293,7 @@ function maakGroepen(diensten, isGepland) {
         knop.disabled = true;
         knop.title = 'Deze dienst is nog niet geweest.';
       } else {
-        knop.addEventListener('click', () => toonEmailForm(d.url, d.label, kop.textContent));
+        knop.addEventListener('click', () => toonTijdMarkeringen(d.url, d.video_id || _videoId(d.url), d.label, kop.textContent));
       }
       kn.appendChild(knop);
     }
@@ -361,8 +361,22 @@ function el(tag, cls, tekst) {
   return e;
 }
 
-// ---- E-mail demo-formulier ----
-function toonEmailForm(url, label, datumLabel) {
+// ---- Tijdhelpers ----
+function _secNaarTijd(sec) {
+  sec = Math.round(sec || 0);
+  const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
+  if (h > 0) return h + ':' + String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0');
+  return m + ':' + String(s).padStart(2,'0');
+}
+function _tijdNaarSec(str) {
+  const p = (str || '').trim().split(':').map(Number);
+  if (p.length === 3) return p[0]*3600 + p[1]*60 + (p[2]||0);
+  if (p.length === 2) return p[0]*60 + (p[1]||0);
+  return parseInt(str)||0;
+}
+
+// ---- Stap 1b: tijdmarkeringen ----
+function toonTijdMarkeringen(url, videoId, label, datumLabel) {
   lijstEl.style.display = 'none';
   resultaatEl.innerHTML = '';
   foutEl.textContent = '';
@@ -382,6 +396,126 @@ function toonEmailForm(url, label, datumLabel) {
     const sub = el('p', null, datumLabel);
     sub.style.cssText = 'margin:.1rem 0 .8rem;color:var(--muted);font-size:.88rem';
     kaart.appendChild(sub);
+  }
+  kaart.appendChild(el('p', 'samenvatting',
+    'Speel de video af en druk op "Begin" en "Eind" op het moment dat de preek begint en eindigt.'));
+
+  // YouTube-player
+  let ytPlayer = null;
+  if (videoId) {
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'position:relative;padding-bottom:56.25%;height:0;overflow:hidden;border-radius:8px;margin:1rem 0';
+    const iframe = document.createElement('iframe');
+    iframe.id = 'yt-demo-iframe';
+    iframe.src = 'https://www.youtube.com/embed/' + videoId + '?enablejsapi=1';
+    iframe.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;border:none';
+    iframe.allow = 'accelerometer;autoplay;clipboard-write;encrypted-media;gyroscope;picture-in-picture';
+    iframe.allowFullscreen = true;
+    wrap.appendChild(iframe);
+    kaart.appendChild(wrap);
+    const initYT = () => { ytPlayer = new YT.Player('yt-demo-iframe', {}); };
+    if (window.YT && window.YT.Player) { initYT(); }
+    else {
+      const prev = window.onYouTubeIframeAPIReady;
+      window.onYouTubeIframeAPIReady = () => { if (prev) prev(); initYT(); };
+      if (!document.querySelector('script[src*="youtube.com/iframe_api"]')) {
+        const s = document.createElement('script'); s.src = 'https://www.youtube.com/iframe_api';
+        document.head.appendChild(s);
+      }
+    }
+  }
+  const huidigeTijd = () => { try { return ytPlayer && ytPlayer.getCurrentTime ? Math.round(ytPlayer.getCurrentTime()) : 0; } catch(_){return 0;} };
+
+  // Preekdelen
+  const delenLijst = [];
+  const delenDiv = document.createElement('div');
+  kaart.appendChild(delenDiv);
+
+  const voegDeelToe = () => {
+    const idx = delenLijst.length;
+    const rij = document.createElement('div');
+    rij.style.cssText = 'display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin:.6rem 0;padding:.7rem;background:var(--licht,#f5f5f5);border-radius:6px';
+    const lbl = document.createElement('span');
+    lbl.textContent = (idx === 0 ? 'Preek' : 'Deel ' + (idx+1)) + ':';
+    lbl.style.cssText = 'font-weight:600;min-width:4rem';
+    const bIn = document.createElement('input');
+    bIn.type = 'text'; bIn.placeholder = '31:20';
+    bIn.style.cssText = 'width:5.5rem;padding:.3rem .5rem;border:1px solid #ccc;border-radius:4px;font-family:monospace';
+    const bKnop = document.createElement('button');
+    bKnop.textContent = '⏺ Begin'; bKnop.className = 'klein';
+    bKnop.style.cssText = 'padding:.3rem .65rem;font-size:.82rem';
+    bKnop.onclick = () => { bIn.value = _secNaarTijd(huidigeTijd()); };
+    const pijl = document.createElement('span'); pijl.textContent = '→';
+    const eIn = document.createElement('input');
+    eIn.type = 'text'; eIn.placeholder = '1:20:00';
+    eIn.style.cssText = 'width:5.5rem;padding:.3rem .5rem;border:1px solid #ccc;border-radius:4px;font-family:monospace';
+    const eKnop = document.createElement('button');
+    eKnop.textContent = '⏹ Eind'; eKnop.className = 'klein';
+    eKnop.style.cssText = 'padding:.3rem .65rem;font-size:.82rem';
+    eKnop.onclick = () => { eIn.value = _secNaarTijd(huidigeTijd()); };
+    rij.append(lbl, bKnop, bIn, pijl, eKnop, eIn);
+    if (idx > 0) {
+      const del = document.createElement('button'); del.textContent = '✕';
+      del.style.cssText = 'opacity:.5;padding:.3rem .5rem;font-size:.82rem';
+      del.onclick = () => { delenDiv.removeChild(rij); delenLijst.splice(delenLijst.indexOf(deel), 1); };
+      rij.appendChild(del);
+    }
+    const deel = {rij, bIn, eIn};
+    delenLijst.push(deel);
+    delenDiv.appendChild(rij);
+  };
+  voegDeelToe();
+
+  const extraKnop = document.createElement('button');
+  extraKnop.textContent = '+ Tweede preekdeel'; extraKnop.className = 'klein';
+  extraKnop.style.cssText = 'margin-top:.3rem;font-size:.85rem;opacity:.75';
+  extraKnop.onclick = () => voegDeelToe();
+  kaart.appendChild(extraKnop);
+
+  const verderKnop = el('button', 'klein primair', 'Verder → e-mailadres invullen');
+  verderKnop.style.cssText = 'margin-top:1rem;display:block';
+  const foutTijd = el('p', null, '');
+  foutTijd.style.color = 'red';
+  kaart.appendChild(foutTijd);
+  kaart.appendChild(verderKnop);
+
+  verderKnop.addEventListener('click', () => {
+    const tijden = delenLijst.map(d => [_tijdNaarSec(d.bIn.value), _tijdNaarSec(d.eIn.value)])
+                              .filter(([s, e]) => e > s && e > 0);
+    if (!tijden.length) { foutTijd.textContent = 'Stel minstens één begin- en eindtijd in.'; return; }
+    foutTijd.textContent = '';
+    toonEmailForm(url, label, datumLabel, tijden);
+  });
+
+  resultaatEl.appendChild(kaart);
+}
+
+// ---- E-mail demo-formulier ----
+function toonEmailForm(url, label, datumLabel, preekTijden) {
+  lijstEl.style.display = 'none';
+  resultaatEl.innerHTML = '';
+  foutEl.textContent = '';
+
+  const balk = el('div', 'balk');
+  const terug = el('button', 'klein', '← Preektijden aanpassen');
+  terug.addEventListener('click', () => toonTijdMarkeringen(url, _videoId(url), label, datumLabel));
+  balk.appendChild(terug);
+  resultaatEl.appendChild(balk);
+
+  const kaart = el('div', 'kaart');
+  kaart.appendChild(el('h4', null, label));
+  if (datumLabel) {
+    const sub = el('p', null, datumLabel);
+    sub.style.cssText = 'margin:.1rem 0 .8rem;color:var(--muted);font-size:.88rem';
+    kaart.appendChild(sub);
+  }
+
+  // Samenvatting van ingestelde tijden
+  if (preekTijden && preekTijden.length) {
+    const tijdInfo = el('p', 'samenvatting',
+      'Preek: ' + preekTijden.map(([s,e]) => _secNaarTijd(s) + ' – ' + _secNaarTijd(e)).join(', '));
+    tijdInfo.style.cssText = 'margin-bottom:.6rem;font-size:.88rem;color:var(--muted)';
+    kaart.appendChild(tijdInfo);
   }
 
   const info = el('p', 'samenvatting',
@@ -407,13 +541,14 @@ function toonEmailForm(url, label, datumLabel) {
     stuurKnop.textContent = 'Bezig…';
     foutEl.textContent = '';
     try {
+      const body = {url, email};
+      if (preekTijden && preekTijden.length) body.preek_tijden = preekTijden;
       const r = await fetch('/api/demo/verwerk', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({url, email}),
+        body: JSON.stringify(body),
       });
       if (!r.ok) throw new Error(await fouttekst(r, 'Aanmelden mislukt.'));
-      // Toon bevestigingsscherm
       resultaatEl.innerHTML = '';
       const balk2 = el('div', 'balk');
       const terug2 = el('button', 'klein', '← Bekijk andere diensten');
@@ -448,6 +583,11 @@ function toonEmailForm(url, label, datumLabel) {
 
   resultaatEl.appendChild(kaart);
   emailInp.focus();
+}
+
+function _videoId(url) {
+  const m = (url || '').match(/(?:v=|youtu\.be\/|\/embed\/)([A-Za-z0-9_-]{11})/);
+  return m ? m[1] : null;
 }
 
 function toonResultaat(taak) {

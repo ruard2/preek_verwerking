@@ -953,17 +953,13 @@ Stel je kerk in: {base_url}/admin
     )
 
 
-def _demo_verwerk_en_mail(url: str, email: str):
+def _demo_verwerk_en_mail(url: str, email: str, preek_tijden=None):
     """Verwerk een preek volledig en mail alle 4 uitvoertypes. Draait in achtergrond-thread."""
     try:
-        log.info(f"[demo] Verwerking gestart: url={url} email={email}")
+        log.info(f"[demo] Verwerking gestart: url={url} email={email} tijden={preek_tijden}")
 
-        # Stap 1: volledig verwerken — transcript → preek extraheren → dagstukjes +
-        # samenvatting in één keer, identiek aan de admin-route.
-        # GEEN alleen_transcript=True: dat slaat de extractiestap over waardoor voor
-        # YouTube-livestreams de volledige kerktranscriptie (incl. liederen/gebeden)
-        # als grondslag wordt gebruikt i.p.v. de geëxtraheerde preektekst.
-        r = verwerk_en_bewaar(url, meld=lambda s: log.info(f"[demo] {s}"))
+        r = verwerk_en_bewaar(url, meld=lambda s: log.info(f"[demo] {s}"),
+                              preek_tijden=preek_tijden or [])
         video_id = r.get("video_id")
         if not video_id:
             raise ValueError("Kon geen video-id bepalen uit de opgegeven URL.")
@@ -1183,11 +1179,12 @@ def demo_verwerk(body: dict):
     """Demo-endpoint: verwerk een preek op de achtergrond en mail alle resultaten."""
     url = (body or {}).get("url", "").strip()
     email = (body or {}).get("email", "").strip()
+    preek_tijden = (body or {}).get("preek_tijden") or []
     if not url:
         raise HTTPException(400, "Plak eerst een preeklink.")
     if not email or not re.match(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
         raise HTTPException(400, "Vul een geldig e-mailadres in.")
-    threading.Thread(target=_demo_verwerk_en_mail, args=(url, email), daemon=True).start()
+    threading.Thread(target=_demo_verwerk_en_mail, args=(url, email, preek_tijden), daemon=True).start()
     return {"status": "ok"}
 
 
