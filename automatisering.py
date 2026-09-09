@@ -434,8 +434,10 @@ def tick(base_url):
                     nieuw = scan_kerk(db, kerk, base_url, nu_lokaal=nu_lok, vernieuw=vernieuw)
                 else:
                     nieuw = 0
-                if kerk.auto_verwerken:
-                    preverwerk_kerk(db, kerk, base_url)
+                # Vooraf transcriberen tijdelijk uitgeschakeld — kost te veel
+                # proxy-bandbreedte zolang het downloaden nog niet stabiel is.
+                # if kerk.auto_verwerken:
+                #     preverwerk_kerk(db, kerk, base_url)
                 verzonden = bezorg_kerk(db, kerk, base_url)
                 verzonden += bezorg_nabespreking(db, kerk, base_url)
                 if nieuw or verzonden:
