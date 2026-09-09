@@ -331,13 +331,35 @@ def _youtube_via_supadata(url, meld):
 def _youtube_via_ytdlp(url, meld):
     """YouTube-transcript via onze eigen yt-dlp-download + Whisper (residentiële proxy).
 
-    We vertrouwen NIET op de (bij livestreams onbetrouwbare) auto-ondertitels om de
-    preek af te bakenen — dat gaf lege/verkeerde vensters. In plaats daarvan
-    transcriberen we de hele audio en haalt het taalmodel zelf het preekgedeelte
-    eruit (volledige_dienst=True). Bij te weinig tekst werpen we een fout, zodat de
-    aanroeper kan terugvallen (i.p.v. een onbruikbaar mini-transcript door te geven).
+    Strategie (twee stappen):
+    1. Probeer de preektijden uit de ondertitels te halen (haal_preek_segmentatie).
+       Als dat lukt: download alleen de preekaudio en transcribeer die → volledige_dienst=False.
+       Whisper-output van de preeksegmenten IS de preek; geen LLM-extractie nodig.
+    2. Als de ondertitels ontbreken of de segmentatie mislukt: val terug op de hele
+       dienst transcriberen → volledige_dienst=True zodat LLM alsnog de preek eruit haalt.
     """
-    meld("Audio ophalen en transcriberen (OpenAI, via eigen proxy)...")
+    # Stap 1: segmentatie via ondertitels
+    try:
+        meld("Preektijden bepalen via ondertitels...")
+        seg = haal_preek_segmentatie(url, voortgang=meld)
+        tijden = seg.get("tijden") or []
+        if tijden:
+            meld("Preekaudio downloaden en transcriberen (alleen preekgedeelte)...")
+            transcript = transcribeer_preek(url, tijden, voortgang=meld)
+            if len((transcript or "").strip()) >= 200:
+                titel = seg.get("meta", {}).get("titel") or _titel_uit_cache(url) or "YouTube-dienst"
+                return {
+                    "transcript": transcript, "taal_hint": seg.get("taal_hint"),
+                    "welkom": seg.get("welkom"), "extra_context": None,
+                    "volledige_dienst": False, "liturgie": None,
+                    "ondertitel": titel,
+                    "meta": {**seg.get("meta", {}), "transcriptie_bron": "audio via proxy (OpenAI, preeksegmenten)"},
+                }
+    except Exception as _seg_fout:  # noqa: BLE001
+        log.warning("Segmentatie mislukt, val terug op hele dienst: %s", _seg_fout)
+
+    # Stap 2: terugval — hele dienst transcriberen
+    meld("Audio ophalen en transcriberen (OpenAI, via eigen proxy, hele dienst)...")
     transcript = transcribeer_hele_video(url, voortgang=meld)
     if len((transcript or "").strip()) < 200:
         raise RuntimeError(
