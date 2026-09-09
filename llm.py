@@ -403,120 +403,114 @@ def schoon_transcript(transcript, taal_hint=None):
     return (antwoord.choices[0].message.content or "").strip()
 
 
-_EXTRAHEER_PROMPT = """\
-Je ontvangt een ruwe automatische transcriptie van een VOLLEDIGE kerkdienst.
+_EXTRAHEER_MARKERS_PROMPT = """\
+Je analyseert een automatisch transcript van een kerkdienst en zoekt de preek.
 
-Je werkt in TWEE stappen. Doe stap 1 volledig voordat je aan stap 2 begint.
+Geef een JSON-object met twee velden:
+  "begin": de EXACTE eerste 20 woorden van de preek (letterlijk gekopieerd uit de tekst)
+  "einde": de EXACTE laatste 20 woorden van de preek (letterlijk gekopieerd uit de tekst)
 
-════════════════════════════════════════════════════════════════════════════════
-STAP 1 — STRUCTUURANALYSE (schrijf dit op als <analyse>…</analyse>)
-════════════════════════════════════════════════════════════════════════════════
-Ga door de transcriptie en benoem elk onderdeel van de dienst in volgorde:
+Herkenning:
+• De preek begint direct ná het preekgebed. Typische openingswoorden:
+  "Gemeente...", "We lazen zojuist...", "Laten we opslaan bij...", "Het gaat vanmorgen over..."
+• De preek eindigt vóór het dankgebed of slotlied. Typisch slot: "Amen.",
+  "laten we bidden", een zegen, een afsluitende gedachte.
+• Bij meerdere preekdelen (met een lied ertussen): begin = eerste woord van het eerste deel,
+  einde = laatste woord van het laatste deel.
 
-  Votum / Groet / Drempelwoord
-  Lied / Psalm / Gezang           ← herkenbaar: korte versregels, rijm,
-                                     archaïsch taalgebruik, regelmatige maat
-  Wetslezing / Tien Geboden
-  Schriftlezing                   ← voorganger leest Bijbeltekst voor (geen uitleg)
-  Gebed (preekgebed / dankgebed)
-  PREEK of PREEKDEEL              ← uitleg van Bijbeltekst, toepassing, voorbeelden,
-                                     langere zinnen, modern taalgebruik
-  Geloofsbelijdenis / Zegen / Wegzending
-  Mededelingen / Collecte
-
-Schrijf het overzicht als:
-<analyse>
-1. Votum + Groet
-2. Lied (Psalm 25:1,2)
-3. Wetslezing
-4. Lied (Psalm 25:3)
-5. Gebed
-6. Schriftlezing (Johannes 3:1-17)
-7. Preekgebed
-8. PREEK DEEL 1 — "Nicodemus komt 's nachts..."
-9. Lied (Gezang 12)
-10. PREEK DEEL 2 — "Zo lief heeft God de wereld..."
-11. Dankgebed
-12. Lied
-13. Zegen
-</analyse>
-
-Let bij de analyse op:
-• Liederen zijn korte rijmende regels in vaste maat — ook als de tekst
-  niet heel archaïsch is. Duidelijk ANDERS dan gesproken prediking.
-• Een schriftlezing is herkenbaar doordat de voorganger letterlijk de
-  Bijbeltekst voorleest zonder er uitleg bij te geven.
-• De preek begint DIRECT na het preekgebed — de eerste preekwoorden zijn
-  vaak: "Gemeente...", "We lazen zojuist...", "Het gaat vanmorgen over..."
-• Bij een meerdelig preek: liederen TUSSEN preekdelen horen er NIET bij,
-  maar het volgende preekdeel WEL — ook als de stijl even verschilt.
-• Als de voorganger in de preek een psalmregel citeert ter illustratie:
-  dat hoort bij de preek. Als de gemeente zingt: dat is een lied.
-
-════════════════════════════════════════════════════════════════════════════════
-STAP 2 — EXTRACTIE (na de </analyse> tag)
-════════════════════════════════════════════════════════════════════════════════
-Kopieer nu LETTERLIJK alle preek(delen) die je in stap 1 hebt geïdentificeerd.
-
-Regels:
-• Verander GEEN ENKEL WOORD. Geen verbeteringen, geen herschrijven.
-• 'eh', 'uhm', herhalingen, versprekingen, onafgemaakte zinnen: alles erin.
-• Alleen tijdcodes (bijv. [00:23:45]) mogen weg.
-• Meerdere preekdelen: scheid ze met [PREEKDEEL VERVOLGT].
-• Deel de tekst in alinea's in per gedachtegang (alleen witregels — geen
-  titels, geen nummering, geen kopjes).
-
-Na de </analyse> tag: ALLEEN de letterlijke preektekst.
-Geen JSON, geen commentaar, geen opmerkingen. Schrijf in de taal van de preek.
+Kopieer de woorden EXACT zoals ze in de tekst staan — geen parafrase, geen correcties.
+Antwoord uitsluitend met geldig JSON: {"begin": "...", "einde": "..."}
 """
 
 
+def _extraheer_tussen_markers(transcript: str, begin: str, einde: str) -> str:
+    """Zoek begin- en eindmarkering in het transcript en extraheer de tekst ertussen.
+
+    Probeert progressief kortere zoekvenstres zodat kleine LLM-variaties worden
+    opgevangen. Geeft "" terug als markers niet gevonden worden.
+    """
+    if not begin or not einde:
+        return ""
+    begin_idx = -1
+    for lengte in (60, 40, 25, 15):
+        fragment = begin[:lengte].strip()
+        if not fragment:
+            continue
+        idx = transcript.find(fragment)
+        if idx >= 0:
+            begin_idx = idx
+            break
+    einde_idx = -1
+    for lengte in (60, 40, 25, 15):
+        fragment = einde[-lengte:].strip() if len(einde) >= lengte else einde.strip()
+        if not fragment:
+            continue
+        idx = transcript.rfind(fragment)
+        if idx >= 0:
+            einde_idx = idx + len(fragment)
+            break
+    if begin_idx < 0 or einde_idx < 0 or einde_idx <= begin_idx:
+        return ""
+    return transcript[begin_idx:einde_idx].strip()
+
+
 def extraheer_en_schoon_preek(transcript: str) -> str:
-    """Extraheer de preek uit een volledige-dienst transcriptie én schoon hem meteen op.
+    """Extraheer de preek uit een volledige-dienst transcriptie.
 
-    Combineert twee stappen in één LLM-aanroep:
-    1. AI lokaliseert het preekgedeelte (ook bij meerdere preekdelen)
-    2. AI levert meteen de opgeschoonde, leesbare preektekst
+    Nieuwe aanpak (robuuster dan letterlijk kopiëren):
+    1. LLM identificeert alleen de eerste en laatste ~20 woorden van de preek
+       (klein, nooit afgekapt, geen risico op parafraseren).
+    2. Python extraheert de verbatim tekst uit het originele transcript aan de
+       hand van die markers — de preektekst wordt nooit door een model herschreven.
 
-    Dit vervangt zowel de (onbetrouwbare) heuristische blokdetectie in transcript.py
-    als de aparte schoon_transcript-stap — alles in één gerichte call.
-
-    Bij een fout of leeg resultaat wordt het originele transcript teruggegeven
-    zodat de verwerking gewoon doorgaat (minder mooi maar niet geblokkeerd).
+    Terugval: als markers niet gevonden worden, wordt het volledige transcript
+    teruggegeven zodat de verwerking gewoon doorgaat.
     """
     if not os.environ.get("OPENAI_API_KEY"):
         raise RuntimeError("OPENAI_API_KEY is niet ingesteld.")
     if not (transcript or "").strip():
         return transcript or ""
     client = OpenAI()
-    # gpt-4o-mini: goedkoop, 128k context, 16k output — voldoende voor 45-min preek.
-    # max_tokens werkt voor gpt-4o-mini; max_completion_tokens voor gpt-5/o-serie.
-    # We proberen max_completion_tokens en vallen terug op max_tokens bij een 400-fout.
+
+    # Stap 1: markers zoeken (tiny output, nooit afgekapt)
     kwargs = dict(
         model=EXTRAHEER_MODEL,
         messages=[
-            {"role": "system", "content": _EXTRAHEER_PROMPT},
-            {"role": "user", "content": "--- VOLLEDIGE DIENST TRANSCRIPTIE ---\n" + transcript},
+            {"role": "system", "content": _EXTRAHEER_MARKERS_PROMPT},
+            {"role": "user", "content": transcript},
         ],
+        max_completion_tokens=300,
     )
     try:
-        antwoord = client.chat.completions.create(**kwargs, max_completion_tokens=16384)
-    except Exception as exc:
+        # response_format=json_object zorgt voor betrouwbare JSON-uitvoer
+        antwoord = client.chat.completions.create(
+            **kwargs, response_format={"type": "json_object"}
+        )
+        markers = json.loads(antwoord.choices[0].message.content or "{}")
+    except Exception as exc:  # noqa: BLE001
         if "max_completion_tokens" in str(exc):
-            antwoord = client.chat.completions.create(**kwargs, max_tokens=16384)
+            # gpt-4o-mini accepteert max_tokens als alternatief
+            try:
+                kwargs2 = {**kwargs, "max_tokens": 300}
+                kwargs2.pop("max_completion_tokens", None)
+                antwoord = client.chat.completions.create(
+                    **kwargs2, response_format={"type": "json_object"}
+                )
+                markers = json.loads(antwoord.choices[0].message.content or "{}")
+            except Exception:  # noqa: BLE001
+                markers = {}
         else:
-            raise
-    resultaat = (antwoord.choices[0].message.content or "").strip()
+            markers = {}
 
-    # Verwijder de <analyse>…</analyse> redeneerblok — alleen de preektekst bewaren.
-    import re as _re
-    resultaat = _re.sub(r"<analyse>.*?</analyse>", "", resultaat, flags=_re.DOTALL).strip()
+    begin_fragment = (markers.get("begin") or "").strip()
+    einde_fragment = (markers.get("einde") or "").strip()
 
-    # Terugval: als model niets terugstuurt of minder dan 15% van het origineel,
-    # is er iets mis — geef het origineel terug zodat de verwerking niet blokkeert.
-    if len(resultaat) < max(200, len(transcript) * 0.15):
+    # Stap 2: verbatim extractie via Python string-zoekopdracht
+    preek = _extraheer_tussen_markers(transcript, begin_fragment, einde_fragment)
+    if not preek or len(preek) < 200:
+        # Markers niet gevonden of preek te kort: terugval op heel transcript
         return transcript
-    return resultaat
+    return preek
 
 
 def hergenereer_dag(data, dag_index, bron="", toon="warm", lengte="middel",

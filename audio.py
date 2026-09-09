@@ -120,7 +120,6 @@ def ffmpeg_diagnose():
 
 
 def _download_audio(url, map_):
-    ffmpeg_bin = _ffmpeg()
     opties = ts.basis_opties()
     opties.update(
         {
@@ -138,18 +137,9 @@ def _download_audio(url, map_):
             "fragment_retries": int(os.environ.get("YTDLP_RETRIES", "20")),
             "file_access_retries": 10,
             "continuedl": True,
-            # ffmpeg als externe downloader: één persistente HTTP-verbinding voor
-            # het hele bestand. Voorkomt dat de roterende proxy halverwege van IP
-            # wisselt, waarna het YouTube-CDN de gesigneerde URL afwijst (403/SSL).
-            "external_downloader": "ffmpeg",
-            "external_downloader_args": {
-                "ffmpeg_i": [
-                    "-reconnect", "1",
-                    "-reconnect_streamed", "1",
-                    "-reconnect_delay_max", "30",
-                ]
-            },
-            "ffmpeg_location": os.path.dirname(ffmpeg_bin),
+            # ffmpeg-locatie: zorgt dat yt-dlp de juiste ffmpeg-binary vindt voor
+            # audio-conversie na de download (niet als externe downloader).
+            "ffmpeg_location": os.path.dirname(_ffmpeg()),
         }
     )
     with yt_dlp.YoutubeDL(opties) as ydl:
@@ -192,16 +182,62 @@ def _knip(ffmpeg, bron, start, eind, doel):
     )
 
 
+def _filter_muziek(antwoord):
+    """Filter muziek/zang uit verbose_json segmenten; geeft gefilterde tekst terug.
+
+    Gebruikt no_speech_prob en avg_logprob als score-filter (whisper-1 en
+    sommige nieuwere modellen). Zonder scores: tekstgebaseerde filter op
+    muziekannotaties (♪, [muziek], [zingt] e.d.). Terugval op antwoord.text
+    als filtering niets oplevert.
+    """
+    segmenten = getattr(antwoord, "segments", None) or []
+    if not segmenten:
+        return (getattr(antwoord, "text", "") or "").strip()
+    tekst_delen = []
+    for s in segmenten:
+        if isinstance(s, dict):
+            tekst = s.get("text", "") or ""
+            no_speech = s.get("no_speech_prob")
+            avg_logprob = s.get("avg_logprob")
+        else:
+            tekst = getattr(s, "text", "") or ""
+            no_speech = getattr(s, "no_speech_prob", None)
+            avg_logprob = getattr(s, "avg_logprob", None)
+        # Score-gebaseerde filter (whisper-1 / modellen die deze scores teruggeven)
+        if no_speech is not None and no_speech > 0.5:
+            continue  # waarschijnlijk geen spraak
+        if avg_logprob is not None and avg_logprob < -1.2:
+            continue  # Whisper erg onzeker → waarschijnlijk zang/muziek
+        # Tekstgebaseerde filter: typische muziekmarkeringen
+        if re.search(r"[♪♫]|\[muziek\]|\[music\]|\[zingen?\]|\[sing", tekst, re.I):
+            continue
+        tekst_delen.append(tekst)
+    resultaat = " ".join(tekst_delen).strip()
+    # Terugval: als filtering alles weggooit geef dan de originele tekst terug
+    return resultaat or (getattr(antwoord, "text", "") or "").strip()
+
+
 def _transcribeer_bestand(client, pad, taal=None):
-    # Zonder taal laten we het model automatisch detecteren, zodat ook
-    # Afrikaanse/Engelse preken goed getranscribeerd worden. Alleen een
-    # betrouwbaar bekende taalcode meegeven als hint.
-    argumenten = {"model": TRANSCRIBE_MODEL}
+    """Transcribeer één audiobestand.
+
+    Vraagt verbose_json aan voor segmentinfo zodat muziek/zang gefilterd kan
+    worden op basis van confidence-scores (no_speech_prob, avg_logprob). Als
+    verbose_json niet ondersteund wordt, valt het terug op gewone transcriptie.
+    Zonder taal auto-detectie, zodat ook Afrikaanse/Engelse preken werken.
+    """
+    basisargs = {"model": TRANSCRIBE_MODEL}
     if taal and len(taal) == 2:
-        argumenten["language"] = taal
-    with open(pad, "rb") as f:
-        antwoord = client.audio.transcriptions.create(file=f, **argumenten)
-    return antwoord.text.strip()
+        basisargs["language"] = taal
+    try:
+        with open(pad, "rb") as f:
+            antwoord = client.audio.transcriptions.create(
+                file=f, **basisargs, response_format="verbose_json"
+            )
+        return _filter_muziek(antwoord)
+    except Exception:  # noqa: BLE001 — verbose_json niet ondersteund of andere fout
+        with open(pad, "rb") as f:
+            antwoord = client.audio.transcriptions.create(file=f, **basisargs)
+        return antwoord.text.strip()
 
 
 def _knip_stream(ffmpeg, url, start, lengte, doel):
