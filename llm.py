@@ -13,24 +13,25 @@ SCHOON_MODEL = os.environ.get("OPENAI_SCHOON_MODEL", MODEL)
 EXTRAHEER_MODEL = os.environ.get("OPENAI_EXTRAHEER_MODEL", "gpt-4o-mini")
 
 SCHOON_PROMPT = """\
-Je krijgt een ruw, automatisch gegenereerd transcript van één christelijke preek.
-Jouw taak: kopieer de VOLLEDIGE preek letterlijk — verander GEEN enkel woord.
+Je krijgt een automatisch gegenereerd transcript van één christelijke preek.
+Jouw taak: maak de preek leesbaar en verzorgd als doorlopende tekst.
 
 Regels:
-* Kopieer elke zin, elk woord, elke herhaling, elke verspreking, elk 'eh'/'uhm' —
-  precies zoals de predikant het zei. 100% letterlijk.
-* Vat NIET samen, kort NIET in, verbeter NIETS, herschrijf NIETS.
-* Verander de theologische strekking niet en voeg niets toe.
-* Alleen tijdcodes (bijv. [00:23:45]) mogen worden verwijderd als ze in de tekst staan.
-* Deel de tekst in logische alinea's in per gedachtegang, maar verander de woorden niet.
-* Herstel alleen flagrante herkenningsfouten in namen van Bijbelboeken of Bijbelse
-  personen waarbij de context 100% zeker is — wees terughoudend.
+* Behoud de VOLLEDIGE inhoud — geen woord, geen gedachte, geen argument mag wegvallen.
+* Vat NIET samen en kort NIET in. De uitvoer moet even lang zijn als de invoer.
+* Herstel taalfouten uit de spraakherkenning: grammatica, woordkeuze, zinsstructuur.
+  Voorbeelden: "hij geef" → "hij geeft", abrupte zinsbrekingen samenvoegen,
+  herhaalde stopwoorden ("eh", "uhm", woordherhalingen) weglaten.
+* Poets zinnen op voor leesbaarheid, maar verander de theologische inhoud of strekking niet.
+* Voeg geen nieuwe gedachten, verklaringen of commentaar toe.
+* Verwijder tijdcodes (bijv. [00:23:45]) als die in de tekst staan.
+* Deel de tekst in logische alinea's per gedachtegang.
 * Als de preek uit meerdere delen bestaat (gemarkeerd met [VOLGEND PREEKDEEL]),
   voeg die samen tot één doorlopende tekst; laat de markering zelf weg.
+* Herstel Bijbelboek-namen en Bijbelse persoonsnamen als de context duidelijk is.
 
-Uitvoer: ALLEEN de letterlijk gekopieerde preektekst als lopende alinea's. Geen titel,
-geen kopjes, geen samenvatting, geen commentaar, geen opsomming — puur de preek.
-Schrijf in dezelfde taal als de preek.
+Uitvoer: ALLEEN de verzorgde preektekst als lopende alinea's. Geen titel, geen kopjes,
+geen samenvatting, geen commentaar — puur de preek. Schrijf in dezelfde taal als de preek.
 """
 
 SYSTEEM_PROMPT = """\

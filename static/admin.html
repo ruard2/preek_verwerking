@@ -861,14 +861,14 @@ function bouwStap1(mij, s1, st, wiz) {
         _toonVoorbeeldVraag(mij, st, houder, wiz);
         wiz.naar(1);
       } else {
-        // Enkele preek-URL: verwerk direct
+        // Enkele preek-URL: toon tijdmarkeringen
         st.enkeleUrl = url;
-        s1.busy('');
-        wiz.naar(1);
-        hs_startVerwerken(k.url || url, status, (videoId, heeftPreek) => {
+        houder.innerHTML = '';
+        hs_toonTijdMarkeringen(k.url || url, k.video_id || null, houder, status, (videoId, heeftPreek) => {
           st.videoId = videoId; st.heeftPreek = heeftPreek;
           s1.merkGroen(T('Preek aangeleverd'));
-        }, null);
+          wiz.naar(1);
+        }, () => { s1.busy(''); wiz.naar(1); });
       }
     } catch (e) {
       let m = T('Kon de link niet lezen.');
@@ -942,8 +942,7 @@ async function stap1Verwerk(mij, st, url, status, houder, klaar, beginVerwerken)
       return;
     }
     st.enkeleUrl = url;   // onthouden voor 'automatiseren' bij stap 3
-    beginVerwerken();
-    hs_startVerwerken(k.url || url, status, klaar, null);
+    hs_toonTijdMarkeringen(k.url || url, k.video_id || null, houder, status, klaar, beginVerwerken);
   } catch (e) {
     let m = T('Kon de link niet lezen.');
     if (e && typeof e.json === 'function') { try { m = await fouttekst(e, m); } catch (_) {} }
@@ -988,7 +987,7 @@ async function hs_recenteKies(container, kanaalUrl, klaar, beginVerwerken, wiz) 
         rij.appendChild(knoppenRij);
       } else {
         const b = el('button', {className: 'secundair'}, T('Verwerken'));
-        b.onclick = () => { b.remove(); rij.appendChild(st2); if (beginVerwerken) beginVerwerken(); hs_startVerwerken(p.url, st2, klaar, null); };
+        b.onclick = () => { b.remove(); rij.appendChild(st2); hs_toonTijdMarkeringen(p.url, p.video_id || null, rij, st2, klaar, beginVerwerken); };
         rij.appendChild(b);
       }
       kaart.appendChild(rij);
@@ -1488,17 +1487,134 @@ function hs_toonDiensten(diensten, status, houder, klaar, beginVerwerken, opmerk
   diensten.forEach(d => {
     const b = el('button', {className: 'secundair'}, (d.datum ? d.datum + ' · ' : '') + (d.titel || d.label || 'Dienst'));
     b.style.cssText = 'display:block;width:100%;text-align:left;margin:.35rem 0';
-    b.onclick = () => { houder.innerHTML = ''; if (beginVerwerken) beginVerwerken(); hs_startVerwerken(d.url, status, klaar, null); };
+    b.onclick = () => { houder.innerHTML = ''; hs_toonTijdMarkeringen(d.url, d.video_id || null, houder, status, klaar, beginVerwerken); };
     kaart.appendChild(b);
   });
   houder.appendChild(kaart);
 }
 
-async function hs_startVerwerken(url, status, klaar, aanleverBox) {
+// Toon YouTube-player met tijdmarkeringen zodat de admin begin/eind van de preek aanwijst.
+function hs_toonTijdMarkeringen(url, videoId, houder, status, klaar, beginVerwerken) {
+  const T = s => AfterSermonI18n.text(s);
+  if (!videoId) {
+    const m = (url || '').match(/(?:v=|youtu\.be\/|\/embed\/)([A-Za-z0-9_-]{11})/);
+    videoId = m ? m[1] : null;
+  }
+  houder.innerHTML = '';
+  const kaart = el('div', {className: 'kaart'});
+  kaart.appendChild(el('h2', {}, T('Wijs de preek aan')));
+  kaart.appendChild(el('p', {className: 'sub'},
+    T('Speel de video af en druk op "Begin" en "Eind" op het juiste moment. Of typ de tijden handmatig (bijv. 31:20 of 1:05:00).')));
+
+  // YouTube-player
+  let ytPlayer = null;
+  if (videoId) {
+    const wrap = el('div');
+    wrap.style.cssText = 'position:relative;padding-bottom:56.25%;height:0;overflow:hidden;border-radius:8px;margin-bottom:1.2rem';
+    const iframe = el('iframe');
+    iframe.id = 'yt-marker-iframe';
+    iframe.src = 'https://www.youtube.com/embed/' + videoId + '?enablejsapi=1';
+    iframe.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;border:none';
+    iframe.allow = 'accelerometer;autoplay;clipboard-write;encrypted-media;gyroscope;picture-in-picture';
+    iframe.allowFullscreen = true;
+    wrap.appendChild(iframe);
+    kaart.appendChild(wrap);
+    const initYT = () => {
+      ytPlayer = new YT.Player('yt-marker-iframe', {});
+    };
+    if (window.YT && window.YT.Player) { initYT(); }
+    else {
+      const prev = window.onYouTubeIframeAPIReady;
+      window.onYouTubeIframeAPIReady = () => { if (prev) prev(); initYT(); };
+      if (!document.querySelector('script[src*="youtube.com/iframe_api"]')) {
+        const s = document.createElement('script');
+        s.src = 'https://www.youtube.com/iframe_api';
+        document.head.appendChild(s);
+      }
+    }
+  }
+
+  // Tijdhelpers
+  const secNaarTijd = sec => {
+    sec = Math.round(sec || 0);
+    const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
+    if (h > 0) return h + ':' + String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0');
+    return m + ':' + String(s).padStart(2,'0');
+  };
+  const tijdNaarSec = str => {
+    const p = (str || '').trim().split(':').map(Number);
+    if (p.length === 3) return p[0]*3600 + p[1]*60 + (p[2]||0);
+    if (p.length === 2) return p[0]*60 + (p[1]||0);
+    return parseInt(str)||0;
+  };
+  const huidigeTijd = () => { try { return ytPlayer && ytPlayer.getCurrentTime ? Math.round(ytPlayer.getCurrentTime()) : 0; } catch(_){return 0;} };
+
+  // Preekdelen
+  const delenLijst = [];
+  const delenDiv = el('div');
+  kaart.appendChild(delenDiv);
+
+  const voegDeelToe = (startSec, eindSec) => {
+    const idx = delenLijst.length;
+    const rij = el('div');
+    rij.style.cssText = 'display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin:.6rem 0;padding:.75rem;background:var(--soft);border-radius:6px';
+    const lbl = el('span', {}, (idx === 0 ? T('Preek') : T('Deel') + ' ' + (idx+1)) + ':');
+    lbl.style.cssText = 'font-weight:600;min-width:4.5rem';
+    const bIn = el('input', {type:'text', placeholder:'31:20', value: startSec ? secNaarTijd(startSec) : ''});
+    bIn.style.cssText = 'width:5.5rem;padding:.3rem .5rem;border:1px solid var(--rand);border-radius:4px;font-family:monospace';
+    const bKnop = el('button', {className:'secundair', title:T('Huidige afspeelpositie instellen als beginpunt')}, '⏺ ' + T('Begin'));
+    bKnop.style.cssText = 'padding:.3rem .65rem;font-size:.82rem';
+    bKnop.onclick = () => { bIn.value = secNaarTijd(huidigeTijd()); };
+    const pijl = el('span', {}, '→');
+    const eIn = el('input', {type:'text', placeholder:'1:20:00', value: eindSec ? secNaarTijd(eindSec) : ''});
+    eIn.style.cssText = 'width:5.5rem;padding:.3rem .5rem;border:1px solid var(--rand);border-radius:4px;font-family:monospace';
+    const eKnop = el('button', {className:'secundair', title:T('Huidige afspeelpositie instellen als eindpunt')}, '⏹ ' + T('Eind'));
+    eKnop.style.cssText = 'padding:.3rem .65rem;font-size:.82rem';
+    eKnop.onclick = () => { eIn.value = secNaarTijd(huidigeTijd()); };
+    rij.append(lbl, bKnop, bIn, pijl, eKnop, eIn);
+    if (idx > 0) {
+      const del = el('button', {title:T('Verwijder dit deel')}, '✕');
+      del.style.cssText = 'opacity:.55;padding:.3rem .5rem;font-size:.82rem';
+      del.onclick = () => { delenDiv.removeChild(rij); delenLijst.splice(delenLijst.indexOf(deel), 1); };
+      rij.appendChild(del);
+    }
+    const deel = {rij, bIn, eIn};
+    delenLijst.push(deel);
+    delenDiv.appendChild(rij);
+  };
+  voegDeelToe(0, 0);
+
+  const extraKnop = el('button', {className:'link'}, '+ ' + T('Tweede preekdeel'));
+  extraKnop.style.cssText = 'margin-top:.3rem;font-size:.9rem';
+  extraKnop.onclick = () => voegDeelToe(0, 0);
+  kaart.appendChild(extraKnop);
+
+  const fout = el('p', {className:'sub'}); fout.style.color = 'var(--rood, #c0392b)';
+  kaart.appendChild(fout);
+
+  const verwerkKnop = el('button', {}, T('Verwerken →'));
+  verwerkKnop.style.cssText = 'margin-top:1rem;display:block';
+  verwerkKnop.onclick = async () => {
+    const tijden = delenLijst
+      .map(d => [tijdNaarSec(d.bIn.value), tijdNaarSec(d.eIn.value)])
+      .filter(([s, e]) => e > s && e > 0);
+    if (!tijden.length) { fout.textContent = T('Stel minstens één begin- en eindtijd in.'); return; }
+    fout.textContent = '';
+    houder.innerHTML = '';
+    if (beginVerwerken) beginVerwerken();
+    await hs_startVerwerken(url, status, klaar, null, tijden);
+  };
+  kaart.appendChild(verwerkKnop);
+  houder.appendChild(kaart);
+}
+
+async function hs_startVerwerken(url, status, klaar, aanleverBox, preekTijden) {
   const T = s => AfterSermonI18n.text(s);
   status.textContent = T('Verwerken… (dit kan enkele minuten duren)');
   try {
-    const r = await fetch('/api/verwerk', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({url})});
+    const body = {url};
+    if (preekTijden && preekTijden.length) body.preek_tijden = preekTijden;
+    const r = await fetch('/api/verwerk', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
     if (!r.ok) throw new Error(await fouttekst(r, T('Verwerken mislukt.')));
     const {taak_id} = await r.json();
     hs_volgTaak(taak_id, status, klaar, aanleverBox);

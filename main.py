@@ -110,6 +110,9 @@ taken = {}
 class VerwerkVerzoek(BaseModel):
     url: str
     herverwerk: bool = False
+    # Handmatig ingestelde preektijden: [[start_sec, eind_sec], ...].
+    # Als opgegeven, wordt alleen dat audio-segment gedownload en getranscribeerd.
+    preek_tijden: list[list[int]] = []
 
 
 class BewerkVerzoek(BaseModel):
@@ -302,14 +305,14 @@ def _transcribeer_kerkomroep(url, meld):
     return _transcribeer_audio_bron(kerkomroep.haal_opname(url), "Kerkomroep", meld)
 
 
-def _transcribeer_youtube(url, meld):
+def _transcribeer_youtube(url, meld, preek_tijden=None):
     """YouTube-transcriptbron kiezen.
 
     Altijd via yt-dlp + Whisper (eigen proxy). Supadata wordt niet meer gebruikt
     als fallback voor de audio-transcriptie — als yt-dlp faalt, gooit de fout
     omhoog zodat het probleem zichtbaar is en opgelost kan worden.
     """
-    return _youtube_via_ytdlp(url, meld)
+    return _youtube_via_ytdlp(url, meld, preek_tijden=preek_tijden or [])
 
 
 def _youtube_via_supadata(url, meld):
@@ -328,37 +331,30 @@ def _youtube_via_supadata(url, meld):
     }
 
 
-def _youtube_via_ytdlp(url, meld):
+def _youtube_via_ytdlp(url, meld, preek_tijden=None):
     """YouTube-transcript via onze eigen yt-dlp-download + Whisper (residentiële proxy).
 
-    Strategie (twee stappen):
-    1. Probeer de preektijden uit de ondertitels te halen (haal_preek_segmentatie).
-       Als dat lukt: download alleen de preekaudio en transcribeer die → volledige_dienst=False.
-       Whisper-output van de preeksegmenten IS de preek; geen LLM-extractie nodig.
-    2. Als de ondertitels ontbreken of de segmentatie mislukt: val terug op de hele
-       dienst transcriberen → volledige_dienst=True zodat LLM alsnog de preek eruit haalt.
+    Strategie:
+    1. Als handmatige preek_tijden opgegeven zijn: gebruik die direct.
+    2. Anders: val terug op hele dienst transcriberen + LLM-extractie.
+       (Subtitle-segmentatie overgeslagen — onbetrouwbaar voor livestreams.)
     """
-    # Stap 1: segmentatie via ondertitels
-    try:
-        meld("Preektijden bepalen via ondertitels...")
-        seg = haal_preek_segmentatie(url, voortgang=meld)
-        tijden = seg.get("tijden") or []
-        if tijden:
-            meld("Preekaudio downloaden en transcriberen (alleen preekgedeelte)...")
-            transcript = transcribeer_preek(url, tijden, voortgang=meld)
-            if len((transcript or "").strip()) >= 200:
-                titel = seg.get("meta", {}).get("titel") or _titel_uit_cache(url) or "YouTube-dienst"
-                return {
-                    "transcript": transcript, "taal_hint": seg.get("taal_hint"),
-                    "welkom": seg.get("welkom"), "extra_context": None,
-                    "volledige_dienst": False, "liturgie": None,
-                    "ondertitel": titel,
-                    "meta": {**seg.get("meta", {}), "transcriptie_bron": "audio via proxy (OpenAI, preeksegmenten)"},
-                }
-    except Exception as _seg_fout:  # noqa: BLE001
-        log.warning("Segmentatie mislukt, val terug op hele dienst: %s", _seg_fout)
+    tijden = [t for t in (preek_tijden or []) if len(t) == 2 and t[1] > t[0]]
 
-    # Stap 2: terugval — hele dienst transcriberen
+    if tijden:
+        meld("Preekaudio downloaden en transcriberen (handmatige tijdmarkering)...")
+        transcript = transcribeer_preek(url, tijden, voortgang=meld)
+        if len((transcript or "").strip()) >= 200:
+            titel = _titel_uit_cache(url) or "YouTube-dienst"
+            return {
+                "transcript": transcript, "taal_hint": None, "welkom": None,
+                "extra_context": None, "volledige_dienst": False, "liturgie": None,
+                "ondertitel": titel,
+                "meta": {"titel": titel, "transcriptie_bron": "audio via proxy (OpenAI, preeksegmenten)"},
+            }
+        log.warning("Preektijden opgegeven maar transcript te kort; val terug op hele dienst.")
+
+    # Terugval: hele dienst transcriberen
     meld("Audio ophalen en transcriberen (OpenAI, via eigen proxy, hele dienst)...")
     transcript = transcribeer_hele_video(url, voortgang=meld)
     if len((transcript or "").strip()) < 200:
@@ -375,13 +371,13 @@ def _youtube_via_ytdlp(url, meld):
     }
 
 
-def _transcribeer_bron(url, is_kdg, is_ko, meld):
+def _transcribeer_bron(url, is_kdg, is_ko, meld, preek_tijden=None):
     """Kies de juiste transcriptiebron en geef een uniforme bron_info dict terug."""
     if is_kdg:
         return _transcribeer_kerkdienstgemist(url, meld)
     if is_ko:
         return _transcribeer_kerkomroep(url, meld)
-    return _transcribeer_youtube(url, meld)
+    return _transcribeer_youtube(url, meld, preek_tijden=preek_tijden or [])
 
 
 def _genereer_basis(bron_info, bijbel, typen, meld):
@@ -523,7 +519,7 @@ def _pas_uitvoer_toe(data, uitvoer_typen, preek_schoon, transcript_ruw, meld):
 
 
 def verwerk_en_bewaar(url, herverwerk=False, meld=None, bijbel=None, uitvoer_typen=None,
-                      alleen_transcript=False):
+                      alleen_transcript=False, preek_tijden=None):
     """Verwerk een dienst (of laad uit cache) en bewaar het resultaat.
 
     Herbruikbaar vanuit de interactieve taak én de automatisering. `bijbel` is een
@@ -577,7 +573,7 @@ def verwerk_en_bewaar(url, herverwerk=False, meld=None, bijbel=None, uitvoer_typ
         preek_schoon = bewaard.get("preek_schoon") or ""
         meld("Bestaand transcript hergebruiken (niet opnieuw transcriberen)...")
     else:
-        bron_info = _transcribeer_bron(url, is_kdg, is_ko, meld)
+        bron_info = _transcribeer_bron(url, is_kdg, is_ko, meld, preek_tijden=preek_tijden or [])
         transcript_ruw = bron_info["transcript"]
     meta = bron_info["meta"]
     ondertitel = bron_info.get("ondertitel")
@@ -808,7 +804,8 @@ def _voer_taak_uit(taak_id, url):
         # De interactieve tool transcribeert + schoont alleen op; genereren gebeurt
         # daarna op aanvraag (de gebruiker kiest zelf) — dat bespaart AI-kosten.
         r = verwerk_en_bewaar(
-            url, herverwerk=taak.get("_herverwerk"), meld=meld, alleen_transcript=True
+            url, herverwerk=taak.get("_herverwerk"), meld=meld, alleen_transcript=True,
+            preek_tijden=taak.get("_preek_tijden") or [],
         )
         taak["meta"] = r["meta"]
         taak["resultaat"] = {
@@ -1313,6 +1310,7 @@ def start_verwerking(verzoek: VerwerkVerzoek):
         "fout": None,
         "meta": None,
         "_herverwerk": verzoek.herverwerk,
+        "_preek_tijden": verzoek.preek_tijden or [],
     }
     threading.Thread(target=_voer_taak_uit, args=(taak_id, url), daemon=True).start()
     return {"taak_id": taak_id}

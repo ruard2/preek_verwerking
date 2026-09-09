@@ -229,6 +229,10 @@ class Uitzending(Base):
     # Dagdeel van de dienst: "ochtend" | "avond" | "" (onbekend). Voor het
     # filteren op dienstvoorkeur van de inschrijver.
     dagdeel: Mapped[str] = mapped_column(String(10), default="")
+    # Preektijden: JSON-lijst [[start_sec, eind_sec], ...] — handmatig ingesteld
+    # via de beheerpagina. Als ingesteld, wordt alleen dit audio-segment
+    # gedownload en getranscribeerd. Voorbeeld: [[1850, 3850]] of [[600, 1200], [1500, 2400]]
+    preek_tijden: Mapped[str] = mapped_column(String(500), default="", nullable=True)
 
 
 class NabesprekingBezorging(Base):
