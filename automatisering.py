@@ -461,8 +461,13 @@ def tick(base_url):
                 # proxy-bandbreedte zolang het downloaden nog niet stabiel is.
                 # if kerk.auto_verwerken:
                 #     preverwerk_kerk(db, kerk, base_url)
-                verzonden = bezorg_kerk(db, kerk, base_url)
-                verzonden += bezorg_nabespreking(db, kerk, base_url)
+
+                # Automatisch bezorgen tijdelijk uitgeschakeld — alleen op
+                # handmatig verzoek versturen (via admin of demo).
+                # verzonden = bezorg_kerk(db, kerk, base_url)
+                # verzonden += bezorg_nabespreking(db, kerk, base_url)
+                verzonden = 0
+
                 if nieuw or verzonden:
                     _log.info(
                         "kerk %s: %s nieuwe dienst(en), %s mail(s) verzonden",
