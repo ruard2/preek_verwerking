@@ -18,6 +18,7 @@ import shutil
 import subprocess
 import tempfile
 import time
+import uuid
 
 import imageio_ffmpeg
 import yt_dlp
@@ -119,8 +120,41 @@ def ffmpeg_diagnose():
         return f"ffmpeg niet bruikbaar: {fout}"
 
 
+def _sticky_proxy(proxy_url):
+    """Voeg een uniek session-ID toe aan een DataImpulse-proxy-URL zodat het IP
+    voor de hele download-sessie hetzelfde blijft (geen IP-rotatie mid-download).
+
+    DataImpulse sticky-sessie formaat:
+        http://USER-session-SESSID:PASS@HOST:PORT
+    Andere proxy's: retourneer de URL ongewijzigd.
+    """
+    if not proxy_url:
+        return proxy_url
+    import urllib.parse
+    parsed = urllib.parse.urlparse(proxy_url)
+    if not parsed.hostname or "dataimpulse" not in parsed.hostname:
+        return proxy_url
+    # Gebruikersnaam mag al '-session-...' bevatten — dan vervangen we hem.
+    user = parsed.username or ""
+    # Strip bestaand session-suffix
+    user = re.sub(r"-session-[^:@]*$", "", user)
+    sessid = uuid.uuid4().hex[:16]
+    new_user = f"{user}-session-{sessid}"
+    # Bouw de netloc opnieuw op
+    password_deel = f":{parsed.password}" if parsed.password else ""
+    port_deel = f":{parsed.port}" if parsed.port else ""
+    new_netloc = f"{new_user}{password_deel}@{parsed.hostname}{port_deel}"
+    new_url = urllib.parse.urlunparse(parsed._replace(netloc=new_netloc))
+    return new_url
+
+
 def _download_audio(url, map_):
     opties = ts.basis_opties()
+    # Vervang de proxy door een sticky-sessie variant zodat het IP stabiel
+    # blijft gedurende de volledige download (info + audiostream zijn dan van
+    # hetzelfde IP, waardoor de IP-gebonden CDN-URL niet met 403 afgewezen wordt).
+    if "proxy" in opties:
+        opties["proxy"] = _sticky_proxy(opties["proxy"])
     opties.update(
         {
             "skip_download": False,

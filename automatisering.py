@@ -311,10 +311,33 @@ def bezorg_kerk(db, kerk, base_url, nu_lokaal=None):
         if not bewaard or not bewaard.get("data"):
             import main  # lui verwerken: nu pas transcript + AI
 
+            # YouTube-diensten vereisen handmatige preektijden — zonder die
+            # tijdmarkering zou de proxy elke 5 minuten opnieuw een dure (en
+            # falende) download starten. Sla deze uitzending dus over tot de
+            # beheerder de begin- en eindtijd heeft ingesteld.
+            is_yt = "youtube.com" in (uit.url or "") or "youtu.be" in (uit.url or "")
+            preek_tijden_auto = []
+            if is_yt:
+                try:
+                    preek_tijden_auto = [
+                        t for t in __import__("json").loads(uit.preek_tijden or "[]")
+                        if len(t) == 2 and t[1] > t[0]
+                    ]
+                except Exception:
+                    preek_tijden_auto = []
+                if not preek_tijden_auto:
+                    _log.info(
+                        "bezorg_kerk: %s — geen preektijden ingesteld, "
+                        "verwerking overgeslagen (stel begin/eind in via het beheerpaneel).",
+                        uit.video_id,
+                    )
+                    continue
+
             try:
                 main.verwerk_en_bewaar(
                     uit.url, bijbel=main.bijbel_van_kerk(kerk),
                     uitvoer_typen=main.uitvoer_van_kerk(kerk),
+                    preek_tijden=preek_tijden_auto,
                 )
             except Exception:  # noqa: BLE001
                 traceback.print_exc()
