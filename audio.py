@@ -18,7 +18,6 @@ import shutil
 import subprocess
 import tempfile
 import time
-import uuid
 
 import imageio_ffmpeg
 import yt_dlp
@@ -120,36 +119,8 @@ def ffmpeg_diagnose():
         return f"ffmpeg niet bruikbaar: {fout}"
 
 
-def _sticky_proxy(proxy_url):
-    """Voeg een uniek session-ID toe aan een DataImpulse-proxy-URL zodat het IP
-    voor de hele download-sessie hetzelfde blijft (geen IP-rotatie mid-download).
-
-    DataImpulse sticky-sessie formaat:
-        http://USER-session-SESSID:PASS@HOST:PORT
-
-    We doen dit met pure string-/regex-manipulatie zodat speciale tekens in het
-    wachtwoord intact blijven (urllib.parse decodeert en herencodeert niet altijd
-    correct, wat '407 NO_USER' kan veroorzaken).
-    Andere proxy's: retourneer de URL ongewijzigd.
-    """
-    if not proxy_url or "dataimpulse" not in proxy_url:
-        return proxy_url
-    sessid = uuid.uuid4().hex[:16]
-    # Verwijder bestaand -session-... suffix uit de gebruikersnaam (als aanwezig)
-    url = re.sub(r"(-session-[^:@]*)(?=:)", "", proxy_url)
-    # Voeg -session-SESSID in direct na de gebruikersnaam, vóór de eerste ':' na '://'
-    # Patroon: ://<gebruikersnaam>:  →  ://<gebruikersnaam>-session-SESSID:
-    url = re.sub(r"(://[^:@]+)(:)", rf"\1-session-{sessid}\2", url, count=1)
-    return url
-
-
 def _download_audio(url, map_):
     opties = ts.basis_opties()
-    # Vervang de proxy door een sticky-sessie variant zodat het IP stabiel
-    # blijft gedurende de volledige download (info + audiostream zijn dan van
-    # hetzelfde IP, waardoor de IP-gebonden CDN-URL niet met 403 afgewezen wordt).
-    if "proxy" in opties:
-        opties["proxy"] = _sticky_proxy(opties["proxy"])
     opties.update(
         {
             "skip_download": False,
