@@ -126,26 +126,21 @@ def _sticky_proxy(proxy_url):
 
     DataImpulse sticky-sessie formaat:
         http://USER-session-SESSID:PASS@HOST:PORT
+
+    We doen dit met pure string-/regex-manipulatie zodat speciale tekens in het
+    wachtwoord intact blijven (urllib.parse decodeert en herencodeert niet altijd
+    correct, wat '407 NO_USER' kan veroorzaken).
     Andere proxy's: retourneer de URL ongewijzigd.
     """
-    if not proxy_url:
+    if not proxy_url or "dataimpulse" not in proxy_url:
         return proxy_url
-    import urllib.parse
-    parsed = urllib.parse.urlparse(proxy_url)
-    if not parsed.hostname or "dataimpulse" not in parsed.hostname:
-        return proxy_url
-    # Gebruikersnaam mag al '-session-...' bevatten — dan vervangen we hem.
-    user = parsed.username or ""
-    # Strip bestaand session-suffix
-    user = re.sub(r"-session-[^:@]*$", "", user)
     sessid = uuid.uuid4().hex[:16]
-    new_user = f"{user}-session-{sessid}"
-    # Bouw de netloc opnieuw op
-    password_deel = f":{parsed.password}" if parsed.password else ""
-    port_deel = f":{parsed.port}" if parsed.port else ""
-    new_netloc = f"{new_user}{password_deel}@{parsed.hostname}{port_deel}"
-    new_url = urllib.parse.urlunparse(parsed._replace(netloc=new_netloc))
-    return new_url
+    # Verwijder bestaand -session-... suffix uit de gebruikersnaam (als aanwezig)
+    url = re.sub(r"(-session-[^:@]*)(?=:)", "", proxy_url)
+    # Voeg -session-SESSID in direct na de gebruikersnaam, vóór de eerste ':' na '://'
+    # Patroon: ://<gebruikersnaam>:  →  ://<gebruikersnaam>-session-SESSID:
+    url = re.sub(r"(://[^:@]+)(:)", rf"\1-session-{sessid}\2", url, count=1)
+    return url
 
 
 def _download_audio(url, map_):
