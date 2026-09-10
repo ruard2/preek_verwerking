@@ -120,6 +120,7 @@ def ffmpeg_diagnose():
 
 
 def _download_audio(url, map_):
+    ffmpeg_bin = _ffmpeg()
     opties = ts.basis_opties()
     opties.update(
         {
@@ -137,9 +138,18 @@ def _download_audio(url, map_):
             "fragment_retries": int(os.environ.get("YTDLP_RETRIES", "20")),
             "file_access_retries": 10,
             "continuedl": True,
-            # ffmpeg-locatie: zorgt dat yt-dlp de juiste ffmpeg-binary vindt voor
-            # audio-conversie na de download (niet als externe downloader).
-            "ffmpeg_location": os.path.dirname(_ffmpeg()),
+            # ffmpeg als externe downloader: één persistente HTTP-verbinding voor
+            # het hele bestand. Voorkomt dat de roterende proxy halverwege van IP
+            # wisselt, waarna het YouTube-CDN de gesigneerde URL afwijst (403).
+            "external_downloader": "ffmpeg",
+            "external_downloader_args": {
+                "ffmpeg_i": [
+                    "-reconnect", "1",
+                    "-reconnect_streamed", "1",
+                    "-reconnect_delay_max", "30",
+                ]
+            },
+            "ffmpeg_location": os.path.dirname(ffmpeg_bin),
         }
     )
     with yt_dlp.YoutubeDL(opties) as ydl:
