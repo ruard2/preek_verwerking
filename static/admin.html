@@ -243,10 +243,7 @@ function toonDashboard(mij) {
       }
       mij.kanaal_url = kanaalUrl;
       mij.auto_verwerken = document.getElementById('autoverwerk').checked;
-      toon('ok', kanaalUrl
-        ? T('Instellingen opgeslagen. Het kanaal wordt nu op de achtergrond gescand.')
-        : T('Instellingen opgeslagen.'));
-      if (kanaalUrl) fetch('/api/admin/scan-nu', {method: 'POST'}).catch(() => {});
+      toon('ok', T('Instellingen opgeslagen.'));
     } catch (f) { toon('fout', f.message); }
   };
   kaart.appendChild(knop);

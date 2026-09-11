@@ -727,23 +727,8 @@ def recente_preken(request: Request, db=Depends(get_db)):
             "klaar": bool(bewaard and (bewaard.get("transcript_ruw") or "").strip()),
             "heeft_preek": bool(bewaard and bewaard.get("preek_schoon")),
         })
-    # Login-freshness: is auto-verwerken aan en staat er (nog) niets, start dan op de
-    # achtergrond een scan + voorverwerking (niet wachten op de trage tick).
-    if kerk.auto_verwerken and kerk.kanaal_url and not uitz:
-        base = _basis_url(request)
-        kerk_id = kerk.id
-
-        def _bg():
-            d = SessionLocal()
-            try:
-                k = d.get(Church, kerk_id)
-                automatisering.scan_kerk(d, k, base)
-                automatisering.preverwerk_kerk(d, k, base)
-            except Exception:  # noqa: BLE001
-                d.rollback()
-            finally:
-                d.close()
-        threading.Thread(target=_bg, daemon=True).start()
+    # Geen automatische achtergrond-scan meer: geplande diensten worden alleen
+    # aangemaakt als de beheerder expliciet op Verwerken klikt.
     return {"zondag": str(zondag), "auto_verwerken": bool(kerk.auto_verwerken), "preken": preken}
 
 
