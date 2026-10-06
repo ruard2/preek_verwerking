@@ -167,7 +167,7 @@ def pot_provider_diagnose():
         return f"PO-token-provider op {url} is NIET bereikbaar: {fout}{staart}"
 
 
-def _basis_opties():
+def _basis_opties(zonder_proxy=False):
     opties = {
         "quiet": True,
         "no_warnings": True,
@@ -200,7 +200,7 @@ def _basis_opties():
     # Optioneel: al het YouTube-verkeer via een (residentiële) proxy leiden.
     # Meest betrouwbare oplossing als het datacenter-IP geblokkeerd blijft.
     proxy = os.environ.get("YTDLP_PROXY")
-    if proxy:
+    if proxy and not zonder_proxy:
         opties["proxy"] = proxy
 
     # Optioneel alternatief: cookies meegeven als YouTube het IP toch blokkeert.
@@ -224,9 +224,9 @@ def _basis_opties():
     return opties
 
 
-def basis_opties():
+def basis_opties(zonder_proxy=False):
     """Publieke toegang tot de yt-dlp-opties (provider/proxy/cookies) voor hergebruik."""
-    return _basis_opties()
+    return _basis_opties(zonder_proxy=zonder_proxy)
 
 
 def provider_bereikbaar():

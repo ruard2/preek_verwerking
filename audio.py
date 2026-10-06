@@ -119,9 +119,26 @@ def ffmpeg_diagnose():
         return f"ffmpeg niet bruikbaar: {fout}"
 
 
-def _download_audio(url, map_):
+def _download_audio(url, map_, start_sec=None, eind_sec=None, zonder_proxy=False):
+    """Download (deel van) audio via yt-dlp + ffmpeg.
+
+    Met start_sec/eind_sec vraagt ffmpeg via HTTP-range only dat tijdvak op,
+    wat de downloadgrootte flink beperkt bij lange dienstvideo's.
+    Met zonder_proxy=True wordt de proxy overgeslagen (voor snelheidstests).
+    """
     ffmpeg_bin = _ffmpeg()
-    opties = ts.basis_opties()
+    opties = ts.basis_opties(zonder_proxy=zonder_proxy)
+
+    ffmpeg_input_args = [
+        "-reconnect", "1",
+        "-reconnect_streamed", "1",
+        "-reconnect_delay_max", "30",
+    ]
+    if start_sec is not None and eind_sec is not None:
+        # Beperk de download tot het preeksegment. ffmpeg gebruikt HTTP-range
+        # requests om direct naar het juiste byte-offset te springen.
+        ffmpeg_input_args += ["-ss", str(int(start_sec)), "-to", str(int(eind_sec))]
+
     opties.update(
         {
             "skip_download": False,
@@ -131,8 +148,7 @@ def _download_audio(url, map_):
             # Valt terug op m4a (~128k), dan elke audio-only stream, dan best als laatste redmiddel.
             "format": "bestaudio[abr<=64]/bestaudio[ext=m4a]/bestaudio/best",
             "outtmpl": os.path.join(map_, "audio.%(ext)s"),
-            # Residentiële proxy's zijn traag en haperen: ruime timeout + veel
-            # herpogingen, zodat een korte stilval de download niet laat mislukken.
+            # Ruime timeout + veel herpogingen: residentiële proxy's zijn traag en haperen.
             "socket_timeout": int(os.environ.get("YTDLP_SOCKET_TIMEOUT", "120")),
             "retries": int(os.environ.get("YTDLP_RETRIES", "20")),
             "fragment_retries": int(os.environ.get("YTDLP_RETRIES", "20")),
@@ -142,13 +158,7 @@ def _download_audio(url, map_):
             # het hele bestand. Voorkomt dat de roterende proxy halverwege van IP
             # wisselt, waarna het YouTube-CDN de gesigneerde URL afwijst (403).
             "external_downloader": "ffmpeg",
-            "external_downloader_args": {
-                "ffmpeg_i": [
-                    "-reconnect", "1",
-                    "-reconnect_streamed", "1",
-                    "-reconnect_delay_max", "30",
-                ]
-            },
+            "external_downloader_args": {"ffmpeg_i": ffmpeg_input_args},
             "ffmpeg_location": os.path.dirname(ffmpeg_bin),
         }
     )
@@ -160,9 +170,39 @@ def _download_audio(url, map_):
     return bestanden[0]
 
 
+def _download_audio_met_fallback(url, map_, start_sec=None, eind_sec=None):
+    """Probeer eerst zonder proxy (snel datacenter-IP), val terug op proxy bij fout.
+
+    Railway draait op GCP; YouTube-CDN is ook Google-infrastructuur. Met een
+    geldig PO-token werkt de directe verbinding soms zonder proxy, wat de
+    downloadtijd van ~46 minuten naar seconden kan terugbrengen.
+    """
+    if ts.proxy_actief():
+        try:
+            import logging
+            logging.getLogger("aftersermon").info("[audio] Probeer download zonder proxy...")
+            bron = _download_audio(url, map_, start_sec, eind_sec, zonder_proxy=True)
+            logging.getLogger("aftersermon").info("[audio] Download zonder proxy gelukt.")
+            return bron
+        except Exception as fout:  # noqa: BLE001
+            import logging
+            logging.getLogger("aftersermon").info(
+                f"[audio] Zonder proxy mislukt ({fout}), terugval op proxy..."
+            )
+            # Verwijder evt. onvolledig bestand zodat yt-dlp opnieuw kan beginnen
+            for pad in glob.glob(os.path.join(map_, "audio.*")):
+                try:
+                    os.remove(pad)
+                except OSError:
+                    pass
+    return _download_audio(url, map_, start_sec, eind_sec, zonder_proxy=False)
+
+
 def _download_audio_gecached(url, map_):
-    """Download audio met cache: als hetzelfde bestand binnen 7 dagen al gedownload
-    is, kopieer het uit de cache in plaats van opnieuw te downloaden via de proxy.
+    """Download volledige audio met cache (7 dagen TTL).
+
+    Gebruikt alleen voor transcribeer_hele_video waarbij de volledige opname
+    nodig is. Voor preek-segmenten: gebruik _download_audio_met_fallback direct.
     """
     sleutel = _video_sleutel(url)
     gecached = _cache_ophalen(sleutel)
@@ -172,7 +212,7 @@ def _download_audio_gecached(url, map_):
         shutil.copy2(gecached, doel)
         return doel
     # Niet in cache: downloaden en daarna opslaan.
-    bron = _download_audio(url, map_)
+    bron = _download_audio_met_fallback(url, map_)
     try:
         _cache_opruimen()  # verwijder verlopen bestanden opportunistisch
         _cache_opslaan(sleutel, bron)
@@ -365,16 +405,21 @@ def transcribeer_preek(url, tijden, voortgang=None):
     client = OpenAI()
     ffmpeg = _ffmpeg()
     with tempfile.TemporaryDirectory() as tmp:
+        # Download alleen het preeksegment (niet de hele video).
+        # Dit spaart ~60% downloadtijd bij diensten van 1-2 uur.
+        alle_start = min(t[0] for t in tijden)
+        alle_eind = max(t[1] for t in tijden)
         meld("Audio van de dienst downloaden...")
-        bron = _download_audio_gecached(url, tmp)
+        bron = _download_audio_met_fallback(url, tmp, alle_start, alle_eind)
 
-        # Knip elk preekdeel; splits een te lang deel op in stukken onder de
-        # API-limiet. Onthoud per stuk bij welk preekdeel het hoort.
+        # Knip elk preekdeel; pas tijden aan voor de offset van het segment.
+        # Het gedownloade bestand begint bij t=0 (= originele tijd alle_start).
         stukken = []  # (deel_index, pad)
         for deel_index, (start, eind) in enumerate(tijden):
-            begin = start
-            while begin < eind:
-                stop = min(begin + MAX_DEEL_SECONDEN, eind)
+            begin = start - alle_start
+            eind_rel = eind - alle_start
+            while begin < eind_rel:
+                stop = min(begin + MAX_DEEL_SECONDEN, eind_rel)
                 pad = os.path.join(tmp, f"deel{deel_index}_{begin}.mp3")
                 _knip(ffmpeg, bron, begin, stop, pad)
                 stukken.append((deel_index, pad))
