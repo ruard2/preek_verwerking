@@ -167,7 +167,7 @@ def pot_provider_diagnose():
         return f"PO-token-provider op {url} is NIET bereikbaar: {fout}{staart}"
 
 
-def _basis_opties(zonder_proxy=False):
+def _basis_opties(zonder_proxy=False, ios_mweb=False):
     opties = {
         "quiet": True,
         "no_warnings": True,
@@ -179,7 +179,7 @@ def _basis_opties(zonder_proxy=False):
     }
     pot_url = os.environ.get("POT_PROVIDER_URL")
     proxy = os.environ.get("YTDLP_PROXY")
-    if pot_url:
+    if pot_url and not ios_mweb:
         # web + default: bevestigd werkend voor livestream-VODs met POT + proxy.
         opties["extractor_args"] = {
             "youtubepot-bgutilhttp": {"base_url": [pot_url.rstrip("/")]},
@@ -189,9 +189,8 @@ def _basis_opties(zonder_proxy=False):
             },
         }
     else:
-        # Zonder POT, alleen proxy: ios/mweb vereisen geen PO-token en geven
-        # CDN-URLs die niet IP-gebonden zijn. Let op: livestream-VODs kunnen
-        # "No video formats found" geven — dan is een POT-provider nodig.
+        # ios/mweb geven CDN-URLs die NIET IP-gebonden zijn (geen PO-token nodig).
+        # Werkt op datacenter-IPs; livestream-VODs kunnen soms geen formats geven.
         opties["extractor_args"] = {
             "youtube": {
                 "player_client": ["ios", "mweb"],
@@ -224,9 +223,9 @@ def _basis_opties(zonder_proxy=False):
     return opties
 
 
-def basis_opties(zonder_proxy=False):
+def basis_opties(zonder_proxy=False, ios_mweb=False):
     """Publieke toegang tot de yt-dlp-opties (provider/proxy/cookies) voor hergebruik."""
-    return _basis_opties(zonder_proxy=zonder_proxy)
+    return _basis_opties(zonder_proxy=zonder_proxy, ios_mweb=ios_mweb)
 
 
 def provider_bereikbaar():

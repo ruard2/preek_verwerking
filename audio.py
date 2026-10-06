@@ -119,15 +119,15 @@ def ffmpeg_diagnose():
         return f"ffmpeg niet bruikbaar: {fout}"
 
 
-def _download_audio(url, map_, start_sec=None, eind_sec=None, zonder_proxy=False):
+def _download_audio(url, map_, start_sec=None, eind_sec=None, zonder_proxy=False, ios_mweb=False):
     """Download (deel van) audio via yt-dlp + ffmpeg.
 
     Met start_sec/eind_sec vraagt ffmpeg via HTTP-range only dat tijdvak op,
     wat de downloadgrootte flink beperkt bij lange dienstvideo's.
-    Met zonder_proxy=True wordt de proxy overgeslagen (voor snelheidstests).
+    Met zonder_proxy=True / ios_mweb=True: directe snelle download proberen.
     """
     ffmpeg_bin = _ffmpeg()
-    opties = ts.basis_opties(zonder_proxy=zonder_proxy)
+    opties = ts.basis_opties(zonder_proxy=zonder_proxy, ios_mweb=ios_mweb)
 
     ffmpeg_input_args = [
         "-reconnect", "1",
@@ -171,31 +171,48 @@ def _download_audio(url, map_, start_sec=None, eind_sec=None, zonder_proxy=False
 
 
 def _download_audio_met_fallback(url, map_, start_sec=None, eind_sec=None):
-    """Probeer eerst zonder proxy (snel datacenter-IP), val terug op proxy bij fout.
+    """Probeer snelle directe download, val terug op proxy bij mislukking.
 
-    Railway draait op GCP; YouTube-CDN is ook Google-infrastructuur. Met een
-    geldig PO-token werkt de directe verbinding soms zonder proxy, wat de
-    downloadtijd van ~46 minuten naar seconden kan terugbrengen.
+    Strategie (snelst naar langzaamst):
+    1. ios/mweb zonder proxy: niet-IP-gebonden CDN-URLs, werkt op datacenter-IPs.
+       Railway draait op GCP; dit kan seconden kosten ipv 46 minuten.
+    2. ios/mweb met proxy: zelfde CDN-URLs maar via residentieel IP (langzamer).
+    3. web+POT met proxy: volledige configuratie, betrouwbaarste voor livestream-VODs.
     """
+    import logging
+    log = logging.getLogger("aftersermon")
+
+    def _opruimen():
+        for pad in glob.glob(os.path.join(map_, "audio.*")):
+            try:
+                os.remove(pad)
+            except OSError:
+                pass
+
+    # Stap 1: ios/mweb zonder proxy (snel, niet-IP-gebonden CDN)
+    try:
+        log.info("[audio] Probeer ios/mweb direct (geen proxy)...")
+        bron = _download_audio(url, map_, start_sec, eind_sec, zonder_proxy=True, ios_mweb=True)
+        log.info("[audio] Directe download gelukt.")
+        return bron
+    except Exception as fout:  # noqa: BLE001
+        log.info(f"[audio] Directe download mislukt ({fout}), probeer stap 2...")
+        _opruimen()
+
+    # Stap 2: ios/mweb met proxy (als datacenter-IP geblokkeerd is)
     if ts.proxy_actief():
         try:
-            import logging
-            logging.getLogger("aftersermon").info("[audio] Probeer download zonder proxy...")
-            bron = _download_audio(url, map_, start_sec, eind_sec, zonder_proxy=True)
-            logging.getLogger("aftersermon").info("[audio] Download zonder proxy gelukt.")
+            log.info("[audio] Probeer ios/mweb via proxy...")
+            bron = _download_audio(url, map_, start_sec, eind_sec, zonder_proxy=False, ios_mweb=True)
+            log.info("[audio] Download via proxy (ios/mweb) gelukt.")
             return bron
         except Exception as fout:  # noqa: BLE001
-            import logging
-            logging.getLogger("aftersermon").info(
-                f"[audio] Zonder proxy mislukt ({fout}), terugval op proxy..."
-            )
-            # Verwijder evt. onvolledig bestand zodat yt-dlp opnieuw kan beginnen
-            for pad in glob.glob(os.path.join(map_, "audio.*")):
-                try:
-                    os.remove(pad)
-                except OSError:
-                    pass
-    return _download_audio(url, map_, start_sec, eind_sec, zonder_proxy=False)
+            log.info(f"[audio] ios/mweb via proxy mislukt ({fout}), probeer stap 3...")
+            _opruimen()
+
+    # Stap 3: web+POT met proxy — betrouwbaarste voor livestream-VODs
+    log.info("[audio] Probeer web+POT via proxy (volledige configuratie)...")
+    return _download_audio(url, map_, start_sec, eind_sec, zonder_proxy=False, ios_mweb=False)
 
 
 def _download_audio_gecached(url, map_):
