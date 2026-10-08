@@ -119,6 +119,46 @@ def ffmpeg_diagnose():
         return f"ffmpeg niet bruikbaar: {fout}"
 
 
+def _download_audio_chunked(url, map_, start_sec=None, eind_sec=None, proxy=None):
+    """Snel: native yt-dlp downloader met kleine HTTP-chunks + optioneel tijdsegment.
+
+    YouTube throttlet aaneengesloten HTTP-requests van > ~10 MB tot net boven de
+    audiobitrate (~11 KiB/s). Door in chunks van 1 MB te downloaden wordt per chunk
+    een nieuwe HTTP-range request gedaan — die vallen onder de throttle-drempel en
+    worden niet gelimiteerd. Vereist een sticky-session proxy (vaste IP per download)
+    zodat het YouTube-CDN elke chunk accepteert met dezelfde gesigneerde URL.
+
+    Met start_sec/eind_sec wordt via download_ranges alleen het preeksegment opgehaald;
+    het resulterende bestand begint op t=0 (tijden zijn relatief aan start_sec).
+    """
+    opties = ts.basis_opties(proxy_override=proxy)
+    opties.update(
+        {
+            "skip_download": False,
+            "format": "bestaudio[abr<=64]/bestaudio[ext=m4a]/bestaudio/best",
+            "outtmpl": os.path.join(map_, "audio.%(ext)s"),
+            "socket_timeout": int(os.environ.get("YTDLP_SOCKET_TIMEOUT", "120")),
+            "retries": int(os.environ.get("YTDLP_RETRIES", "20")),
+            "fragment_retries": int(os.environ.get("YTDLP_RETRIES", "20")),
+            "file_access_retries": 10,
+            "continuedl": True,
+            # 1 MB per chunk — onder de YouTube throttle-drempel van ~10 MB.
+            "http_chunk_size": 1024 * 1024,
+        }
+    )
+    if start_sec is not None and eind_sec is not None:
+        opties["download_ranges"] = lambda _info, _ydl: [
+            {"start_time": start_sec, "end_time": eind_sec}
+        ]
+        opties["force_keyframes_at_cuts"] = True
+    with yt_dlp.YoutubeDL(opties) as ydl:
+        ydl.download([url])
+    bestanden = glob.glob(os.path.join(map_, "audio.*"))
+    if not bestanden:
+        raise RuntimeError("De audio kon niet worden gedownload.")
+    return bestanden[0]
+
+
 def _download_audio(url, map_, start_sec=None, eind_sec=None, zonder_proxy=False, ios_mweb=False):
     """Download (deel van) audio via yt-dlp + ffmpeg.
 
@@ -171,13 +211,14 @@ def _download_audio(url, map_, start_sec=None, eind_sec=None, zonder_proxy=False
 
 
 def _download_audio_met_fallback(url, map_, start_sec=None, eind_sec=None):
-    """Probeer snelle directe download, val terug op proxy bij mislukking.
+    """Probeer snelle download, val stap voor stap terug op langzamere opties.
 
-    Strategie (snelst naar langzaamst):
-    1. ios/mweb zonder proxy: niet-IP-gebonden CDN-URLs, werkt op datacenter-IPs.
-       Railway draait op GCP; dit kan seconden kosten ipv 46 minuten.
-    2. ios/mweb met proxy: zelfde CDN-URLs maar via residentieel IP (langzamer).
-    3. web+POT met proxy: volledige configuratie, betrouwbaarste voor livestream-VODs.
+    Volgorde (snelst → langzaamst):
+    1. ios/mweb zonder proxy — niet-IP-gebonden CDN, werkt voor gewone video's.
+    2. Chunked via datacenter sticky proxy (YTDLP_PROXY_DC) — 1 MB chunks omzeilen
+       YouTube throttling; datacenter = server-bandbreedte. Betrouwbaar voor VODs.
+    3. ios/mweb via residentiële proxy — voor reguliere video's als DC blokkeert.
+    4. web+POT via residentiële proxy — traag (~17 min) maar bewezen voor VODs.
     """
     import logging
     log = logging.getLogger("aftersermon")
@@ -189,29 +230,43 @@ def _download_audio_met_fallback(url, map_, start_sec=None, eind_sec=None):
             except OSError:
                 pass
 
-    # Stap 1: ios/mweb zonder proxy (snel, niet-IP-gebonden CDN)
+    proxy_res = os.environ.get("YTDLP_PROXY")
+    proxy_dc = os.environ.get("YTDLP_PROXY_DC")
+
+    # Stap 1: ios/mweb zonder proxy (gratis, snel voor gewone video's)
     try:
-        log.info("[audio] Probeer ios/mweb direct (geen proxy)...")
+        log.info("[audio] Stap 1: ios/mweb direct (geen proxy)...")
         bron = _download_audio(url, map_, start_sec, eind_sec, zonder_proxy=True, ios_mweb=True)
-        log.info("[audio] Directe download gelukt.")
+        log.info("[audio] Stap 1 gelukt.")
         return bron
     except Exception as fout:  # noqa: BLE001
-        log.info(f"[audio] Directe download mislukt ({fout}), probeer stap 2...")
+        log.info(f"[audio] Stap 1 mislukt ({fout}).")
         _opruimen()
 
-    # Stap 2: ios/mweb met proxy (als datacenter-IP geblokkeerd is)
-    if ts.proxy_actief():
+    # Stap 2: chunked via datacenter sticky proxy (snel voor VODs, omzeilt throttling)
+    if proxy_dc:
         try:
-            log.info("[audio] Probeer ios/mweb via proxy...")
-            bron = _download_audio(url, map_, start_sec, eind_sec, zonder_proxy=False, ios_mweb=True)
-            log.info("[audio] Download via proxy (ios/mweb) gelukt.")
+            log.info("[audio] Stap 2: chunked via datacenter proxy...")
+            bron = _download_audio_chunked(url, map_, start_sec, eind_sec, proxy=proxy_dc)
+            log.info("[audio] Stap 2 gelukt.")
             return bron
         except Exception as fout:  # noqa: BLE001
-            log.info(f"[audio] ios/mweb via proxy mislukt ({fout}), probeer stap 3...")
+            log.info(f"[audio] Stap 2 mislukt ({fout}).")
             _opruimen()
 
-    # Stap 3: web+POT met proxy — betrouwbaarste voor livestream-VODs
-    log.info("[audio] Probeer web+POT via proxy (volledige configuratie)...")
+    # Stap 3: ios/mweb via residentiële proxy (voor gewone video's als DC blokkeert)
+    if proxy_res:
+        try:
+            log.info("[audio] Stap 3: ios/mweb via residentiële proxy...")
+            bron = _download_audio(url, map_, start_sec, eind_sec, zonder_proxy=False, ios_mweb=True)
+            log.info("[audio] Stap 3 gelukt.")
+            return bron
+        except Exception as fout:  # noqa: BLE001
+            log.info(f"[audio] Stap 3 mislukt ({fout}).")
+            _opruimen()
+
+    # Stap 4: web+POT via residentiële proxy — traag maar bewezen voor livestream-VODs
+    log.info("[audio] Stap 4: web+POT via residentiële proxy (terugval)...")
     return _download_audio(url, map_, start_sec, eind_sec, zonder_proxy=False, ios_mweb=False)
 
 

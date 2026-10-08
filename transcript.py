@@ -167,7 +167,7 @@ def pot_provider_diagnose():
         return f"PO-token-provider op {url} is NIET bereikbaar: {fout}{staart}"
 
 
-def _basis_opties(zonder_proxy=False, ios_mweb=False):
+def _basis_opties(zonder_proxy=False, ios_mweb=False, proxy_override=None):
     opties = {
         "quiet": True,
         "no_warnings": True,
@@ -178,7 +178,6 @@ def _basis_opties(zonder_proxy=False, ios_mweb=False):
         "ignore_no_formats_error": True,
     }
     pot_url = os.environ.get("POT_PROVIDER_URL")
-    proxy = os.environ.get("YTDLP_PROXY")
     if pot_url and not ios_mweb:
         # web + default: bevestigd werkend voor livestream-VODs met POT + proxy.
         opties["extractor_args"] = {
@@ -196,9 +195,8 @@ def _basis_opties(zonder_proxy=False, ios_mweb=False):
                 "player_client": ["ios", "mweb"],
             },
         }
-    # Optioneel: al het YouTube-verkeer via een (residentiële) proxy leiden.
-    # Meest betrouwbare oplossing als het datacenter-IP geblokkeerd blijft.
-    proxy = os.environ.get("YTDLP_PROXY")
+    # Proxy: proxy_override heeft voorrang (voor datacenter-fallback), anders YTDLP_PROXY.
+    proxy = proxy_override if proxy_override is not None else os.environ.get("YTDLP_PROXY")
     if proxy and not zonder_proxy:
         opties["proxy"] = proxy
 
@@ -223,9 +221,9 @@ def _basis_opties(zonder_proxy=False, ios_mweb=False):
     return opties
 
 
-def basis_opties(zonder_proxy=False, ios_mweb=False):
+def basis_opties(zonder_proxy=False, ios_mweb=False, proxy_override=None):
     """Publieke toegang tot de yt-dlp-opties (provider/proxy/cookies) voor hergebruik."""
-    return _basis_opties(zonder_proxy=zonder_proxy, ios_mweb=ios_mweb)
+    return _basis_opties(zonder_proxy=zonder_proxy, ios_mweb=ios_mweb, proxy_override=proxy_override)
 
 
 def provider_bereikbaar():
