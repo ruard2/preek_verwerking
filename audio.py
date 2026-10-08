@@ -378,8 +378,8 @@ def _download_audio_live(url, map_, start_sec=None, eind_sec=None, proxy=None):
     import logging
     log = logging.getLogger("aftersermon")
 
-    # Haal de audio-only m3u8-URL op zonder live_from_start (geeft HLS-formaten)
-    opties = ts.basis_opties(proxy_override=proxy)
+    # ios/mweb-client geeft m3u8 (HLS) formaten; web+default geeft alleen DASH
+    opties = ts.basis_opties(ios_mweb=True, proxy_override=proxy)
     opties.update({"skip_download": True, "quiet": True})
     with yt_dlp.YoutubeDL(opties) as ydl:
         info = ydl.extract_info(url, download=False)
