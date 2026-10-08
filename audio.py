@@ -12,6 +12,7 @@ Werkwijze:
 
 import glob
 import hashlib
+import json
 import os
 import re
 import shutil
@@ -37,6 +38,14 @@ DEEL_MARKERING = "\n\n[VOLGEND PREEKDEEL — hiervoor werd gezongen]\n\n"
 _DATA_DIR = os.environ.get("DATA_DIR", os.path.join(os.path.dirname(__file__), "data"))
 AUDIO_CACHE_DIR = os.environ.get("AUDIO_CACHE_DIR", os.path.join(_DATA_DIR, "audio_cache"))
 AUDIO_CACHE_TTL = int(os.environ.get("AUDIO_CACHE_TTL", str(7 * 24 * 3600)))  # 7 dagen
+
+# ---- Transcript-cache -----------------------------------------------------
+# Getranscribeerde preekteksten bewaren (30 dagen). Zelfde video + zelfde
+# preektijden → transcript direct uit cache, download + transcriptie overgeslagen.
+_TRANSCRIPT_CACHE_DIR = os.environ.get(
+    "TRANSCRIPT_CACHE_DIR", os.path.join(_DATA_DIR, "transcript_cache")
+)
+_TRANSCRIPT_CACHE_TTL = int(os.environ.get("TRANSCRIPT_CACHE_TTL", str(30 * 24 * 3600)))
 
 
 def _video_sleutel(url):
@@ -82,6 +91,38 @@ def _cache_opruimen():
                 os.remove(pad)
         except OSError:
             pass
+
+
+def _transcript_ophalen(url, tijden):
+    """Geef het gecachede transcript als het bestaat en nog vers is, anders None."""
+    alle_start = min(t[0] for t in tijden)
+    alle_eind = max(t[1] for t in tijden)
+    sleutel = f"{_video_sleutel(url)}_{int(alle_start)}_{int(alle_eind)}_{TRANSCRIBE_MODEL}"
+    pad = os.path.join(_TRANSCRIPT_CACHE_DIR, sleutel + ".json")
+    if not os.path.isfile(pad):
+        return None
+    grens = time.time() - _TRANSCRIPT_CACHE_TTL
+    try:
+        if os.path.getmtime(pad) < grens:
+            return None
+        with open(pad, encoding="utf-8") as f:
+            return json.load(f)["tekst"]
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _transcript_opslaan(url, tijden, tekst):
+    """Sla het getranscribeerde preektekst op in de cache."""
+    alle_start = min(t[0] for t in tijden)
+    alle_eind = max(t[1] for t in tijden)
+    sleutel = f"{_video_sleutel(url)}_{int(alle_start)}_{int(alle_eind)}_{TRANSCRIBE_MODEL}"
+    os.makedirs(_TRANSCRIPT_CACHE_DIR, exist_ok=True)
+    pad = os.path.join(_TRANSCRIPT_CACHE_DIR, sleutel + ".json")
+    try:
+        with open(pad, "w", encoding="utf-8") as f:
+            json.dump({"tekst": tekst}, f, ensure_ascii=False)
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def _ffmpeg():
@@ -219,6 +260,14 @@ def _download_audio(url, map_, start_sec=None, eind_sec=None, zonder_proxy=False
     return bestanden[0]
 
 
+def _segment_sleutel(url, start_sec, eind_sec):
+    """Cache-sleutel voor een specifiek preeksegment (video-ID + tijdstempels)."""
+    basis = _video_sleutel(url)
+    if start_sec is not None and eind_sec is not None:
+        return f"{basis}_{int(start_sec)}_{int(eind_sec)}"
+    return basis
+
+
 def _download_audio_met_fallback(url, map_, start_sec=None, eind_sec=None):
     """Probeer snelle download, val stap voor stap terug op langzamere opties.
 
@@ -228,6 +277,8 @@ def _download_audio_met_fallback(url, map_, start_sec=None, eind_sec=None):
        YouTube throttling; datacenter = server-bandbreedte. Betrouwbaar voor VODs.
     3. ios/mweb via residentiële proxy — voor reguliere video's als DC blokkeert.
     4. web+POT via residentiële proxy — traag (~17 min) maar bewezen voor VODs.
+       Stap 4 checkt de cache eerst: als een eerdere run al downloadde, wordt het
+       gecachede bestand hergebruikt. Stappen 1-3 proberen altijd vers.
     """
     import logging
     log = logging.getLogger("aftersermon")
@@ -239,6 +290,14 @@ def _download_audio_met_fallback(url, map_, start_sec=None, eind_sec=None):
             except OSError:
                 pass
 
+    def _bewaar_in_cache(bron):
+        sleutel = _segment_sleutel(url, start_sec, eind_sec)
+        try:
+            _cache_opruimen()
+            _cache_opslaan(sleutel, bron)
+        except Exception:  # noqa: BLE001
+            pass
+
     proxy_res = os.environ.get("YTDLP_PROXY")
     proxy_dc = os.environ.get("YTDLP_PROXY_DC")
 
@@ -247,6 +306,7 @@ def _download_audio_met_fallback(url, map_, start_sec=None, eind_sec=None):
         log.info("[audio] Stap 1: ios/mweb direct (geen proxy)...")
         bron = _download_audio(url, map_, start_sec, eind_sec, zonder_proxy=True, ios_mweb=True)
         log.info("[audio] Stap 1 gelukt.")
+        _bewaar_in_cache(bron)
         return bron
     except Exception as fout:  # noqa: BLE001
         log.info(f"[audio] Stap 1 mislukt ({fout}).")
@@ -258,6 +318,7 @@ def _download_audio_met_fallback(url, map_, start_sec=None, eind_sec=None):
             log.info("[audio] Stap 2: chunked via datacenter proxy...")
             bron = _download_audio_chunked(url, map_, start_sec, eind_sec, proxy=proxy_dc)
             log.info("[audio] Stap 2 gelukt.")
+            _bewaar_in_cache(bron)
             return bron
         except Exception as fout:  # noqa: BLE001
             log.info(f"[audio] Stap 2 mislukt ({fout}).")
@@ -269,14 +330,27 @@ def _download_audio_met_fallback(url, map_, start_sec=None, eind_sec=None):
             log.info("[audio] Stap 3: ios/mweb via residentiële proxy...")
             bron = _download_audio(url, map_, start_sec, eind_sec, zonder_proxy=False, ios_mweb=True)
             log.info("[audio] Stap 3 gelukt.")
+            _bewaar_in_cache(bron)
             return bron
         except Exception as fout:  # noqa: BLE001
             log.info(f"[audio] Stap 3 mislukt ({fout}).")
             _opruimen()
 
-    # Stap 4: web+POT via residentiële proxy — traag maar bewezen voor livestream-VODs
+    # Stap 4: web+POT via residentiële proxy — traag maar bewezen voor livestream-VODs.
+    # Check eerst de cache: als stap 4 al eerder voor dit segment liep, hergebruiken.
+    sleutel = _segment_sleutel(url, start_sec, eind_sec)
+    gecached = _cache_ophalen(sleutel)
+    if gecached:
+        log.info("[audio] Stap 4: gecached segment gevonden, download overgeslagen.")
+        ext = os.path.splitext(gecached)[1]
+        doel = os.path.join(map_, "audio" + ext)
+        shutil.copy2(gecached, doel)
+        return doel
+
     log.info("[audio] Stap 4: web+POT via residentiële proxy (terugval)...")
-    return _download_audio(url, map_, start_sec, eind_sec, zonder_proxy=False, ios_mweb=False)
+    bron = _download_audio(url, map_, start_sec, eind_sec, zonder_proxy=False, ios_mweb=False)
+    _bewaar_in_cache(bron)
+    return bron
 
 
 def _download_audio_gecached(url, map_):
@@ -469,11 +543,22 @@ def transcribeer_preek(url, tijden, voortgang=None):
     `tijden` is een lijst [(start_sec, eind_sec), ...] per preekdeel.
     Werpt een fout als de provider niet bereikbaar is of de audio niet lukt;
     de aanroeper valt dan terug op de ondertiteltekst.
+    Bij herhaling van dezelfde preek: transcript uit cache (30 dagen TTL),
+    download + transcriptie worden dan overgeslagen.
     """
+    import logging
+    log = logging.getLogger("aftersermon")
 
     def meld(stap):
         if voortgang:
             voortgang(stap)
+
+    # Transcript-cache: download + transcriptie overslaan als al gedaan.
+    gecacheed = _transcript_ophalen(url, tijden)
+    if gecacheed:
+        log.info("[audio] Transcript uit cache geladen.")
+        meld("Transcript uit cache geladen.")
+        return gecacheed
 
     if not ts.download_mogelijk():
         raise RuntimeError(
@@ -514,7 +599,9 @@ def transcribeer_preek(url, tijden, voortgang=None):
     resultaat_delen = [
         " ".join(teksten[i]).strip() for i in range(len(tijden))
     ]
-    return DEEL_MARKERING.join(d for d in resultaat_delen if d)
+    resultaat = DEEL_MARKERING.join(d for d in resultaat_delen if d)
+    _transcript_opslaan(url, tijden, resultaat)
+    return resultaat
 
 
 def transcribeer_hele_video(url, voortgang=None):
