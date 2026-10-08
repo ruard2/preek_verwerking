@@ -351,9 +351,7 @@ def _is_live(url, proxy=None):
 def _wacht_op_vod(url, max_wacht_sec=1800):
     """Wacht tot een actieve YouTube-livestream eindigt en als VOD beschikbaar wordt.
 
-    YouTube zet een gestopte livestream doorgaans binnen 5-15 minuten om naar een
-    VOD. Daarna werkt de normale downloadlogica gewoon.
-
+    Fallback als de HLS DVR-aanpak mislukt.
     Returns True zodra de stream niet meer live is, False bij timeout.
     """
     import time
@@ -369,6 +367,101 @@ def _wacht_op_vod(url, max_wacht_sec=1800):
         rest = int(deadline - time.time())
         log.info(f"[audio] Stream nog actief — wacht nog max {rest // 60} min...")
     return False
+
+
+def _download_audio_live(url, map_, start_sec=None, eind_sec=None, proxy=None):
+    """Download een tijdssegment uit een actieve YouTube-livestream via HLS DVR.
+
+    YouTube DVR-streams bevatten alle segmenten via de m3u8-manifest-URL.
+    ffmpeg zoekt direct naar het gewenste tijdvak — geen wachten op VOD nodig.
+    """
+    import logging
+    log = logging.getLogger("aftersermon")
+
+    # Haal de audio-only m3u8-URL op zonder live_from_start (geeft HLS-formaten)
+    opties = ts.basis_opties(proxy_override=proxy)
+    opties.update({"skip_download": True, "quiet": True})
+    with yt_dlp.YoutubeDL(opties) as ydl:
+        info = ydl.extract_info(url, download=False)
+
+    # Kies het best beschikbare audio-only m3u8-formaat (hoogste bitrate)
+    m3u8_url = None
+    headers = {}
+    for fmt in sorted(
+        (f for f in (info.get("formats") or [])
+         if f.get("protocol") in ("m3u8", "m3u8_native")
+         and f.get("vcodec") in ("none", None, "")
+         and f.get("url")),
+        key=lambda f: f.get("abr") or f.get("tbr") or 0,
+        reverse=True,
+    ):
+        m3u8_url = fmt["url"]
+        headers = fmt.get("http_headers", {})
+        log.info(
+            f"[audio] Live HLS-formaat gevonden: {fmt.get('format_id')} "
+            f"({fmt.get('abr') or fmt.get('tbr')} kbps)"
+        )
+        break
+
+    if not m3u8_url:
+        raise RuntimeError(
+            "Geen audio HLS-formaat gevonden voor livestream. "
+            "Mogelijk biedt dit kanaal geen DVR of m3u8-toegang."
+        )
+
+    doel = os.path.join(map_, "audio.m4a")
+    duur = int(eind_sec - start_sec) if (start_sec is not None and eind_sec is not None) else None
+    ffmpeg_bin = _ffmpeg()
+
+    # Headers als één string doorgeven aan ffmpeg
+    header_str = "".join(
+        f"{k}: {v}\r\n"
+        for k, v in headers.items()
+        if k.lower() not in ("accept-encoding", "te", "connection")
+    )
+
+    ffmpeg_args = [
+        ffmpeg_bin, "-y",
+        "-reconnect", "1",
+        "-reconnect_streamed", "1",
+        "-reconnect_delay_max", "10",
+    ]
+    if header_str:
+        ffmpeg_args += ["-headers", header_str]
+
+    ffmpeg_args += ["-i", m3u8_url]
+
+    if start_sec is not None and eind_sec is not None:
+        # -ss na -i = nauwkeurig knippen (ffmpeg leest segmenten tot start_sec,
+        # dan neemt het 'duur' seconden op — audio-only is snel genoeg)
+        ffmpeg_args += ["-ss", str(int(start_sec)), "-t", str(duur)]
+
+    ffmpeg_args += ["-vn", "-acodec", "copy", doel]
+
+    # Timeout: eind_sec / 10 (aanname: download ≥10× sneller dan realtime) + 5 min marge
+    timeout = max(300, int((eind_sec or 3600) / 10)) + 300
+    log.info(
+        f"[audio] Live HLS: ffmpeg haalt segment {start_sec}s–{eind_sec}s op "
+        f"(timeout={timeout}s)..."
+    )
+
+    try:
+        subprocess.run(ffmpeg_args, capture_output=True, check=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        raise RuntimeError(f"Live-HLS download timeout ({timeout}s) — DVR mogelijk beperkt.")
+    except subprocess.CalledProcessError as e:
+        fout = e.stderr.decode("utf-8", errors="replace")[-500:]
+        raise RuntimeError(f"ffmpeg live-HLS mislukt: {fout}")
+
+    if not os.path.isfile(doel) or os.path.getsize(doel) < 10_000:
+        raise RuntimeError(
+            f"Live HLS-segment te klein "
+            f"({os.path.getsize(doel) if os.path.isfile(doel) else 0} bytes). "
+            "DVR-bereik mogelijk beperkt voor dit kanaal."
+        )
+
+    log.info(f"[audio] Live HLS-download gelukt ({os.path.getsize(doel) // 1024} KB).")
+    return doel
 
 
 def _download_audio_met_fallback(url, map_, start_sec=None, eind_sec=None):
@@ -407,16 +500,21 @@ def _download_audio_met_fallback(url, map_, start_sec=None, eind_sec=None):
     proxy_res = os.environ.get("YTDLP_PROXY")
     proxy_dc = os.environ.get("YTDLP_PROXY_DC")
 
-    # ── Live-detectie: wacht tot de dienst klaar is, dan als VOD downloaden ──
+    # ── Live-detectie: probeer HLS DVR, val anders terug op wachten op VOD ──
     log.info("[audio] Live-check (metadata)...")
     if _is_live(url):
-        log.info(
-            "[audio] Actieve livestream gedetecteerd — wacht tot dienst klaar is "
-            "(max 30 min). YouTube zet de stream daarna automatisch om naar VOD."
-        )
+        log.info("[audio] Actieve livestream gedetecteerd — probeer HLS DVR-download...")
+        try:
+            bron = _download_audio_live(url, map_, start_sec, eind_sec, proxy=proxy_res)
+            log.info("[audio] Live HLS-download gelukt.")
+            _bewaar_in_cache(bron)
+            return bron
+        except Exception as live_fout:
+            log.warning(f"[audio] Live HLS mislukt ({live_fout}) — wacht op VOD (max 30 min).")
+
         if not _wacht_op_vod(url, max_wacht_sec=1800):
             raise RuntimeError(
-                "De dienst is na 30 minuten nog steeds live. "
+                "De dienst is na 30 minuten nog steeds live en HLS DVR mislukte. "
                 "Dien de aanvraag opnieuw in zodra de dienst volledig is afgelopen."
             )
         log.info("[audio] Stream klaar — verwerk nu als VOD.")
