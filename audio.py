@@ -349,42 +349,71 @@ def _is_live(url, proxy=None):
 
 
 def _download_audio_live(url, map_, start_sec=None, eind_sec=None, proxy=None):
-    """Download een segment van een actieve YouTube-livestream (DVR-modus).
+    """Download een segment van een actieve YouTube-livestream via HLS + ffmpeg.
 
-    Gebruikt live_from_start zodat al uitgezonden segmenten (bijv. de preek die
-    al 40 minuten geleden begon) via het DVR-venster worden opgehaald.
-    download_ranges selecteert het gevraagde tijdvak relatief aan het begin van
-    de uitzending. Residentiële proxy is vereist: YouTube blokkeert
-    live-DVR-segmenten ook voor datacenter-IP's.
+    Werkwijze:
+    1. yt-dlp haalt (met residentiële proxy + live_from_start) de HLS-manifest-URL
+       op — dit geeft de DVR-variant waarmee je terug kunt in de stream.
+    2. ffmpeg leest de HLS-manifest en pakt met -ss/-t alleen het gevraagde
+       tijdvak; download_ranges van yt-dlp werkt niet op live-HLS-formats.
+
+    Timeout: segmentduur + 3 min marge (HLS heeft meer latency dan directe HTTPS).
     """
+    import logging
+    log = logging.getLogger("aftersermon")
+
+    # Stap 1: HLS-manifest-URL ophalen
     opties = ts.basis_opties(proxy_override=proxy)
-    opties.update(
-        {
-            "skip_download": False,
-            "format": "bestaudio[ext=m4a]/bestaudio/best",
-            "outtmpl": os.path.join(map_, "audio.%(ext)s"),
-            "live_from_start": True,
-            "socket_timeout": int(os.environ.get("YTDLP_SOCKET_TIMEOUT", "120")),
-            "retries": int(os.environ.get("YTDLP_RETRIES", "20")),
-            "fragment_retries": int(os.environ.get("YTDLP_RETRIES", "20")),
-            "http_chunk_size": 1024 * 1024,
-        }
-    )
-    if start_sec is not None and eind_sec is not None:
-        opties["download_ranges"] = lambda _info, _ydl: [
-            {"start_time": start_sec, "end_time": eind_sec}
-        ]
+    opties.update({
+        "skip_download": True,
+        "live_from_start": True,
+        "format": "bestaudio[ext=m4a]/bestaudio/best",
+    })
     with yt_dlp.YoutubeDL(opties) as ydl:
-        ydl.download([url])
-    bestanden = glob.glob(os.path.join(map_, "audio.*"))
-    if not bestanden:
-        raise RuntimeError("Live-audio kon niet worden gedownload.")
-    if os.path.getsize(bestanden[0]) < 10_000:
+        info = ydl.extract_info(url, download=False)
+
+    stream_url = None
+    ext = "m4a"
+    for fmt in (info.get("requested_formats") or []):
+        if fmt.get("vcodec") in ("none", None) and fmt.get("url"):
+            stream_url = fmt["url"]
+            ext = fmt.get("ext", "m4a")
+            break
+    if not stream_url:
+        stream_url = info.get("url")
+        ext = info.get("ext", "m4a") or "m4a"
+    if not stream_url:
+        raise RuntimeError("Geen HLS-stream-URL gevonden voor de live stream.")
+    log.info(f"[audio] Live: HLS-URL verkregen (ext={ext}), ffmpeg haalt segment op...")
+
+    # Stap 2: ffmpeg knipt het tijdvak uit de HLS-stream
+    doel = os.path.join(map_, f"audio.{ext}")
+    ffmpeg_bin = _ffmpeg()
+    ffmpeg_args = [
+        ffmpeg_bin, "-y",
+        "-reconnect", "1",
+        "-reconnect_streamed", "1",
+        "-reconnect_delay_max", "10",
+    ]
+    if start_sec is not None and eind_sec is not None:
+        duur = int(eind_sec) - int(start_sec)
+        ffmpeg_args += ["-ss", str(int(start_sec)), "-t", str(duur)]
+    ffmpeg_args += ["-i", stream_url, "-vn", "-acodec", "copy", doel]
+
+    timeout = 180  # basistimeout
+    if start_sec is not None and eind_sec is not None:
+        timeout = int(eind_sec - start_sec) + 180
+    try:
+        subprocess.run(ffmpeg_args, capture_output=True, check=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        raise RuntimeError(f"Live-HLS download timeout ({timeout}s) — DVR niet bereikbaar.")
+
+    if not os.path.isfile(doel) or os.path.getsize(doel) < 10_000:
         raise RuntimeError(
-            f"Audiobestand te klein ({os.path.getsize(bestanden[0])} bytes) — "
-            "live-DVR waarschijnlijk geblokkeerd of segment nog niet beschikbaar."
+            f"Live-audiobestand te klein "
+            f"({os.path.getsize(doel) if os.path.isfile(doel) else 0} bytes)"
         )
-    return bestanden[0]
+    return doel
 
 
 def _download_audio_met_fallback(url, map_, start_sec=None, eind_sec=None):

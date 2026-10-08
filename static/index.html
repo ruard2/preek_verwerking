@@ -545,6 +545,7 @@ function toonEmailForm(url, label, datumLabel, preekTijden) {
   const naamInp = document.createElement('input');
   naamInp.type = 'text';
   naamInp.placeholder = 'bijv. Stolper';
+  naamInp.autocomplete = 'off';
   naamInp.className = 'bewerkveld';
   naamInp.style.marginBottom = '.8rem';
   kaart.appendChild(naamInp);
