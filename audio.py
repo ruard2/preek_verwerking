@@ -332,10 +332,68 @@ def _download_audio_cdn_direct(url, map_, start_sec=None, eind_sec=None, proxy=N
     return doel
 
 
+def _is_live(url, proxy=None):
+    """Snelle metadata-check: is deze video een actieve YouTube-livestream?"""
+    import logging
+    log = logging.getLogger("aftersermon")
+    opties = ts.basis_opties(proxy_override=proxy)
+    opties.update({"skip_download": True, "quiet": True})
+    try:
+        with yt_dlp.YoutubeDL(opties) as ydl:
+            info = ydl.extract_info(url, download=False)
+        status = info.get("live_status") or ""
+        return bool(info.get("is_live") or status == "is_live")
+    except Exception as fout:
+        log.info(f"[audio] live-check mislukt ({fout}), ga uit van VOD.")
+        return False
+
+
+def _download_audio_live(url, map_, start_sec=None, eind_sec=None, proxy=None):
+    """Download een segment van een actieve YouTube-livestream (DVR-modus).
+
+    Gebruikt live_from_start zodat al uitgezonden segmenten (bijv. de preek die
+    al 40 minuten geleden begon) via het DVR-venster worden opgehaald.
+    download_ranges selecteert het gevraagde tijdvak relatief aan het begin van
+    de uitzending. Residentiële proxy is vereist: YouTube blokkeert
+    live-DVR-segmenten ook voor datacenter-IP's.
+    """
+    opties = ts.basis_opties(proxy_override=proxy)
+    opties.update(
+        {
+            "skip_download": False,
+            "format": "bestaudio[ext=m4a]/bestaudio/best",
+            "outtmpl": os.path.join(map_, "audio.%(ext)s"),
+            "live_from_start": True,
+            "socket_timeout": int(os.environ.get("YTDLP_SOCKET_TIMEOUT", "120")),
+            "retries": int(os.environ.get("YTDLP_RETRIES", "20")),
+            "fragment_retries": int(os.environ.get("YTDLP_RETRIES", "20")),
+            "http_chunk_size": 1024 * 1024,
+        }
+    )
+    if start_sec is not None and eind_sec is not None:
+        opties["download_ranges"] = lambda _info, _ydl: [
+            {"start_time": start_sec, "end_time": eind_sec}
+        ]
+    with yt_dlp.YoutubeDL(opties) as ydl:
+        ydl.download([url])
+    bestanden = glob.glob(os.path.join(map_, "audio.*"))
+    if not bestanden:
+        raise RuntimeError("Live-audio kon niet worden gedownload.")
+    if os.path.getsize(bestanden[0]) < 10_000:
+        raise RuntimeError(
+            f"Audiobestand te klein ({os.path.getsize(bestanden[0])} bytes) — "
+            "live-DVR waarschijnlijk geblokkeerd of segment nog niet beschikbaar."
+        )
+    return bestanden[0]
+
+
 def _download_audio_met_fallback(url, map_, start_sec=None, eind_sec=None):
     """Probeer snelle download, val stap voor stap terug op langzamere opties.
 
-    Volgorde (snelst → langzaamst):
+    Bij een actieve livestream wordt automatisch de live-DVR-codepath gebruikt
+    (live_from_start + download_ranges via residentiële proxy).
+
+    Volgorde voor VODs (snelst → langzaamst):
     1. ios/mweb zonder proxy — niet-IP-gebonden CDN, werkt voor gewone video's.
     2. Chunked via datacenter sticky proxy (YTDLP_PROXY_DC) — 1 MB chunks omzeilen
        YouTube throttling; datacenter = server-bandbreedte. Betrouwbaar voor VODs.
@@ -364,6 +422,17 @@ def _download_audio_met_fallback(url, map_, start_sec=None, eind_sec=None):
 
     proxy_res = os.environ.get("YTDLP_PROXY")
     proxy_dc = os.environ.get("YTDLP_PROXY_DC")
+
+    # ── Live-detectie: actieve livestream krijgt eigen codepath ──────────────
+    log.info("[audio] Live-check (metadata)...")
+    if _is_live(url):
+        log.info("[audio] Actieve livestream gedetecteerd — live-DVR-download via residentiële proxy.")
+        if proxy_res:
+            bron = _download_audio_live(url, map_, start_sec, eind_sec, proxy=proxy_res)
+            log.info("[audio] Live-download gelukt.")
+            _bewaar_in_cache(bron)
+            return bron
+        log.warning("[audio] Geen residentiële proxy beschikbaar voor live-download; val terug op normale stappen.")
 
     # Stap 1: ios/mweb zonder proxy (gratis, snel voor gewone video's)
     try:
