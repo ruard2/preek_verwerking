@@ -150,12 +150,21 @@ def _download_audio_chunked(url, map_, start_sec=None, eind_sec=None, proxy=None
         opties["download_ranges"] = lambda _info, _ydl: [
             {"start_time": start_sec, "end_time": eind_sec}
         ]
-        opties["force_keyframes_at_cuts"] = True
+        # force_keyframes_at_cuts NIET gebruiken: dat roept ffmpeg aan voor
+        # post-processing en geeft "ffmpeg exited with code 8" als de download
+        # mislukt (bijv. geblokkeerd datacenter-IP). Zonder deze vlag knipt
+        # yt-dlp op de dichtstbijzijnde keyframe — nauwkeurig genoeg voor audio.
     with yt_dlp.YoutubeDL(opties) as ydl:
         ydl.download([url])
     bestanden = glob.glob(os.path.join(map_, "audio.*"))
     if not bestanden:
         raise RuntimeError("De audio kon niet worden gedownload.")
+    # Leeg bestand = geblokkeerd of mislukte download (yt-dlp maakt bestand aan voor inhoud)
+    if os.path.getsize(bestanden[0]) < 10_000:
+        raise RuntimeError(
+            f"Audiobestand te klein ({os.path.getsize(bestanden[0])} bytes) — "
+            "download waarschijnlijk geblokkeerd door YouTube."
+        )
     return bestanden[0]
 
 
