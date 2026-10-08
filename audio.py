@@ -378,99 +378,89 @@ def _download_audio_live(url, map_, start_sec=None, eind_sec=None, proxy=None):
     import logging
     log = logging.getLogger("aftersermon")
 
-    # ios/mweb-client geeft m3u8 (HLS) formaten; web+default geeft alleen DASH
-    opties = ts.basis_opties(ios_mweb=True, proxy_override=proxy)
-    opties.update({"skip_download": True, "quiet": True})
+    import sys as _sys
+
+    # Gebruik web+POT client met live_from_start=True — dit geeft DASH-formaten
+    # die DVR-capable zijn (segmenten vanaf 0)
+    opties = ts.basis_opties(proxy_override=proxy)
+    opties.update({"skip_download": True, "quiet": True, "live_from_start": True})
     with yt_dlp.YoutubeDL(opties) as ydl:
         info = ydl.extract_info(url, download=False)
 
-    # Debug: log alle beschikbare formaten
     alle_fmt = info.get("formats") or []
-    for f in alle_fmt[:20]:
+    log.info(f"[audio][debug] {len(alle_fmt)} formaten gevonden (live_from_start=True)")
+    for f in alle_fmt[:15]:
         log.info(
-            f"[audio][debug] fmt id={f.get('format_id')} proto={f.get('protocol')} "
-            f"vcodec={f.get('vcodec')} acodec={f.get('acodec')} ext={f.get('ext')} "
-            f"abr={f.get('abr')} tbr={f.get('tbr')}"
+            f"[audio][debug] id={f.get('format_id')} proto={f.get('protocol')} "
+            f"vcodec={f.get('vcodec')} ext={f.get('ext')} "
+            f"abr={f.get('abr')} url={str(f.get('url') or '')[:60]}"
         )
 
-    # Kies het best beschikbare audio-only m3u8-formaat (hoogste bitrate)
-    m3u8_url = None
-    headers = {}
-    for fmt in sorted(
-        (f for f in alle_fmt
-         if f.get("protocol") in ("m3u8", "m3u8_native")
-         and f.get("vcodec") in ("none", None, "")
-         and f.get("url")),
-        key=lambda f: f.get("abr") or f.get("tbr") or 0,
-        reverse=True,
-    ):
-        m3u8_url = fmt["url"]
-        headers = fmt.get("http_headers", {})
-        log.info(
-            f"[audio] Live HLS-formaat gevonden: {fmt.get('format_id')} "
-            f"({fmt.get('abr') or fmt.get('tbr')} kbps)"
-        )
-        break
+    # Gebruik yt-dlp als subprocess met ffmpeg external downloader en -t stop.
+    # FFmpegFD ondersteunt http_dash_segments en stopt na eind_sec output-seconden.
+    doel = os.path.join(map_, "audio_live.m4a")
+    eind = int(eind_sec or 3600)
 
-    if not m3u8_url:
-        raise RuntimeError(
-            "Geen audio HLS-formaat gevonden voor livestream. "
-            "Mogelijk biedt dit kanaal geen DVR of m3u8-toegang."
-        )
-
-    doel = os.path.join(map_, "audio.m4a")
-    duur = int(eind_sec - start_sec) if (start_sec is not None and eind_sec is not None) else None
-    ffmpeg_bin = _ffmpeg()
-
-    # Headers als één string doorgeven aan ffmpeg
-    header_str = "".join(
-        f"{k}: {v}\r\n"
-        for k, v in headers.items()
-        if k.lower() not in ("accept-encoding", "te", "connection")
-    )
-
-    ffmpeg_args = [
-        ffmpeg_bin, "-y",
-        "-reconnect", "1",
-        "-reconnect_streamed", "1",
-        "-reconnect_delay_max", "10",
+    cmd = [
+        _sys.executable, "-m", "yt_dlp",
+        "--live-from-start",
+        "--external-downloader", "ffmpeg",
+        "--downloader-args", f"ffmpeg:-t {eind}",
+        "-f", "bestaudio[ext=m4a]/bestaudio",
+        "-o", doel,
+        "--no-playlist", "--quiet",
     ]
-    if header_str:
-        ffmpeg_args += ["-headers", header_str]
+    if proxy:
+        cmd += ["--proxy", proxy]
 
-    ffmpeg_args += ["-i", m3u8_url]
+    pot_url = os.environ.get("POT_PROVIDER_URL")
+    if pot_url:
+        cmd += [
+            "--extractor-args",
+            f"youtubepot-bgutilhttp:base_url={pot_url.rstrip('/')}",
+            "--extractor-args",
+            "youtube:fetch_pot=always;player_client=web,default",
+        ]
 
-    if start_sec is not None and eind_sec is not None:
-        # -ss na -i = nauwkeurig knippen (ffmpeg leest segmenten tot start_sec,
-        # dan neemt het 'duur' seconden op — audio-only is snel genoeg)
-        ffmpeg_args += ["-ss", str(int(start_sec)), "-t", str(duur)]
+    cmd += [url]
 
-    ffmpeg_args += ["-vn", "-acodec", "copy", doel]
-
-    # Timeout: eind_sec / 10 (aanname: download ≥10× sneller dan realtime) + 5 min marge
-    timeout = max(300, int((eind_sec or 3600) / 10)) + 300
-    log.info(
-        f"[audio] Live HLS: ffmpeg haalt segment {start_sec}s–{eind_sec}s op "
-        f"(timeout={timeout}s)..."
-    )
+    # Timeout: eind_sec / 3 (min. 3× sneller dan realtime) + 10 min marge
+    timeout = int(eind / 3) + 600
+    log.info(f"[audio] Live download via ffmpeg -t {eind}s (timeout={timeout}s)...")
 
     try:
-        subprocess.run(ffmpeg_args, capture_output=True, check=True, timeout=timeout)
+        result = subprocess.run(cmd, capture_output=True, timeout=timeout)
     except subprocess.TimeoutExpired:
-        raise RuntimeError(f"Live-HLS download timeout ({timeout}s) — DVR mogelijk beperkt.")
-    except subprocess.CalledProcessError as e:
-        fout = e.stderr.decode("utf-8", errors="replace")[-500:]
-        raise RuntimeError(f"ffmpeg live-HLS mislukt: {fout}")
+        raise RuntimeError(f"Live download timeout ({timeout}s).")
 
-    if not os.path.isfile(doel) or os.path.getsize(doel) < 10_000:
+    stderr_txt = (result.stderr or b"").decode("utf-8", errors="replace")[-600:]
+    if result.returncode != 0:
+        raise RuntimeError(f"yt-dlp live download mislukt (rc={result.returncode}): {stderr_txt}")
+
+    if not os.path.isfile(doel) or os.path.getsize(doel) < 50_000:
         raise RuntimeError(
-            f"Live HLS-segment te klein "
+            f"Live download bestand te klein "
             f"({os.path.getsize(doel) if os.path.isfile(doel) else 0} bytes). "
-            "DVR-bereik mogelijk beperkt voor dit kanaal."
+            f"stderr: {stderr_txt[-200:]}"
         )
 
-    log.info(f"[audio] Live HLS-download gelukt ({os.path.getsize(doel) // 1024} KB).")
-    return doel
+    log.info(f"[audio] Live download klaar ({os.path.getsize(doel) // 1024} KB), knippen...")
+
+    # ffmpeg-cut naar het gewenste tijdvak
+    doel_geknipt = os.path.join(map_, "audio.m4a")
+    if start_sec is not None and eind_sec is not None:
+        duur = int(eind_sec - start_sec)
+        subprocess.run(
+            [_ffmpeg(), "-y",
+             "-ss", str(int(start_sec)), "-t", str(duur),
+             "-i", doel, "-acodec", "copy", doel_geknipt],
+            capture_output=True, check=True, timeout=120,
+        )
+        os.remove(doel)
+        return doel_geknipt
+
+    os.rename(doel, doel_geknipt)
+    return doel_geknipt
 
 
 def _download_audio_met_fallback(url, map_, start_sec=None, eind_sec=None):
