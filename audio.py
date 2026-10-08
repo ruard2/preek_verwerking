@@ -338,7 +338,7 @@ def _download_audio_met_fallback(url, map_, start_sec=None, eind_sec=None):
             log.info(f"[audio] Stap 3 mislukt ({fout}).")
             _opruimen()
 
-    # Stap 4 & 5: web+POT via residentiële proxy — bewezen voor livestream-VODs.
+    # Stap 4: web+POT via residentiële proxy — bewezen voor livestream-VODs.
     # Check eerst de cache: als een eerdere run dit segment al downloadde, hergebruiken.
     sleutel = _segment_sleutel(url, start_sec, eind_sec)
     gecached = _cache_ophalen(sleutel)
@@ -349,9 +349,12 @@ def _download_audio_met_fallback(url, map_, start_sec=None, eind_sec=None):
         shutil.copy2(gecached, doel)
         return doel
 
-    # Stap 4: web+POT via residentiële proxy — traag maar bewezen voor livestream-VODs.
-    log.info("[audio] Stap 4: web+POT via residentiële proxy (terugval)...")
-    bron = _download_audio(url, map_, start_sec, eind_sec, zonder_proxy=False, ios_mweb=False)
+    # Chunked native downloader + sticky-session residentieel (poort 10000):
+    # - 1 MB chunks omzeilen YouTube throttling (~11 KiB/s → ongelimiteerd)
+    # - Sticky IP per download: geen CDN 403 door IP-wissel tussen chunks
+    # - Native yt-dlp downloader: geen externe ffmpeg, geen code-8 crash
+    log.info("[audio] Stap 4: chunked web+POT via residentiële sticky-proxy...")
+    bron = _download_audio_chunked(url, map_, start_sec, eind_sec, proxy=proxy_res)
     log.info("[audio] Stap 4 gelukt.")
     _bewaar_in_cache(bron)
     return bron
