@@ -225,9 +225,11 @@ def _download_audio(url, map_, start_sec=None, eind_sec=None, zonder_proxy=False
         "-reconnect_delay_max", "30",
     ]
     if start_sec is not None and eind_sec is not None:
-        # Beperk de download tot het preeksegment. ffmpeg gebruikt HTTP-range
-        # requests om direct naar het juiste byte-offset te springen.
-        ffmpeg_input_args += ["-ss", str(int(start_sec)), "-to", str(int(eind_sec))]
+        # Beperk de download tot het preeksegment. -ss seek + -t duration:
+        # -t (duur) werkt betrouwbaarder als input-optie dan -to (eindtijd) voor
+        # HTTP-streams; -to als input geeft soms "ffmpeg exited with code 8".
+        duur = int(eind_sec) - int(start_sec)
+        ffmpeg_input_args += ["-ss", str(int(start_sec)), "-t", str(duur)]
 
     opties.update(
         {
@@ -347,22 +349,10 @@ def _download_audio_met_fallback(url, map_, start_sec=None, eind_sec=None):
         shutil.copy2(gecached, doel)
         return doel
 
-    # Stap 4: externe ffmpeg-downloader + web+POT (één grote HTTP-verbinding).
-    try:
-        log.info("[audio] Stap 4: web+POT via residentiële proxy (externe ffmpeg)...")
-        bron = _download_audio(url, map_, start_sec, eind_sec, zonder_proxy=False, ios_mweb=False)
-        log.info("[audio] Stap 4 gelukt.")
-        _bewaar_in_cache(bron)
-        return bron
-    except Exception as fout:  # noqa: BLE001
-        log.info(f"[audio] Stap 4 mislukt ({fout}).")
-        _opruimen()
-
-    # Stap 5: native chunked downloader + web+POT via residentiële proxy.
-    # Vermijdt de externe ffmpeg-downloader die soms met code 8 crasht.
-    log.info("[audio] Stap 5: chunked native download web+POT via residentiële proxy...")
-    bron = _download_audio_chunked(url, map_, start_sec, eind_sec, proxy=proxy_res)
-    log.info("[audio] Stap 5 gelukt.")
+    # Stap 4: web+POT via residentiële proxy — traag maar bewezen voor livestream-VODs.
+    log.info("[audio] Stap 4: web+POT via residentiële proxy (terugval)...")
+    bron = _download_audio(url, map_, start_sec, eind_sec, zonder_proxy=False, ios_mweb=False)
+    log.info("[audio] Stap 4 gelukt.")
     _bewaar_in_cache(bron)
     return bron
 
