@@ -348,79 +348,34 @@ def _is_live(url, proxy=None):
         return False
 
 
-def _download_audio_live(url, map_, start_sec=None, eind_sec=None, proxy=None):
-    """Download een segment van een actieve YouTube-livestream via HLS + ffmpeg.
+def _wacht_op_vod(url, max_wacht_sec=1800):
+    """Wacht tot een actieve YouTube-livestream eindigt en als VOD beschikbaar wordt.
 
-    Werkwijze:
-    1. yt-dlp haalt (met residentiële proxy + live_from_start) de HLS-manifest-URL
-       op — dit geeft de DVR-variant waarmee je terug kunt in de stream.
-    2. ffmpeg leest de HLS-manifest en pakt met -ss/-t alleen het gevraagde
-       tijdvak; download_ranges van yt-dlp werkt niet op live-HLS-formats.
+    YouTube zet een gestopte livestream doorgaans binnen 5-15 minuten om naar een
+    VOD. Daarna werkt de normale downloadlogica gewoon.
 
-    Timeout: segmentduur + 3 min marge (HLS heeft meer latency dan directe HTTPS).
+    Returns True zodra de stream niet meer live is, False bij timeout.
     """
+    import time
     import logging
     log = logging.getLogger("aftersermon")
 
-    # Stap 1: HLS-manifest-URL ophalen
-    opties = ts.basis_opties(proxy_override=proxy)
-    opties.update({
-        "skip_download": True,
-        "live_from_start": True,
-        "format": "bestaudio[ext=m4a]/bestaudio/best",
-    })
-    with yt_dlp.YoutubeDL(opties) as ydl:
-        info = ydl.extract_info(url, download=False)
-
-    stream_url = None
-    ext = "m4a"
-    for fmt in (info.get("requested_formats") or []):
-        if fmt.get("vcodec") in ("none", None) and fmt.get("url"):
-            stream_url = fmt["url"]
-            ext = fmt.get("ext", "m4a")
-            break
-    if not stream_url:
-        stream_url = info.get("url")
-        ext = info.get("ext", "m4a") or "m4a"
-    if not stream_url:
-        raise RuntimeError("Geen HLS-stream-URL gevonden voor de live stream.")
-    log.info(f"[audio] Live: HLS-URL verkregen (ext={ext}), ffmpeg haalt segment op...")
-
-    # Stap 2: ffmpeg knipt het tijdvak uit de HLS-stream
-    doel = os.path.join(map_, f"audio.{ext}")
-    ffmpeg_bin = _ffmpeg()
-    ffmpeg_args = [
-        ffmpeg_bin, "-y",
-        "-reconnect", "1",
-        "-reconnect_streamed", "1",
-        "-reconnect_delay_max", "10",
-    ]
-    if start_sec is not None and eind_sec is not None:
-        duur = int(eind_sec) - int(start_sec)
-        ffmpeg_args += ["-ss", str(int(start_sec)), "-t", str(duur)]
-    ffmpeg_args += ["-i", stream_url, "-vn", "-acodec", "copy", doel]
-
-    timeout = 180  # basistimeout
-    if start_sec is not None and eind_sec is not None:
-        timeout = int(eind_sec - start_sec) + 180
-    try:
-        subprocess.run(ffmpeg_args, capture_output=True, check=True, timeout=timeout)
-    except subprocess.TimeoutExpired:
-        raise RuntimeError(f"Live-HLS download timeout ({timeout}s) — DVR niet bereikbaar.")
-
-    if not os.path.isfile(doel) or os.path.getsize(doel) < 10_000:
-        raise RuntimeError(
-            f"Live-audiobestand te klein "
-            f"({os.path.getsize(doel) if os.path.isfile(doel) else 0} bytes)"
-        )
-    return doel
+    deadline = time.time() + max_wacht_sec
+    interval = 30
+    while time.time() < deadline:
+        time.sleep(interval)
+        if not _is_live(url):
+            return True
+        rest = int(deadline - time.time())
+        log.info(f"[audio] Stream nog actief — wacht nog max {rest // 60} min...")
+    return False
 
 
 def _download_audio_met_fallback(url, map_, start_sec=None, eind_sec=None):
     """Probeer snelle download, val stap voor stap terug op langzamere opties.
 
-    Bij een actieve livestream wordt automatisch de live-DVR-codepath gebruikt
-    (live_from_start + download_ranges via residentiële proxy).
+    Bij een actieve livestream wordt gewacht tot de dienst klaar is en YouTube
+    de stream omzet naar VOD (doorgaans 5-15 min na het einde van de uitzending).
 
     Volgorde voor VODs (snelst → langzaamst):
     1. ios/mweb zonder proxy — niet-IP-gebonden CDN, werkt voor gewone video's.
@@ -452,16 +407,19 @@ def _download_audio_met_fallback(url, map_, start_sec=None, eind_sec=None):
     proxy_res = os.environ.get("YTDLP_PROXY")
     proxy_dc = os.environ.get("YTDLP_PROXY_DC")
 
-    # ── Live-detectie: actieve livestream krijgt eigen codepath ──────────────
+    # ── Live-detectie: wacht tot de dienst klaar is, dan als VOD downloaden ──
     log.info("[audio] Live-check (metadata)...")
     if _is_live(url):
-        log.info("[audio] Actieve livestream gedetecteerd — live-DVR-download via residentiële proxy.")
-        if proxy_res:
-            bron = _download_audio_live(url, map_, start_sec, eind_sec, proxy=proxy_res)
-            log.info("[audio] Live-download gelukt.")
-            _bewaar_in_cache(bron)
-            return bron
-        log.warning("[audio] Geen residentiële proxy beschikbaar voor live-download; val terug op normale stappen.")
+        log.info(
+            "[audio] Actieve livestream gedetecteerd — wacht tot dienst klaar is "
+            "(max 30 min). YouTube zet de stream daarna automatisch om naar VOD."
+        )
+        if not _wacht_op_vod(url, max_wacht_sec=1800):
+            raise RuntimeError(
+                "De dienst is na 30 minuten nog steeds live. "
+                "Dien de aanvraag opnieuw in zodra de dienst volledig is afgelopen."
+            )
+        log.info("[audio] Stream klaar — verwerk nu als VOD.")
 
     # Stap 1: ios/mweb zonder proxy (gratis, snel voor gewone video's)
     try:
