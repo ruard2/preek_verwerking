@@ -270,6 +270,58 @@ def _segment_sleutel(url, start_sec, eind_sec):
     return basis
 
 
+def _download_audio_cdn_direct(url, map_, start_sec=None, eind_sec=None, proxy=None):
+    """Hybride: CDN-URL ophalen via proxy (web+POT), daarna direct downloaden zonder proxy.
+
+    Als YouTube de CDN-URL niet strikt aan het proxy-IP bindt → download op
+    datacenter-snelheid (seconden i.p.v. minuten). Gooit RuntimeError als het
+    bestand te klein is (= CDN weigerde de directe verbinding, IP-gebonden).
+    """
+    opties = ts.basis_opties(proxy_override=proxy)
+    opties.update({
+        "skip_download": True,
+        "format": "bestaudio[abr<=64]/bestaudio[ext=m4a]/bestaudio/best",
+    })
+    with yt_dlp.YoutubeDL(opties) as ydl:
+        info = ydl.extract_info(url, download=False)
+
+    # CDN-URL en extensie uit de geselecteerde format halen.
+    # Bij audio-only is dit een directe HTTPS-URL (geen HLS-manifest).
+    cdn_url = None
+    ext = "m4a"
+    for fmt in (info.get("requested_formats") or []):
+        if fmt.get("vcodec") in ("none", None) and fmt.get("url"):
+            cdn_url = fmt["url"]
+            ext = fmt.get("ext", "m4a")
+            break
+    if not cdn_url:
+        cdn_url = info.get("url")
+        ext = info.get("ext", "m4a") or "m4a"
+    if not cdn_url:
+        raise RuntimeError("Geen CDN-URL gevonden in de video-info.")
+
+    doel = os.path.join(map_, f"audio.{ext}")
+    ffmpeg_bin = _ffmpeg()
+    ffmpeg_args = [
+        ffmpeg_bin, "-y",
+        "-reconnect", "1",
+        "-reconnect_streamed", "1",
+        "-reconnect_delay_max", "30",
+    ]
+    if start_sec is not None and eind_sec is not None:
+        duur = int(eind_sec) - int(start_sec)
+        ffmpeg_args += ["-ss", str(int(start_sec)), "-t", str(duur)]
+    ffmpeg_args += ["-i", cdn_url, "-vn", "-acodec", "copy", doel]
+    subprocess.run(ffmpeg_args, capture_output=True, check=True)
+
+    if not os.path.isfile(doel) or os.path.getsize(doel) < 10_000:
+        raise RuntimeError(
+            f"Directe CDN-download mislukt ({os.path.getsize(doel) if os.path.isfile(doel) else 0} bytes)"
+            " — CDN-URL waarschijnlijk IP-gebonden."
+        )
+    return doel
+
+
 def _download_audio_met_fallback(url, map_, start_sec=None, eind_sec=None):
     """Probeer snelle download, val stap voor stap terug op langzamere opties.
 
@@ -338,24 +390,33 @@ def _download_audio_met_fallback(url, map_, start_sec=None, eind_sec=None):
             log.info(f"[audio] Stap 3 mislukt ({fout}).")
             _opruimen()
 
-    # Stap 4: web+POT via residentiële proxy — bewezen voor livestream-VODs.
-    # Check eerst de cache: als een eerdere run dit segment al downloadde, hergebruiken.
+    # Cache check voor stap 4+5: als een eerdere run dit segment al downloadde, hergebruiken.
     sleutel = _segment_sleutel(url, start_sec, eind_sec)
     gecached = _cache_ophalen(sleutel)
     if gecached:
-        log.info("[audio] Stap 4: gecached segment gevonden, download overgeslagen.")
+        log.info("[audio] Cache: gecached segment gevonden, download overgeslagen.")
         ext = os.path.splitext(gecached)[1]
         doel = os.path.join(map_, "audio" + ext)
         shutil.copy2(gecached, doel)
         return doel
 
-    # Chunked native downloader + sticky-session residentieel (poort 10000):
-    # - 1 MB chunks omzeilen YouTube throttling (~11 KiB/s → ongelimiteerd)
-    # - Sticky IP per download: geen CDN 403 door IP-wissel tussen chunks
-    # - Native yt-dlp downloader: geen externe ffmpeg, geen code-8 crash
-    log.info("[audio] Stap 4: chunked web+POT via residentiële sticky-proxy...")
+    # Stap 4: hybride CDN-direct — info via residentieel proxy, download zonder proxy.
+    # Als de CDN-URL niet IP-gebonden is: download op datacenter-snelheid (seconden).
+    if proxy_res:
+        try:
+            log.info("[audio] Stap 4: CDN-direct (info via residentieel, download direct)...")
+            bron = _download_audio_cdn_direct(url, map_, start_sec, eind_sec, proxy=proxy_res)
+            log.info("[audio] Stap 4 gelukt (CDN direct, geen proxy voor download).")
+            _bewaar_in_cache(bron)
+            return bron
+        except Exception as fout:  # noqa: BLE001
+            log.info(f"[audio] Stap 4 mislukt ({fout}).")
+            _opruimen()
+
+    # Stap 5: chunked web+POT via residentiële sticky-proxy (traag maar bewezen voor VODs).
+    log.info("[audio] Stap 5: chunked web+POT via residentiële sticky-proxy...")
     bron = _download_audio_chunked(url, map_, start_sec, eind_sec, proxy=proxy_res)
-    log.info("[audio] Stap 4 gelukt.")
+    log.info("[audio] Stap 5 gelukt.")
     _bewaar_in_cache(bron)
     return bron
 
