@@ -227,7 +227,19 @@ async function laadKanaal(url, vernieuw = false) {
     stapEl.textContent = '';
     laadbalk.classList.remove('aan');
     if (data.soort === 'enkel') {
-      verwerk(data.url, 'geplakte preek-link');
+      // Geen kanaal gevonden — direct naar tijdmarkeringen (demo-flow)
+      const vid = _videoId(data.url);
+      toonTijdMarkeringen(data.url, vid, 'Preek', '');
+    } else if (data.enkel_url) {
+      // Directe videolink ingeplakt: sla de kanalenlijst over, ga meteen naar tijdmarkeringen
+      huidigKanaal = data.kanaal;
+      window._diensten = data.diensten;
+      if (data.kanaal) onthoudKanaal(data.kanaal);
+      const vid = _videoId(data.enkel_url);
+      const gevonden = (data.diensten || []).find(d => (d.video_id || _videoId(d.url)) === vid);
+      const lbl = gevonden ? gevonden.label : 'Preek';
+      const dag = gevonden ? gevonden.datum : '';
+      toonTijdMarkeringen(data.enkel_url, vid, lbl, dag);
     } else {
       huidigKanaal = data.kanaal;
       window._diensten = data.diensten;
