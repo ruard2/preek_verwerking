@@ -519,11 +519,80 @@ function toonEmailForm(url, label, datumLabel, preekTijden) {
   }
 
   const info = el('p', 'samenvatting',
-    'Vul je e-mailadres in — we verwerken de preek en sturen je alle resultaten toe. '
-    + 'Je ontvangt: samenvatting, 7 dagstukjes met vragen, groepsvragen en de volledige preektekst.');
+    'Vul je e-mailadres in — we verwerken de preek en sturen je de resultaten toe.');
   info.style.marginBottom = '.8rem';
   kaart.appendChild(info);
 
+  // ── Naam dominee ────────────────────────────────────────────────────────
+  const naamLabel = el('label', null, 'Naam dominee ');
+  const naamOptLabel = el('span', null, '(optioneel)');
+  naamOptLabel.style.cssText = 'color:var(--muted);font-size:.82rem;font-weight:400';
+  naamLabel.appendChild(naamOptLabel);
+  naamLabel.style.cssText = 'display:block;font-size:.88rem;font-weight:600;margin-bottom:.25rem';
+  kaart.appendChild(naamLabel);
+  const naamInp = document.createElement('input');
+  naamInp.type = 'text';
+  naamInp.placeholder = 'bijv. Stolper';
+  naamInp.className = 'bewerkveld';
+  naamInp.style.marginBottom = '.8rem';
+  kaart.appendChild(naamInp);
+
+  // ── Wat wil je ontvangen? ────────────────────────────────────────────────
+  const uitvoerLabel = el('p', null, 'Wat wil je ontvangen?');
+  uitvoerLabel.style.cssText = 'font-size:.88rem;font-weight:600;margin:0 0 .3rem';
+  kaart.appendChild(uitvoerLabel);
+  const uitvoerOpties = [
+    { value: 'weekboekje',  label: '7 dagstukjes met vragen' },
+    { value: 'samenvatting', label: 'Samenvatting' },
+    { value: 'groepsvragen', label: 'Groepsvragen' },
+    { value: 'preektekst',   label: 'Volledige preektekst' },
+  ];
+  const uitvoerCheckboxes = [];
+  const uitvoerRij = el('div', null);
+  uitvoerRij.style.cssText = 'display:flex;flex-wrap:wrap;gap:.4rem .9rem;margin-bottom:.8rem';
+  uitvoerOpties.forEach(opt => {
+    const lbl = document.createElement('label');
+    lbl.style.cssText = 'display:flex;align-items:center;gap:.3rem;font-size:.88rem;cursor:pointer';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.value = opt.value;
+    cb.checked = true;
+    uitvoerCheckboxes.push(cb);
+    lbl.appendChild(cb);
+    lbl.appendChild(document.createTextNode(opt.label));
+    uitvoerRij.appendChild(lbl);
+  });
+  kaart.appendChild(uitvoerRij);
+
+  // ── Leeftijdsniveau ──────────────────────────────────────────────────────
+  const leeftijdLabel = el('label', null, 'Doelgroep ');
+  const leeftijdOptLabel = el('span', null, '(optioneel)');
+  leeftijdOptLabel.style.cssText = 'color:var(--muted);font-size:.82rem;font-weight:400';
+  leeftijdLabel.appendChild(leeftijdOptLabel);
+  leeftijdLabel.style.cssText = 'display:block;font-size:.88rem;font-weight:600;margin-bottom:.25rem';
+  kaart.appendChild(leeftijdLabel);
+  const leeftijdSel = document.createElement('select');
+  leeftijdSel.className = 'bewerkveld';
+  leeftijdSel.style.marginBottom = '.8rem';
+  [
+    { value: '',           label: 'Alle leeftijden (standaard)' },
+    { value: 'Ouderen',    label: 'Ouderen' },
+    { value: 'Volwassenen', label: 'Volwassenen' },
+    { value: 'Jongeren',   label: 'Jongeren (16–25)' },
+    { value: 'Tieners',    label: 'Tieners (12–16)' },
+    { value: 'Kinderen',   label: 'Kinderen' },
+  ].forEach(opt => {
+    const o = document.createElement('option');
+    o.value = opt.value;
+    o.textContent = opt.label;
+    leeftijdSel.appendChild(o);
+  });
+  kaart.appendChild(leeftijdSel);
+
+  // ── E-mail ───────────────────────────────────────────────────────────────
+  const emailLabel = el('label', null, 'E-mailadres');
+  emailLabel.style.cssText = 'display:block;font-size:.88rem;font-weight:600;margin-bottom:.25rem';
+  kaart.appendChild(emailLabel);
   const emailInp = document.createElement('input');
   emailInp.type = 'email';
   emailInp.placeholder = 'jou@voorbeeld.nl';
@@ -543,6 +612,12 @@ function toonEmailForm(url, label, datumLabel, preekTijden) {
     try {
       const body = {url, email};
       if (preekTijden && preekTijden.length) body.preek_tijden = preekTijden;
+      const naam = naamInp.value.trim();
+      if (naam) body.naam_predikant = naam;
+      const uitvoer = uitvoerCheckboxes.filter(cb => cb.checked).map(cb => cb.value);
+      if (uitvoer.length && uitvoer.length < uitvoerOpties.length) body.uitvoer_typen = uitvoer;
+      const leeftijd = leeftijdSel.value;
+      if (leeftijd) body.leeftijd = leeftijd;
       const r = await fetch('/api/demo/verwerk', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},

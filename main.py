@@ -382,7 +382,7 @@ def _transcribeer_bron(url, is_kdg, is_ko, meld, preek_tijden=None):
     return _transcribeer_youtube(url, meld, preek_tijden=preek_tijden or [])
 
 
-def _genereer_basis(bron_info, bijbel, typen, meld):
+def _genereer_basis(bron_info, bijbel, typen, meld, naam_predikant=None, leeftijd=None):
     """Maak de basis (dagstukjes via verwerk_preek, of een lichte basis zonder dagen).
 
     Zo slaan we de dure 7-daagse generatie over als de kerk geen dagstukjes wil.
@@ -426,7 +426,8 @@ def _genereer_basis(bron_info, bijbel, typen, meld):
     )
     if "dagstukjes" in typen:
         meld("Weekboekje maken met AI — dit kan enkele minuten duren...")
-        data = verwerk_preek(transcript_voor_verwerking, **gemeen, **bijbel_schoon)
+        data = verwerk_preek(transcript_voor_verwerking, **gemeen, **bijbel_schoon,
+                             naam_predikant=naam_predikant, leeftijd=leeftijd)
         bijbeltekst.verrijk_dagen(data, bijbel or {})
     else:
         meld("Kernpunten van de preek samenvatten...")
@@ -521,7 +522,8 @@ def _pas_uitvoer_toe(data, uitvoer_typen, preek_schoon, transcript_ruw, meld):
 
 
 def verwerk_en_bewaar(url, herverwerk=False, meld=None, bijbel=None, uitvoer_typen=None,
-                      alleen_transcript=False, preek_tijden=None):
+                      alleen_transcript=False, preek_tijden=None,
+                      naam_predikant=None, leeftijd=None):
     """Verwerk een dienst (of laad uit cache) en bewaar het resultaat.
 
     Herbruikbaar vanuit de interactieve taak én de automatisering. `bijbel` is een
@@ -593,7 +595,9 @@ def verwerk_en_bewaar(url, herverwerk=False, meld=None, bijbel=None, uitvoer_typ
         if bron_info.get("liturgie"):
             data["liturgie"] = bron_info["liturgie"]
     else:
-        data = _genereer_basis(bron_info, bijbel, typen, meld)
+        data = _genereer_basis(bron_info, bijbel, typen, meld,
+                               naam_predikant=naam_predikant,
+                               leeftijd=leeftijd)
 
     # 4. Opgeschoonde, herbruikbare preektekst — ook één keer: hergebruik indien aanwezig.
     # Bij volledige_dienst heeft _genereer_basis de extractie + opschoning al gedaan;
@@ -838,8 +842,8 @@ VERSIE = (
 
 # ---- Demo: e-mail alle resultaten ----------------------------------------
 
-def _stuur_demo_email(naar_email: str, r: dict, groepsvragen=None):
-    """Bouw en verstuur een demo-e-mail met alle 4 uitvoertypes als PDF-bijlagen."""
+def _stuur_demo_email(naar_email: str, r: dict, groepsvragen=None, uitvoer_typen=None):
+    """Bouw en verstuur een demo-e-mail met de gevraagde uitvoertypes als PDF-bijlagen."""
     import base64
     import render as _render
 
@@ -853,31 +857,33 @@ def _stuur_demo_email(naar_email: str, r: dict, groepsvragen=None):
     voorganger = data.get("voorganger") or ""
     dagen = data.get("dagen") or []
 
-    # ---- 4 PDF-bijlagen genereren ----
+    mag = lambda t: uitvoer_typen is None or t in (uitvoer_typen or [])
+
+    # ---- PDF-bijlagen genereren (alleen de gevraagde types) ----
     bijlagen = []
 
-    if preek_schoon:
+    if preek_schoon and mag("preektekst"):
         try:
             pdf = _render.naar_preek_pdf(data, preek_schoon)
             bijlagen.append({"content": base64.b64encode(pdf).decode(), "name": "preektekst.pdf"})
         except Exception as e:  # noqa: BLE001
             log.warning(f"[demo] preektekst PDF mislukt: {e}")
 
-    if samenvatting:
+    if samenvatting and mag("samenvatting"):
         try:
             pdf = _render.samenvatting_naar_pdf(data)
             bijlagen.append({"content": base64.b64encode(pdf).decode(), "name": "samenvatting.pdf"})
         except Exception as e:  # noqa: BLE001
             log.warning(f"[demo] samenvatting PDF mislukt: {e}")
 
-    if dagen:
+    if dagen and mag("weekboekje"):
         try:
             pdf = _render.dagstukjes_naar_pdf(data)
             bijlagen.append({"content": base64.b64encode(pdf).decode(), "name": "dagstukjes.pdf"})
         except Exception as e:  # noqa: BLE001
             log.warning(f"[demo] dagstukjes PDF mislukt: {e}")
 
-    if groepsvragen:
+    if groepsvragen and mag("groepsvragen"):
         try:
             pdf = _render.demo_groepsvragen_naar_pdf(data, groepsvragen)
             bijlagen.append({"content": base64.b64encode(pdf).decode(), "name": "groepsvragen.pdf"})
@@ -955,36 +961,41 @@ Stel je kerk in: {base_url}/admin
     )
 
 
-def _demo_verwerk_en_mail(url: str, email: str, preek_tijden=None):
-    """Verwerk een preek volledig en mail alle 4 uitvoertypes. Draait in achtergrond-thread."""
+def _demo_verwerk_en_mail(url: str, email: str, preek_tijden=None,
+                          naam_predikant=None, uitvoer_typen=None, leeftijd=None):
+    """Verwerk een preek en mail de gevraagde uitvoertypes. Draait in achtergrond-thread."""
     try:
-        log.info(f"[demo] Verwerking gestart: url={url} email={email} tijden={preek_tijden}")
+        log.info(f"[demo] Verwerking gestart: url={url} email={email} tijden={preek_tijden} "
+                 f"predikant={naam_predikant} typen={uitvoer_typen} leeftijd={leeftijd}")
 
         r = verwerk_en_bewaar(url, meld=lambda s: log.info(f"[demo] {s}"),
-                              preek_tijden=preek_tijden or [])
+                              preek_tijden=preek_tijden or [],
+                              naam_predikant=naam_predikant, leeftijd=leeftijd)
         video_id = r.get("video_id")
         if not video_id:
             raise ValueError("Kon geen video-id bepalen uit de opgegeven URL.")
         log.info(f"[demo] Verwerking klaar: video_id={video_id}")
 
-        # Stap 2: groepsvragen (extra, met standaard-instellingen; niet fataal als mislukt).
+        # Stap 2: groepsvragen — alleen als gevraagd (niet fataal als mislukt).
         groepsvragen = None
-        try:
-            gv_res = genereer_groepsvragen_en_bewaar(video_id, {
-                "leeftijd": "Volwassenen",
-                "aantal": 8,
-                "categorieen": ["terughalen", "verdiepen", "landen", "handen"],
-            })
-            groepsvragen = gv_res.get("groepsvragen")
-            log.info(f"[demo] Groepsvragen klaar: video_id={video_id}")
-        except Exception as gv_fout:  # noqa: BLE001
-            log.warning(f"[demo] Groepsvragen mislukten (niet fataal): {gv_fout}")
+        genereer_gv = uitvoer_typen is None or "groepsvragen" in (uitvoer_typen or [])
+        if genereer_gv:
+            try:
+                gv_res = genereer_groepsvragen_en_bewaar(video_id, {
+                    "leeftijd": leeftijd or "Volwassenen",
+                    "aantal": 8,
+                    "categorieen": ["terughalen", "verdiepen", "landen", "handen"],
+                })
+                groepsvragen = gv_res.get("groepsvragen")
+                log.info(f"[demo] Groepsvragen klaar: video_id={video_id}")
+            except Exception as gv_fout:  # noqa: BLE001
+                log.warning(f"[demo] Groepsvragen mislukten (niet fataal): {gv_fout}")
 
         # Stap 3: lees meest recente store-versie (groepsvragen kunnen erin zitten).
         finaal = store.resultaat_ophalen(video_id) or {}
         r_email = {**r, "data": finaal.get("data") or r.get("data")}
         log.info(f"[demo] E-mail voorbereiden voor {email}...")
-        _stuur_demo_email(email, r_email, groepsvragen)
+        _stuur_demo_email(email, r_email, groepsvragen, uitvoer_typen=uitvoer_typen)
         log.info(f"[demo] E-mail verstuurd naar {email}")
     except Exception as fout:  # noqa: BLE001
         log.error(f"[demo] Verwerking mislukt voor {url}: {fout}", exc_info=True)
@@ -1178,15 +1189,22 @@ def debug_transcribeer(body: dict, request: Request):
 
 @app.post("/api/demo/verwerk")
 def demo_verwerk(body: dict):
-    """Demo-endpoint: verwerk een preek op de achtergrond en mail alle resultaten."""
+    """Demo-endpoint: verwerk een preek op de achtergrond en mail de gevraagde resultaten."""
     url = (body or {}).get("url", "").strip()
     email = (body or {}).get("email", "").strip()
     preek_tijden = (body or {}).get("preek_tijden") or []
+    naam_predikant = (body or {}).get("naam_predikant") or None
+    uitvoer_typen = (body or {}).get("uitvoer_typen") or None
+    leeftijd = (body or {}).get("leeftijd") or None
     if not url:
         raise HTTPException(400, "Plak eerst een preeklink.")
     if not email or not re.match(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
         raise HTTPException(400, "Vul een geldig e-mailadres in.")
-    threading.Thread(target=_demo_verwerk_en_mail, args=(url, email, preek_tijden), daemon=True).start()
+    threading.Thread(
+        target=_demo_verwerk_en_mail,
+        args=(url, email, preek_tijden, naam_predikant, uitvoer_typen, leeftijd),
+        daemon=True,
+    ).start()
     return {"status": "ok"}
 
 

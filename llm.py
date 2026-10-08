@@ -281,9 +281,34 @@ def _harde_taalinstructie(taal: str) -> str:
     )
 
 
+_LEEFTIJD_STIJL = {
+    "Ouderen": (
+        "De doelgroep is ouderen. Gebruik traditioneel, klassiek taalgebruik dat aansluit "
+        "bij hun kerkelijke achtergrond. Formuleer de reflectievragen voor volwassenen "
+        "dieper doctrinaal en verbonden met de Bijbelse en kerkelijke traditie."
+    ),
+    "Volwassenen": (
+        "De doelgroep is volwassenen. Schrijf praktisch en persoonlijk toepasbaar, "
+        "met evenwichtig taalgebruik."
+    ),
+    "Jongeren": (
+        "De doelgroep is jongeren (16–25 jaar). Gebruik hedendaags, direct taalgebruik. "
+        "Formuleer de reflectievragen concreet en relevant voor het dagelijks leven van jonge mensen."
+    ),
+    "Tieners": (
+        "De doelgroep is tieners (12–16 jaar). Gebruik eenvoudig, direct taalgebruik. "
+        "Reflectievragen zijn toegespitst op de belevingswereld van tieners."
+    ),
+    "Kinderen": (
+        "De doelgroep is kinderen (8–12 jaar). Gebruik heel eenvoudige, heldere taal. "
+        "Vragen zijn concreet en herkenbaar voor kinderen."
+    ),
+}
+
+
 def verwerk_preek(transcript, welkom=None, taal_hint=None, extra_context=None,
                   volledige_dienst=False, citaat_volledig=True, vertaling="vrij",
-                  toon="warm", lengte="middel"):
+                  toon="warm", lengte="middel", naam_predikant=None, leeftijd=None):
     """Verwerk het transcript tot een gestructureerd resultaat (dict).
 
     Geeft een dict met de velden: taal, titel, bijbelgedeelte, voorganger,
@@ -306,6 +331,15 @@ def verwerk_preek(transcript, welkom=None, taal_hint=None, extra_context=None,
             "\nBekende gegevens uit de liturgie (betrouwbaar; neem deze over in "
             "de betreffende velden en verzin niets anders):\n" + extra_context + "\n"
         )
+    if naam_predikant:
+        inhoud += (
+            f"\nNAAM VOORGANGER: De voorganger heet '{naam_predikant}'. "
+            f"Gebruik deze naam in de tekst — schrijf '{naam_predikant} zegt...' "
+            f"in plaats van 'de prediker', 'de voorganger', 'hij' of 'zij'. "
+            f"Zet ook het JSON-veld 'voorganger' op '{naam_predikant}'.\n"
+        )
+    if leeftijd and leeftijd in _LEEFTIJD_STIJL:
+        inhoud += f"\nDOELGROEP: {_LEEFTIJD_STIJL[leeftijd]}\n"
     if taal_hint:
         inhoud += _harde_taalinstructie(taal_hint)
     if welkom:
