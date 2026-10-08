@@ -287,6 +287,10 @@ def _download_audio_cdn_direct(url, map_, start_sec=None, eind_sec=None, proxy=N
 
     # CDN-URL en extensie uit de geselecteerde format halen.
     # Bij audio-only is dit een directe HTTPS-URL (geen HLS-manifest).
+    import logging
+    log = logging.getLogger("aftersermon")
+    log.info("[audio] Stap 4: CDN-URL ophalen via residentieel proxy...")
+
     cdn_url = None
     ext = "m4a"
     for fmt in (info.get("requested_formats") or []):
@@ -300,19 +304,25 @@ def _download_audio_cdn_direct(url, map_, start_sec=None, eind_sec=None, proxy=N
     if not cdn_url:
         raise RuntimeError("Geen CDN-URL gevonden in de video-info.")
 
+    log.info("[audio] Stap 4: CDN-URL verkregen, direct downloaden (geen proxy)...")
     doel = os.path.join(map_, f"audio.{ext}")
     ffmpeg_bin = _ffmpeg()
     ffmpeg_args = [
         ffmpeg_bin, "-y",
         "-reconnect", "1",
         "-reconnect_streamed", "1",
-        "-reconnect_delay_max", "30",
+        "-reconnect_delay_max", "5",  # kort: snel opgeven bij IP-blokkade
     ]
     if start_sec is not None and eind_sec is not None:
         duur = int(eind_sec) - int(start_sec)
         ffmpeg_args += ["-ss", str(int(start_sec)), "-t", str(duur)]
     ffmpeg_args += ["-i", cdn_url, "-vn", "-acodec", "copy", doel]
-    subprocess.run(ffmpeg_args, capture_output=True, check=True)
+    try:
+        # Timeout van 60 s: als CDN direct werkt klaar het in seconden;
+        # bij IP-blokkade/throttling niet eindeloos wachten.
+        subprocess.run(ffmpeg_args, capture_output=True, check=True, timeout=60)
+    except subprocess.TimeoutExpired:
+        raise RuntimeError("CDN-directe download te traag (timeout 60 s) — IP-gebonden of geblokkeerd.")
 
     if not os.path.isfile(doel) or os.path.getsize(doel) < 10_000:
         raise RuntimeError(
