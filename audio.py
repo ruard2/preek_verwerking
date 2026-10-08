@@ -336,8 +336,8 @@ def _download_audio_met_fallback(url, map_, start_sec=None, eind_sec=None):
             log.info(f"[audio] Stap 3 mislukt ({fout}).")
             _opruimen()
 
-    # Stap 4: web+POT via residentiële proxy — traag maar bewezen voor livestream-VODs.
-    # Check eerst de cache: als stap 4 al eerder voor dit segment liep, hergebruiken.
+    # Stap 4 & 5: web+POT via residentiële proxy — bewezen voor livestream-VODs.
+    # Check eerst de cache: als een eerdere run dit segment al downloadde, hergebruiken.
     sleutel = _segment_sleutel(url, start_sec, eind_sec)
     gecached = _cache_ophalen(sleutel)
     if gecached:
@@ -347,8 +347,22 @@ def _download_audio_met_fallback(url, map_, start_sec=None, eind_sec=None):
         shutil.copy2(gecached, doel)
         return doel
 
-    log.info("[audio] Stap 4: web+POT via residentiële proxy (terugval)...")
-    bron = _download_audio(url, map_, start_sec, eind_sec, zonder_proxy=False, ios_mweb=False)
+    # Stap 4: externe ffmpeg-downloader + web+POT (één grote HTTP-verbinding).
+    try:
+        log.info("[audio] Stap 4: web+POT via residentiële proxy (externe ffmpeg)...")
+        bron = _download_audio(url, map_, start_sec, eind_sec, zonder_proxy=False, ios_mweb=False)
+        log.info("[audio] Stap 4 gelukt.")
+        _bewaar_in_cache(bron)
+        return bron
+    except Exception as fout:  # noqa: BLE001
+        log.info(f"[audio] Stap 4 mislukt ({fout}).")
+        _opruimen()
+
+    # Stap 5: native chunked downloader + web+POT via residentiële proxy.
+    # Vermijdt de externe ffmpeg-downloader die soms met code 8 crasht.
+    log.info("[audio] Stap 5: chunked native download web+POT via residentiële proxy...")
+    bron = _download_audio_chunked(url, map_, start_sec, eind_sec, proxy=proxy_res)
+    log.info("[audio] Stap 5 gelukt.")
     _bewaar_in_cache(bron)
     return bron
 
