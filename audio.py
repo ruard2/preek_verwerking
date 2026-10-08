@@ -384,11 +384,20 @@ def _download_audio_live(url, map_, start_sec=None, eind_sec=None, proxy=None):
     with yt_dlp.YoutubeDL(opties) as ydl:
         info = ydl.extract_info(url, download=False)
 
+    # Debug: log alle beschikbare formaten
+    alle_fmt = info.get("formats") or []
+    for f in alle_fmt[:20]:
+        log.info(
+            f"[audio][debug] fmt id={f.get('format_id')} proto={f.get('protocol')} "
+            f"vcodec={f.get('vcodec')} acodec={f.get('acodec')} ext={f.get('ext')} "
+            f"abr={f.get('abr')} tbr={f.get('tbr')}"
+        )
+
     # Kies het best beschikbare audio-only m3u8-formaat (hoogste bitrate)
     m3u8_url = None
     headers = {}
     for fmt in sorted(
-        (f for f in (info.get("formats") or [])
+        (f for f in alle_fmt
          if f.get("protocol") in ("m3u8", "m3u8_native")
          and f.get("vcodec") in ("none", None, "")
          and f.get("url")),
